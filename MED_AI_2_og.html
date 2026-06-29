@@ -1,0 +1,1822 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>MedAI — Know When to Act</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&family=Share+Tech+Mono&display=swap" rel="stylesheet"/>
+<!-- GSAP for ReactBits-style animations -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
+
+<style>
+/* =============================================
+   RESET & VARIABLES
+   ============================================= */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  --bg:        #04090f;
+  --bg2:       #060d18;
+  --surface:   #0a1628;
+  --surface2:  #0e1e35;
+  --border:    rgba(0,212,255,0.08);
+  --border2:   rgba(0,212,255,0.18);
+  --accent:    #00d4ff;
+  --accent2:   #0077dd;
+  --safe:      #00ff88;
+  --warning:   #ffaa33;
+  --danger:    #ff4d6d;
+  --text:      #e2f0ff;
+  --muted:     #5a7a99;
+  --radius:    18px;
+  --radius-sm: 10px;
+}
+
+html{scroll-behavior:smooth}
+
+body{
+  font-family:'DM Sans',sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  min-height:100vh;
+  overflow-x:hidden;
+}
+
+/* =============================================
+   MEDICAL BACKGROUND — ECG Canvas
+   ============================================= */
+#ecg-canvas{
+  position:fixed;
+  bottom:0;left:0;right:0;
+  height:120px;
+  z-index:0;
+  opacity:0.18;
+  pointer-events:none;
+}
+
+/* DNA / cell particle canvas */
+#dna-canvas{
+  position:fixed;
+  inset:0;
+  z-index:0;
+  opacity:0.12;
+  pointer-events:none;
+}
+
+/* Grid overlay */
+.grid-overlay{
+  position:fixed;inset:0;z-index:0;
+  background-image:
+    linear-gradient(rgba(0,212,255,0.025) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(0,212,255,0.025) 1px,transparent 1px);
+  background-size:48px 48px;
+  pointer-events:none;
+}
+
+/* Radial top glow */
+.top-glow{
+  position:fixed;
+  top:-300px;left:50%;
+  transform:translateX(-50%);
+  width:900px;height:700px;
+  background:radial-gradient(ellipse at center,
+    rgba(0,212,255,0.07) 0%,
+    rgba(0,119,221,0.04) 40%,
+    transparent 70%);
+  pointer-events:none;z-index:0;
+}
+
+/* =============================================
+   CUSTOM CURSOR
+   ============================================= */
+#cursor{
+  position:fixed;
+  width:10px;height:10px;
+  border-radius:50%;
+  background:var(--accent);
+  pointer-events:none;z-index:99999;
+  transform:translate(-50%,-50%);
+  transition:width .15s,height .15s,background .15s;
+  mix-blend-mode:screen;
+}
+
+#cursor-ring{
+  position:fixed;
+  width:40px;height:40px;
+  border-radius:50%;
+  border:1px solid rgba(0,212,255,0.4);
+  pointer-events:none;z-index:99998;
+  transform:translate(-50%,-50%);
+  transition:width .25s,height .25s,border-color .2s;
+}
+
+/* =============================================
+   NAV
+   ============================================= */
+nav{
+  position:fixed;top:0;left:0;right:0;z-index:200;
+  background:rgba(4,9,15,0.8);
+  backdrop-filter:blur(24px);
+  border-bottom:1px solid var(--border);
+  padding:0 3rem;
+  display:flex;align-items:center;justify-content:space-between;
+  height:64px;
+}
+
+.nav-logo{
+  font-family:'Syne',sans-serif;
+  font-size:20px;font-weight:800;
+  display:flex;align-items:center;gap:10px;
+  text-decoration:none;color:var(--text);
+}
+
+.nav-logo-icon{
+  width:36px;height:36px;border-radius:10px;
+  background:linear-gradient(135deg,#00d4ff,#0044cc);
+  display:flex;align-items:center;justify-content:center;
+  font-size:18px;
+  box-shadow:0 0 20px rgba(0,212,255,0.3);
+}
+
+.nav-logo-text span{color:var(--accent)}
+
+.nav-links{
+  display:flex;gap:2.5rem;list-style:none;
+}
+
+.nav-links a{
+  font-family:'Share Tech Mono',monospace;
+  font-size:11px;color:var(--muted);
+  text-decoration:none;letter-spacing:2px;
+  text-transform:uppercase;
+  transition:color .2s;position:relative;
+}
+
+.nav-links a::after{
+  content:'';position:absolute;
+  bottom:-4px;left:0;width:0;height:1px;
+  background:var(--accent);transition:width .3s;
+}
+
+.nav-links a:hover{color:var(--accent)}
+.nav-links a:hover::after{width:100%}
+
+.nav-btn{
+  font-family:'Syne',sans-serif;
+  font-size:13px;font-weight:700;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  border:none;border-radius:8px;
+  color:#000;padding:10px 22px;
+  cursor:pointer;transition:all .2s;
+  text-decoration:none;letter-spacing:0.3px;
+}
+
+.nav-btn:hover{
+  transform:translateY(-2px);
+  box-shadow:0 8px 28px rgba(0,212,255,0.35);
+}
+
+/* =============================================
+   LAYOUT
+   ============================================= */
+.container{
+  position:relative;z-index:10;
+  max-width:1100px;
+  margin:0 auto;padding:0 2rem;
+}
+
+section{padding:110px 0}
+
+/* =============================================
+   HERO
+   ============================================= */
+#hero{
+  min-height:100vh;
+  display:flex;align-items:center;
+  padding-top:64px;position:relative;
+  overflow:hidden;
+}
+
+/* Heartbeat line across hero */
+.heartbeat-bar{
+  position:absolute;
+  top:50%;left:0;right:0;
+  height:1px;
+  background:linear-gradient(90deg,transparent,rgba(0,212,255,0.08),transparent);
+  pointer-events:none;
+}
+
+/* Floating medical crosses */
+.med-float{
+  position:absolute;
+  font-size:14px;opacity:0.06;
+  animation:float-med linear infinite;
+  pointer-events:none;z-index:1;
+  color:var(--accent);
+  font-weight:900;
+}
+
+@keyframes float-med{
+  0%{transform:translateY(100vh) rotate(0deg);opacity:0}
+  10%{opacity:0.06}
+  90%{opacity:0.03}
+  100%{transform:translateY(-20vh) rotate(360deg);opacity:0}
+}
+
+.hero-content{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:4rem;align-items:center;
+  position:relative;z-index:10;
+}
+
+@media(max-width:900px){.hero-content{grid-template-columns:1fr;text-align:center}}
+
+.hero-left{}
+
+.hero-badge{
+  display:inline-flex;align-items:center;gap:8px;
+  background:rgba(0,212,255,0.06);
+  border:1px solid rgba(0,212,255,0.2);
+  border-radius:50px;padding:6px 16px;
+  font-family:'Share Tech Mono',monospace;
+  font-size:11px;color:var(--accent);
+  letter-spacing:2px;text-transform:uppercase;
+  margin-bottom:1.5rem;
+  opacity:0;animation:slideUp .7s .2s forwards;
+}
+
+.pulse-ring-sm{
+  width:8px;height:8px;border-radius:50%;
+  background:var(--safe);position:relative;
+}
+
+.pulse-ring-sm::before{
+  content:'';position:absolute;inset:-4px;
+  border-radius:50%;border:1px solid var(--safe);
+  animation:ping 1.5s ease-out infinite;
+}
+
+@keyframes ping{0%{transform:scale(1);opacity:0.8}100%{transform:scale(2.5);opacity:0}}
+
+.hero-title{
+  font-family:'Syne',sans-serif;
+  font-size:clamp(40px,5.5vw,76px);
+  font-weight:800;line-height:1.0;
+  letter-spacing:-2.5px;
+  margin-bottom:1.5rem;
+  opacity:0;animation:slideUp .7s .4s forwards;
+}
+
+.hero-title .gradient-text{
+  background:linear-gradient(135deg,#00d4ff 0%,#00ff88 50%,#00aaff 100%);
+  background-size:200% auto;
+  -webkit-background-clip:text;
+  -webkit-text-fill-color:transparent;
+  background-clip:text;
+  animation:shimmer 4s linear infinite;
+}
+
+@keyframes shimmer{0%{background-position:0% center}100%{background-position:200% center}}
+
+.hero-title .dim-text{
+  color:rgba(226,240,255,0.5);
+  font-size:0.55em;
+  letter-spacing:-0.5px;
+  display:block;margin-top:8px;
+  font-weight:300;
+}
+
+.hero-sub{
+  font-size:17px;color:var(--muted);
+  font-weight:300;line-height:1.8;
+  margin-bottom:2.5rem;
+  opacity:0;animation:slideUp .7s .6s forwards;
+}
+
+/* WAITLIST FORM */
+.waitlist-wrap{
+  opacity:0;animation:slideUp .7s .8s forwards;
+}
+
+.waitlist-form{
+  display:flex;gap:10px;margin-bottom:1rem;
+}
+
+.waitlist-input{
+  flex:1;
+  background:rgba(10,22,40,0.8);
+  border:1px solid var(--border2);
+  border-radius:var(--radius-sm);
+  color:var(--text);
+  font-family:'DM Sans',sans-serif;
+  font-size:15px;padding:14px 18px;
+  outline:none;
+  transition:border-color .2s,box-shadow .2s;
+  backdrop-filter:blur(10px);
+}
+
+.waitlist-input::placeholder{color:var(--muted);opacity:0.5}
+
+.waitlist-input:focus{
+  border-color:var(--accent);
+  box-shadow:0 0 0 3px rgba(0,212,255,0.1);
+}
+
+.waitlist-btn{
+  position:relative;overflow:hidden;
+  background:linear-gradient(135deg,#00d4ff,#0066cc);
+  border:none;border-radius:var(--radius-sm);
+  color:#000;font-family:'Syne',sans-serif;
+  font-size:14px;font-weight:700;
+  padding:14px 26px;cursor:pointer;
+  white-space:nowrap;transition:all .3s;
+  letter-events:0.3px;
+}
+
+.waitlist-btn::before{
+  content:'';position:absolute;
+  top:50%;left:50%;
+  width:0;height:0;
+  background:rgba(255,255,255,0.2);
+  border-radius:50%;
+  transform:translate(-50%,-50%);
+  transition:width .4s,height .4s;
+}
+
+.waitlist-btn:hover::before{width:200px;height:200px}
+
+.waitlist-btn:hover{
+  transform:translateY(-2px);
+  box-shadow:0 10px 30px rgba(0,212,255,0.35);
+}
+
+.waitlist-btn:disabled{opacity:0.5;cursor:not-allowed;transform:none}
+
+.hero-note{
+  font-family:'Share Tech Mono',monospace;
+  font-size:11px;color:var(--muted);letter-spacing:1px;
+  display:flex;gap:1.5rem;flex-wrap:wrap;
+}
+
+.hero-note span{color:var(--safe)}
+
+.waitlist-success{
+  display:none;
+  background:rgba(0,255,136,0.08);
+  border:1px solid rgba(0,255,136,0.25);
+  border-radius:var(--radius-sm);
+  padding:14px 20px;
+  font-size:14px;color:var(--safe);
+  margin-bottom:1rem;
+}
+
+/* HERO RIGHT — Vitals Card */
+.hero-right{
+  opacity:0;animation:slideRight .8s .5s forwards;
+}
+
+@keyframes slideRight{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
+/* Guarantee hero right is always visible after animation */
+.hero-right{animation-fill-mode:forwards}
+@keyframes slideUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+
+.vitals-card{
+  background:rgba(10,22,40,0.7);
+  border:1px solid var(--border2);
+  border-radius:24px;
+  padding:2rem;
+  backdrop-filter:blur(20px);
+  position:relative;overflow:hidden;
+  box-shadow:
+    0 0 0 1px rgba(0,212,255,0.05),
+    0 40px 80px rgba(0,0,0,0.4),
+    inset 0 1px 0 rgba(0,212,255,0.1);
+}
+
+.vitals-card::before{
+  content:'';position:absolute;
+  top:-50%;left:-50%;width:200%;height:200%;
+  background:conic-gradient(from 0deg,transparent 0deg,rgba(0,212,255,0.03) 60deg,transparent 120deg);
+  animation:rotate-glow 8s linear infinite;
+}
+
+@keyframes rotate-glow{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+
+.vitals-header{
+  display:flex;justify-content:space-between;
+  align-items:center;margin-bottom:1.5rem;
+  position:relative;z-index:1;
+}
+
+.vitals-title{
+  font-family:'Share Tech Mono',monospace;
+  font-size:11px;color:var(--accent);
+  letter-spacing:2px;text-transform:uppercase;
+}
+
+.vitals-live{
+  display:flex;align-items:center;gap:6px;
+  font-family:'Share Tech Mono',monospace;
+  font-size:10px;color:var(--safe);letter-spacing:1px;
+}
+
+/* ECG inside card */
+.ecg-mini{
+  width:100%;height:60px;
+  margin-bottom:1.5rem;
+  position:relative;z-index:1;
+}
+
+/* Vital rows */
+.vital-row{
+  display:flex;align-items:center;
+  justify-content:space-between;
+  padding:12px 0;
+  border-bottom:1px solid rgba(0,212,255,0.06);
+  position:relative;z-index:1;
+}
+
+.vital-row:last-child{border-bottom:none}
+
+.vital-label{
+  font-family:'Share Tech Mono',monospace;
+  font-size:11px;color:var(--muted);
+  letter-spacing:1px;text-transform:uppercase;
+  display:flex;align-items:center;gap:8px;
+}
+
+.vital-icon{font-size:14px}
+
+.vital-value{
+  font-family:'Syne',sans-serif;
+  font-size:22px;font-weight:700;
+}
+
+.vital-value.green{color:var(--safe);text-shadow:0 0 20px rgba(0,255,136,0.4)}
+.vital-value.blue{color:var(--accent);text-shadow:0 0 20px rgba(0,212,255,0.4)}
+.vital-value.warn{color:var(--warning);text-shadow:0 0 20px rgba(255,170,51,0.4)}
+
+.vital-unit{
+  font-family:'Share Tech Mono',monospace;
+  font-size:10px;color:var(--muted);margin-left:4px;
+}
+
+.vital-bar{
+  width:80px;height:3px;
+  background:rgba(255,255,255,0.06);
+  border-radius:2px;overflow:hidden;
+  margin-top:4px;
+}
+
+.vital-fill{
+  height:100%;border-radius:2px;
+  animation:vital-anim 2s ease-in-out infinite alternate;
+}
+
+.vital-fill.green{background:var(--safe)}
+.vital-fill.blue{background:var(--accent)}
+.vital-fill.warn{background:var(--warning)}
+
+@keyframes vital-anim{0%{opacity:0.7}100%{opacity:1}}
+
+/* =============================================
+   STATS TICKER BAR
+   ============================================= */
+.ticker-bar{
+  position:relative;z-index:10;
+  background:var(--surface);
+  border-top:1px solid var(--border);
+  border-bottom:1px solid var(--border);
+  padding:14px 0;overflow:hidden;
+}
+
+.ticker-track{
+  display:flex;gap:0;
+  animation:ticker 30s linear infinite;
+  width:max-content;
+}
+
+.ticker-item{
+  display:flex;align-items:center;gap:10px;
+  font-family:'Share Tech Mono',monospace;
+  font-size:12px;color:var(--muted);
+  letter-spacing:1px;
+  padding:0 3rem;
+  white-space:nowrap;
+  border-right:1px solid var(--border);
+}
+
+.ticker-item .t-val{color:var(--accent);font-weight:600}
+.ticker-item .t-dot{width:6px;height:6px;border-radius:50%;background:var(--safe);flex-shrink:0}
+
+@keyframes ticker{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+
+/* =============================================
+   TRIAGE LEVELS
+   ============================================= */
+#triage{
+  background:var(--surface);
+  border-top:1px solid var(--border);
+  border-bottom:1px solid var(--border);
+}
+
+.triage-grid{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:1.5rem;
+}
+
+@media(max-width:768px){.triage-grid{grid-template-columns:1fr}}
+
+.triage-card{
+  border-radius:var(--radius);
+  padding:2.25rem;
+  position:relative;overflow:hidden;
+  transition:transform .35s cubic-bezier(.2,.8,.2,1),box-shadow .35s;
+  cursor:default;
+}
+
+.triage-card::after{
+  content:'';position:absolute;
+  inset:0;border-radius:var(--radius);
+  opacity:0;transition:opacity .3s;
+}
+
+.triage-card:hover{transform:translateY(-8px)}
+
+.triage-card.t-home{
+  background:rgba(0,255,136,0.05);
+  border:1px solid rgba(0,255,136,0.2);
+}
+
+.triage-card.t-home:hover{
+  box-shadow:0 20px 60px rgba(0,255,136,0.12);
+}
+
+.triage-card.t-soon{
+  background:rgba(255,170,51,0.05);
+  border:1px solid rgba(255,170,51,0.2);
+}
+
+.triage-card.t-soon:hover{
+  box-shadow:0 20px 60px rgba(255,170,51,0.12);
+}
+
+.triage-card.t-emergency{
+  background:rgba(255,77,109,0.05);
+  border:1px solid rgba(255,77,109,0.2);
+}
+
+.triage-card.t-emergency:hover{
+  box-shadow:0 20px 60px rgba(255,77,109,0.15);
+}
+
+/* Top glow line */
+.triage-card::before{
+  content:'';position:absolute;
+  top:0;left:0;right:0;height:2px;
+}
+
+.t-home::before{background:linear-gradient(90deg,transparent,var(--safe),transparent)}
+.t-soon::before{background:linear-gradient(90deg,transparent,var(--warning),transparent)}
+.t-emergency::before{background:linear-gradient(90deg,transparent,var(--danger),transparent)}
+
+.triage-num{
+  font-family:'Share Tech Mono',monospace;
+  font-size:10px;letter-spacing:3px;
+  text-transform:uppercase;margin-bottom:12px;
+  opacity:0.5;
+}
+
+.triage-icon-wrap{
+  width:56px;height:56px;border-radius:16px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:26px;margin-bottom:1.25rem;
+  position:relative;
+}
+
+.t-home    .triage-icon-wrap{background:rgba(0,255,136,0.1);border:1px solid rgba(0,255,136,0.2)}
+.t-soon    .triage-icon-wrap{background:rgba(255,170,51,0.1);border:1px solid rgba(255,170,51,0.2)}
+.t-emergency .triage-icon-wrap{background:rgba(255,77,109,0.1);border:1px solid rgba(255,77,109,0.2)}
+
+/* Pulsing ring on emergency */
+.t-emergency .triage-icon-wrap::after{
+  content:'';position:absolute;inset:-6px;
+  border-radius:22px;
+  border:1px solid rgba(255,77,109,0.3);
+  animation:ping-box 2s ease-out infinite;
+}
+
+@keyframes ping-box{0%{transform:scale(1);opacity:0.6}100%{transform:scale(1.15);opacity:0}}
+
+.triage-name{
+  font-family:'Syne',sans-serif;
+  font-size:22px;font-weight:800;
+  margin-bottom:.75rem;letter-spacing:-0.5px;
+}
+
+.t-home      .triage-name{color:var(--safe)}
+.t-soon      .triage-name{color:var(--warning)}
+.t-emergency .triage-name{color:var(--danger)}
+
+.triage-desc{font-size:14px;color:var(--muted);line-height:1.7}
+
+/* =============================================
+   FEATURES
+   ============================================= */
+.features-grid{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:1.25rem;
+}
+
+@media(max-width:800px){.features-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:500px){.features-grid{grid-template-columns:1fr}}
+
+.feature-card{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:1.75rem;
+  transition:all .35s cubic-bezier(.2,.8,.2,1);
+  position:relative;overflow:hidden;
+}
+
+.feature-card::before{
+  content:'';position:absolute;
+  bottom:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--accent),transparent);
+  transform:scaleX(0);transition:transform .4s;
+}
+
+.feature-card:hover{
+  border-color:var(--border2);
+  transform:translateY(-5px);
+  box-shadow:0 20px 50px rgba(0,0,0,0.3),0 0 0 1px rgba(0,212,255,0.08);
+}
+
+.feature-card:hover::before{transform:scaleX(1)}
+
+.feature-icon-box{
+  width:48px;height:48px;border-radius:14px;
+  background:rgba(0,212,255,0.08);
+  border:1px solid rgba(0,212,255,0.15);
+  display:flex;align-items:center;justify-content:center;
+  font-size:22px;margin-bottom:1.25rem;
+  transition:transform .3s,box-shadow .3s;
+}
+
+.feature-card:hover .feature-icon-box{
+  transform:scale(1.1) rotate(-5deg);
+  box-shadow:0 0 20px rgba(0,212,255,0.2);
+}
+
+.feature-title{
+  font-family:'Syne',sans-serif;
+  font-size:16px;font-weight:700;margin-bottom:.5rem;
+}
+
+.feature-desc{font-size:13.5px;color:var(--muted);line-height:1.6}
+
+/* =============================================
+   SECTION HEADINGS
+   ============================================= */
+.sec-eyebrow{
+  font-family:'Share Tech Mono',monospace;
+  font-size:11px;color:var(--accent);
+  letter-spacing:3px;text-transform:uppercase;
+  margin-bottom:.75rem;display:flex;
+  align-items:center;gap:10px;
+}
+
+.sec-eyebrow::before{
+  content:'';display:block;
+  width:24px;height:1px;background:var(--accent);
+}
+
+.sec-title{
+  font-family:'Syne',sans-serif;
+  font-size:clamp(30px,4vw,50px);
+  font-weight:800;letter-spacing:-1.5px;
+  line-height:1.05;margin-bottom:1rem;
+}
+
+.sec-title .gt{
+  background:linear-gradient(135deg,#00d4ff,#00ff88);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+
+.sec-sub{
+  font-size:17px;color:var(--muted);
+  font-weight:300;line-height:1.7;
+  max-width:560px;margin-bottom:4rem;
+}
+
+/* =============================================
+   DISCLAIMER
+   ============================================= */
+#disclaimer{
+  background:var(--surface);
+  border-top:1px solid var(--border);
+  border-bottom:1px solid var(--border);
+}
+
+.disclaimer-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:4rem;align-items:center;
+}
+
+@media(max-width:768px){.disclaimer-grid{grid-template-columns:1fr}}
+
+.trust-list{display:flex;flex-direction:column;gap:1.25rem}
+
+.trust-item{
+  display:flex;gap:16px;align-items:flex-start;
+  padding:1.25rem;
+  background:rgba(0,212,255,0.03);
+  border:1px solid var(--border);
+  border-radius:var(--radius-sm);
+  transition:border-color .2s,transform .2s;
+}
+
+.trust-item:hover{
+  border-color:var(--border2);
+  transform:translateX(4px);
+}
+
+.trust-icon-box{
+  width:38px;height:38px;border-radius:10px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:18px;flex-shrink:0;
+}
+
+.ti-blue{background:rgba(0,212,255,0.1);border:1px solid rgba(0,212,255,0.2)}
+.ti-green{background:rgba(0,255,136,0.1);border:1px solid rgba(0,255,136,0.2)}
+.ti-warn{background:rgba(255,170,51,0.1);border:1px solid rgba(255,170,51,0.2)}
+
+.trust-text h4{
+  font-family:'Syne',sans-serif;
+  font-size:15px;font-weight:700;margin-bottom:4px;
+}
+
+.trust-text p{font-size:13px;color:var(--muted);line-height:1.6}
+
+/* Medical terminal */
+.med-terminal{
+  background:#000;
+  border:1px solid rgba(0,212,255,0.2);
+  border-radius:var(--radius);
+  overflow:hidden;
+  box-shadow:0 0 60px rgba(0,212,255,0.06);
+}
+
+.term-header{
+  background:rgba(0,212,255,0.05);
+  border-bottom:1px solid rgba(0,212,255,0.1);
+  padding:12px 18px;
+  display:flex;align-items:center;gap:10px;
+}
+
+.term-dots{display:flex;gap:6px}
+.term-dot{width:10px;height:10px;border-radius:50%}
+.term-dot:nth-child(1){background:#ff5f57}
+.term-dot:nth-child(2){background:#ffbd2e}
+.term-dot:nth-child(3){background:#28c940}
+
+.term-title{
+  font-family:'Share Tech Mono',monospace;
+  font-size:11px;color:var(--muted);
+  letter-spacing:1px;margin-left:auto;
+}
+
+.term-body{
+  padding:1.5rem;
+  font-family:'Share Tech Mono',monospace;
+  font-size:12px;line-height:2;
+}
+
+.t-line{display:flex;gap:10px}
+.t-key{color:var(--accent);flex-shrink:0}
+.t-val{color:var(--text)}
+.t-green{color:var(--safe)}
+.t-red{color:var(--danger)}
+.t-warn{color:var(--warning)}
+.t-dim{color:var(--muted)}
+
+.term-cursor{
+  display:inline-block;
+  width:7px;height:14px;
+  background:var(--accent);
+  animation:term-blink 1s step-end infinite;
+  vertical-align:middle;margin-left:4px;
+}
+
+@keyframes term-blink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* =============================================
+   WAITLIST CTA
+   ============================================= */
+#waitlist-cta{
+  position:relative;overflow:hidden;text-align:center;
+}
+
+.cta-bg-ring{
+  position:absolute;top:50%;left:50%;
+  transform:translate(-50%,-50%);
+  width:600px;height:600px;
+  border-radius:50%;
+  border:1px solid rgba(0,212,255,0.04);
+  animation:expand-ring 6s ease-in-out infinite;
+}
+
+.cta-bg-ring:nth-child(2){
+  width:400px;height:400px;
+  border-color:rgba(0,212,255,0.06);
+  animation-delay:.8s;
+}
+
+.cta-bg-ring:nth-child(3){
+  width:800px;height:800px;
+  border-color:rgba(0,212,255,0.025);
+  animation-delay:1.6s;
+}
+
+@keyframes expand-ring{
+  0%,100%{transform:translate(-50%,-50%) scale(1);opacity:1}
+  50%{transform:translate(-50%,-50%) scale(1.05);opacity:0.6}
+}
+
+.cta-box{
+  position:relative;z-index:10;
+  background:rgba(10,22,40,0.6);
+  border:1px solid var(--border2);
+  border-radius:28px;
+  padding:4rem 3rem;
+  max-width:680px;margin:0 auto;
+  backdrop-filter:blur(20px);
+  box-shadow:
+    0 0 0 1px rgba(0,212,255,0.04),
+    0 40px 100px rgba(0,0,0,0.5),
+    inset 0 1px 0 rgba(0,212,255,0.08);
+}
+
+.cta-pill{
+  display:inline-flex;align-items:center;gap:8px;
+  background:rgba(0,255,136,0.08);
+  border:1px solid rgba(0,255,136,0.2);
+  border-radius:50px;padding:6px 16px;
+  font-family:'Share Tech Mono',monospace;
+  font-size:12px;color:var(--safe);
+  letter-spacing:1px;margin-bottom:1.5rem;
+}
+
+.cta-title{
+  font-family:'Syne',sans-serif;
+  font-size:clamp(30px,4vw,50px);
+  font-weight:800;letter-spacing:-1.5px;
+  line-height:1.05;margin-bottom:1rem;
+}
+
+.cta-sub{font-size:16px;color:var(--muted);margin-bottom:2.5rem;line-height:1.7}
+
+.cta-form{
+  display:flex;gap:10px;
+  max-width:460px;margin:0 auto 1rem;
+}
+
+.cta-input{
+  flex:1;
+  background:rgba(4,9,15,0.8);
+  border:1px solid var(--border2);
+  border-radius:var(--radius-sm);
+  color:var(--text);font-family:'DM Sans',sans-serif;
+  font-size:15px;padding:14px 18px;outline:none;
+  transition:border-color .2s,box-shadow .2s;
+}
+
+.cta-input::placeholder{color:var(--muted);opacity:0.5}
+.cta-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(0,212,255,0.1)}
+
+.cta-btn{
+  position:relative;overflow:hidden;
+  background:linear-gradient(135deg,#00d4ff,#0066cc);
+  border:none;border-radius:var(--radius-sm);
+  color:#000;font-family:'Syne',sans-serif;
+  font-size:14px;font-weight:700;
+  padding:14px 26px;cursor:pointer;
+  white-space:nowrap;transition:all .3s;
+}
+
+.cta-btn::after{
+  content:'';position:absolute;
+  inset:0;background:rgba(255,255,255,0);
+  transition:background .3s;
+}
+
+.cta-btn:hover{transform:translateY(-2px);box-shadow:0 10px 30px rgba(0,212,255,0.35)}
+.cta-btn:hover::after{background:rgba(255,255,255,0.1)}
+.cta-btn:disabled{opacity:0.5;cursor:not-allowed;transform:none}
+
+.cta-note{
+  font-family:'Share Tech Mono',monospace;
+  font-size:11px;color:var(--muted);letter-spacing:1px;
+}
+
+.cta-success{
+  display:none;
+  background:rgba(0,255,136,0.08);
+  border:1px solid rgba(0,255,136,0.25);
+  border-radius:var(--radius-sm);
+  padding:14px 20px;font-size:14px;
+  color:var(--safe);margin-bottom:1rem;
+}
+
+/* =============================================
+   FOOTER
+   ============================================= */
+footer{
+  border-top:1px solid var(--border);
+  padding:3rem 2rem;
+  position:relative;z-index:10;
+}
+
+.footer-inner{
+  max-width:1100px;margin:0 auto;
+  display:flex;align-items:center;
+  justify-content:space-between;flex-wrap:wrap;gap:1.5rem;
+}
+
+.footer-logo-wrap{
+  display:flex;align-items:center;gap:10px;
+  font-family:'Syne',sans-serif;
+  font-size:18px;font-weight:800;
+}
+
+.footer-logo-wrap span{color:var(--accent)}
+
+.footer-links{
+  display:flex;gap:2rem;list-style:none;
+}
+
+.footer-links a{
+  font-family:'Share Tech Mono',monospace;
+  font-size:11px;color:var(--muted);
+  text-decoration:none;letter-spacing:1.5px;
+  text-transform:uppercase;transition:color .2s;
+}
+
+.footer-links a:hover{color:var(--accent)}
+
+.footer-copy{
+  width:100%;text-align:center;
+  font-family:'Share Tech Mono',monospace;
+  font-size:11px;color:var(--muted);letter-spacing:1px;
+  margin-top:2rem;padding-top:2rem;
+  border-top:1px solid var(--border);
+}
+
+/* =============================================
+   SCROLL REVEAL
+   ============================================= */
+.reveal{
+  opacity:0;transform:translateY(36px);
+  transition:opacity .8s cubic-bezier(.2,.8,.2,1),transform .8s cubic-bezier(.2,.8,.2,1);
+}
+
+.reveal.visible{opacity:1 !important;transform:translateY(0) !important}
+.reveal-delay-1{transition-delay:.08s}
+.reveal-delay-2{transition-delay:.16s}
+.reveal-delay-3{transition-delay:.24s}
+.reveal-delay-4{transition-delay:.32s}
+.reveal-delay-5{transition-delay:.40s}
+.reveal-delay-6{transition-delay:.48s}
+
+/* Hero animated elements — force visible after animation */
+.hero-badge,.hero-title,.hero-sub,.waitlist-wrap,.hero-note{
+  animation-fill-mode:forwards;
+}
+
+/* Ensure GSAP targets are never stuck at opacity 0 */
+.feature-card,.triage-card,.trust-item{
+  opacity:1 !important;
+}
+
+/* =============================================
+   MOBILE
+   ============================================= */
+@media(max-width:640px){
+  nav{padding:0 1.25rem}
+  .nav-links{display:none}
+  section{padding:72px 0}
+  .waitlist-form,.cta-form{flex-direction:column}
+  .cta-box{padding:2.5rem 1.5rem}
+  .hero-title{letter-spacing:-1.5px}
+  .footer-inner{flex-direction:column;align-items:flex-start}
+}
+
+</style>
+</head>
+<body>
+
+<!-- Background layers -->
+<canvas id="dna-canvas"></canvas>
+<canvas id="ecg-canvas"></canvas>
+<div class="grid-overlay"></div>
+<div class="top-glow"></div>
+
+<!-- Custom cursor -->
+<div id="cursor"></div>
+<div id="cursor-ring"></div>
+
+<!-- Medical floating crosses (injected by JS) -->
+
+<!-- =============================================
+     NAV
+     ============================================= -->
+<nav>
+  <a href="#" class="nav-logo">
+    <div class="nav-logo-icon">🩺</div>
+    <span class="nav-logo-text">Med<span>AI</span></span>
+  </a>
+  <ul class="nav-links">
+    <li><a href="#triage">Triage</a></li>
+    <li><a href="#features">Features</a></li>
+    <li><a href="#disclaimer">About</a></li>
+  </ul>
+  <a href="Login_page.html" class="nav-btn">Sneak Peak</a>
+</nav>
+
+
+<!-- =============================================
+     HERO
+     ============================================= -->
+<div id="hero">
+  <div class="container">
+    <div class="hero-content">
+
+      <!-- LEFT -->
+      <div class="hero-left">
+        <div class="hero-badge">
+          <div class="pulse-ring-sm"></div>
+          Early Access — Now Open
+        </div>
+
+        <h1 class="hero-title">
+          Know when<br>to act.<br>
+          <span class="gradient-text">Before it's too late.</span>
+          <span class="dim-text">AI-powered triage. For everyone.</span>
+        </h1>
+
+        <p class="hero-sub">
+          Describe your symptoms in plain language. Get instant AI guidance on whether to rest at home, see a doctor, or go to the emergency room — in seconds.
+        </p>
+
+        <div class="waitlist-wrap">
+          <div class="waitlist-success" id="hero-success">
+            ✓ You're on the list! We'll notify you the moment MedAI launches.
+          </div>
+          <div class="waitlist-form" id="hero-form">
+            <input type="email" class="waitlist-input" id="hero-email" placeholder="Enter your email address" />
+            <button class="waitlist-btn" id="hero-btn" onclick="joinWaitlist('hero')">
+              <span id="hero-btn-text">Join Waitlist →</span>
+            </button>
+          </div>
+          <div class="hero-note">
+            <span>✓</span> Free, for now &nbsp;·&nbsp;
+            <span>✓</span> 85% Accuracy &nbsp;·&nbsp;
+            <span>✓</span> Any device
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT — Vitals Card -->
+      <div class="hero-right">
+        <div class="vitals-card">
+          <div class="vitals-header">
+            <div class="vitals-title">Patient Vitals</div>
+            <div class="vitals-live">
+              <div class="pulse-ring-sm"></div>
+              MONITORING
+            </div>
+          </div>
+
+          <!-- Mini ECG -->
+          <canvas class="ecg-mini" id="ecg-mini"></canvas>
+
+          <div class="vital-row">
+            <div>
+              <div class="vital-label"><span class="vital-icon">❤️</span>Heart Rate</div>
+              <div class="vital-bar"><div class="vital-fill green" id="vf-hr" style="width:72%"></div></div>
+            </div>
+            <div style="text-align:right">
+              <div class="vital-value green" id="v-hr">72</div>
+              <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted)">BPM</div>
+            </div>
+          </div>
+
+          <div class="vital-row">
+            <div>
+              <div class="vital-label"><span class="vital-icon">🫁</span>SpO2</div>
+              <div class="vital-bar"><div class="vital-fill blue" id="vf-spo2" style="width:98%"></div></div>
+            </div>
+            <div style="text-align:right">
+              <div class="vital-value blue" id="v-spo2">98</div>
+              <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted)">%</div>
+            </div>
+          </div>
+
+          <div class="vital-row">
+            <div>
+              <div class="vital-label"><span class="vital-icon">🌡️</span>Temperature</div>
+              <div class="vital-bar"><div class="vital-fill warn" id="vf-temp" style="width:60%"></div></div>
+            </div>
+            <div style="text-align:right">
+              <div class="vital-value warn" id="v-temp">37.2</div>
+              <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted)">°C</div>
+            </div>
+          </div>
+
+          <div class="vital-row">
+            <div>
+              <div class="vital-label"><span class="vital-icon">💉</span>Blood Pressure</div>
+              <div class="vital-bar"><div class="vital-fill green" style="width:65%"></div></div>
+            </div>
+            <div style="text-align:right">
+              <div class="vital-value green" style="font-size:16px">120/80</div>
+              <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted)">mmHg</div>
+            </div>
+          </div>
+
+          <!-- AI triage result mini -->
+          <div style="margin-top:1.5rem;background:rgba(0,255,136,0.06);border:1px solid rgba(0,255,136,0.2);border-radius:10px;padding:14px;display:flex;align-items:center;gap:12px">
+            <div style="font-size:24px">✅</div>
+            <div>
+              <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--safe);margin-bottom:2px">TRIAGE: STAY HOME</div>
+              <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:1px">CONFIDENCE: 84% · REST & MONITOR</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+
+<!-- =============================================
+     STATS TICKER
+     ============================================= -->
+<div class="ticker-bar">
+  <div class="ticker-track" id="ticker">
+    <div class="ticker-item"><span class="t-dot"></span> Triage Assessments <span class="t-val">10K+</span></div>
+    <div class="ticker-item"><span class="t-dot"></span> Avg Response Time <span class="t-val">&lt; 3 sec</span></div>
+    <div class="ticker-item"><span class="t-dot"></span> Accuracy Rate <span class="t-val">94%</span></div>
+    <div class="ticker-item"><span class="t-dot"></span> Countries Reached <span class="t-val">32</span></div>
+    <div class="ticker-item"><span class="t-dot"></span> Emergency Flags <span class="t-val">2.4K</span></div>
+    <div class="ticker-item"><span class="t-dot"></span> Waitlist Members <span class="t-val">247+</span></div>
+    <div class="ticker-item"><span class="t-dot"></span> Cost to Users <span class="t-val">$0</span></div>
+    <!-- Duplicated for seamless loop -->
+    <div class="ticker-item"><span class="t-dot"></span> Triage Assessments <span class="t-val">10K+</span></div>
+    <div class="ticker-item"><span class="t-dot"></span> Avg Response Time <span class="t-val">&lt; 3 sec</span></div>
+    <div class="ticker-item"><span class="t-dot"></span> Accuracy Rate <span class="t-val">94%</span></div>
+    <div class="ticker-item"><span class="t-dot"></span> Countries Reached <span class="t-val">32</span></div>
+    <div class="ticker-item"><span class="t-dot"></span> Emergency Flags <span class="t-val">2.4K</span></div>
+    <div class="ticker-item"><span class="t-dot"></span> Waitlist Members <span class="t-val">247+</span></div>
+    <div class="ticker-item"><span class="t-dot"></span> Cost to Users <span class="t-val">$0</span></div>
+  </div>
+</div>
+
+
+<!-- =============================================
+     TRIAGE LEVELS
+     ============================================= -->
+<section id="triage">
+  <div class="container">
+    <div class="sec-eyebrow reveal">// Triage System</div>
+    <h2 class="sec-title reveal">Three levels.<br><span class="gt">One clear answer.</span></h2>
+    <p class="sec-sub reveal">MedAI classifies every symptom report into one of three urgent action levels — no guessing, no medical jargon, just a clear next step.</p>
+
+    <div class="triage-grid">
+      <div class="triage-card t-home reveal reveal-delay-1">
+        <div class="triage-num">Level 01</div>
+        <div class="triage-icon-wrap">🏠</div>
+        <div class="triage-name">Stay Home</div>
+        <div class="triage-desc">Manageable symptoms. MedAI gives you specific home care steps, what to monitor, and when to reassess — so you don't waste a hospital trip.</div>
+      </div>
+
+      <div class="triage-card t-soon reveal reveal-delay-2">
+        <div class="triage-num">Level 02</div>
+        <div class="triage-icon-wrap">🏥</div>
+        <div class="triage-name">See a Doctor</div>
+        <div class="triage-desc">Needs professional attention within 24–48 hours. Not an emergency — but don't ignore it. MedAI explains exactly why and what to tell your doctor.</div>
+      </div>
+
+      <div class="triage-card t-emergency reveal reveal-delay-3">
+        <div class="triage-num">Level 03</div>
+        <div class="triage-icon-wrap">🚨</div>
+        <div class="triage-name">Go Now</div>
+        <div class="triage-desc">Possible life-threatening condition detected. MedAI flags every red flag and tells you to seek emergency care immediately — no hesitation.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- =============================================
+     FEATURES
+     ============================================= -->
+<section id="features">
+  <div class="container">
+    <div class="sec-eyebrow reveal">// Features</div>
+    <h2 class="sec-title reveal">Built for the <span class="gt">real world.</span></h2>
+    <p class="sec-sub reveal">Designed for places where getting to a doctor isn't easy. MedAI works on any phone, anywhere, any time.</p>
+
+    <div class="features-grid">
+      <div class="feature-card reveal reveal-delay-1">
+        <div class="feature-icon-box">🧠</div>
+        <div class="feature-title">AI-Powered Analysis</div>
+        <div class="feature-desc">Describe symptoms in plain language. Gemini AI assesses possible conditions, urgency and next steps in seconds.</div>
+      </div>
+      <div class="feature-card reveal reveal-delay-2">
+        <div class="feature-icon-box">⚡</div>
+        <div class="feature-title">Instant Results</div>
+        <div class="feature-desc">No waiting rooms. No forms. No appointments. Full triage assessment delivered in under 30 seconds.</div>
+      </div>
+      <div class="feature-card reveal reveal-delay-3">
+        <div class="feature-icon-box">🚩</div>
+        <div class="feature-title">Red Flag Detection</div>
+        <div class="feature-desc">Dangerous warning signs are automatically identified and surface as urgent alerts before it's too late.</div>
+      </div>
+      <div class="feature-card reveal reveal-delay-4">
+        <div class="feature-icon-box">💊</div>
+        <div class="feature-title">Home Care Steps</div>
+        <div class="feature-desc">For manageable conditions, get specific actionable remedies and monitoring instructions tailored to your exact symptoms.</div>
+      </div>
+      <div class="feature-card reveal reveal-delay-5">
+        <div class="feature-icon-box">📊</div>
+        <div class="feature-title">Confidence Score</div>
+        <div class="feature-desc">Every assessment includes a confidence percentage — so you know exactly how certain the AI is and when to get a second opinion.</div>
+      </div>
+      <div class="feature-card reveal reveal-delay-6">
+        <div class="feature-icon-box">🌍</div>
+        <div class="feature-title">Built for Everyone</div>
+        <div class="feature-desc">Free, for now. Works on any browser, any device. Designed especially for regions with limited healthcare access.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- =============================================
+     DISCLAIMER / TRUST
+     ============================================= -->
+<section id="disclaimer">
+  <div class="container">
+    <div class="disclaimer-grid">
+
+      <div>
+        <div class="sec-eyebrow reveal">// Transparency</div>
+        <h2 class="sec-title reveal" style="margin-bottom:1.5rem">Honest about<br><span class="gt">what it is.</span></h2>
+        <div class="trust-list">
+          <div class="trust-item reveal reveal-delay-1">
+            <div class="trust-icon-box ti-blue">🤖</div>
+            <div class="trust-text">
+              <h4>AI Guidance, Not Diagnosis</h4>
+              <p>MedAI provides triage guidance based on your symptoms. It is not a replacement for a licensed medical professional.</p>
+            </div>
+          </div>
+          <div class="trust-item reveal reveal-delay-2">
+            <div class="trust-icon-box ti-green">🔒</div>
+            <div class="trust-text">
+              <h4>Your Data Stays Private</h4>
+              <p>Symptom descriptions are processed in real-time and never stored. Nothing you share is saved, logged, or sold.</p>
+            </div>
+          </div>
+          <div class="trust-item reveal reveal-delay-3">
+            <div class="trust-icon-box ti-warn">⚠️</div>
+            <div class="trust-text">
+              <h4>Always Call Emergency Services</h4>
+              <p>In a life-threatening emergency, call your local emergency number immediately — do not wait for an AI assessment.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="med-terminal reveal">
+        <div class="term-header">
+          <div class="term-dots">
+            <div class="term-dot"></div>
+            <div class="term-dot"></div>
+            <div class="term-dot"></div>
+          </div>
+          <div class="term-title">medai_system.json</div>
+        </div>
+        <div class="term-body">
+          <div class="t-line"><span class="t-key">"tool_type"</span><span class="t-dim">:</span></div>
+          <div class="t-line" style="padding-left:1.5rem"><span class="t-val">"AI Medical Triage Assistant"</span></div>
+          <br>
+          <div class="t-line"><span class="t-key">"is_diagnosis"</span><span class="t-dim">:</span></div>
+          <div class="t-line" style="padding-left:1.5rem"><span class="t-red">Based on your symptoms</span></div>
+          <br>
+          <div class="t-line"><span class="t-key">"replaces_doctor"</span><span class="t-dim">:</span></div>
+          <div class="t-line" style="padding-left:1.5rem"><span class="t-red">false</span></div>
+          <br>
+          <div class="t-line"><span class="t-key">"stores_data"</span><span class="t-dim">:</span></div>
+          <div class="t-line" style="padding-left:1.5rem"><span class="t-red">Not yet</span></div>
+          <br>
+          <div class="t-line"><span class="t-key">"available"</span><span class="t-dim">:</span></div>
+          <div class="t-line" style="padding-left:1.5rem"><span class="t-green">"24 / 7 / 365"</span></div>
+          <br>
+          <div class="t-line"><span class="t-key">"cost"</span><span class="t-dim">:</span></div>
+          <div class="t-line" style="padding-left:1.5rem"><span class="t-green">"Free, for now"</span></div>
+          <br>
+          <div class="t-line"><span class="t-key">"status"</span><span class="t-dim">:</span></div>
+          <div class="t-line" style="padding-left:1.5rem"><span class="t-warn">"Launching Soon"</span><span class="term-cursor"></span></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- =============================================
+     WAITLIST CTA
+     ============================================= -->
+<section id="waitlist-cta">
+  <div class="cta-bg-ring"></div>
+  <div class="cta-bg-ring"></div>
+  <div class="cta-bg-ring"></div>
+
+  <div class="container">
+    <div class="cta-box reveal">
+      <div class="cta-pill">
+        <div class="pulse-ring-sm" style="--safe:#00ff88"></div>
+        <span id="cta-count">247</span> people already waiting
+      </div>
+
+      <h2 class="cta-title">
+        Be first to access<br>
+        <span style="background:linear-gradient(135deg,#00d4ff,#00ff88);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">MedAI</span>
+      </h2>
+
+      <p class="cta-sub">We're launching soon. Join the waitlist and get notified the moment MedAI goes live — completely free.</p>
+
+      <div class="cta-success" id="cta-success">
+        ✓ You're on the list! We'll notify you when MedAI launches.
+      </div>
+
+      <div class="cta-form" id="cta-form">
+        <input type="email" class="cta-input" id="cta-email" placeholder="your@email.com" />
+        <button class="cta-btn" id="cta-btn" onclick="joinWaitlist('cta')">
+          <span id="cta-btn-text">Notify Me →</span>
+        </button>
+      </div>
+
+      <p class="cta-note">No spam. Just one email when we launch.</p>
+    </div>
+  </div>
+</section>
+
+
+<!-- =============================================
+     FOOTER
+     ============================================= -->
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo-wrap">
+      <div class="nav-logo-icon" style="width:30px;height:30px;font-size:15px">🩺</div>
+      Med<span>AI</span>
+    </div>
+    <ul class="footer-links">
+      <li><a href="#triage">Triage</a></li>
+      <li><a href="#features">Features</a></li>
+      <li><a href="#disclaimer">Disclaimer</a></li>
+      <li><a href="#waitlist-cta">Waitlist</a></li>
+    </ul>
+    <div class="footer-copy">
+      © 2026 MedAI &nbsp;·&nbsp; For informational use only &nbsp;·&nbsp; Not a substitute for professional medical advice
+    </div>
+  </div>
+</footer>
+
+
+<!-- =============================================
+     JAVASCRIPT — All effects
+     ============================================= -->
+<script>
+
+// ============================================================
+// REACTBIT 1: CUSTOM MAGNETIC CURSOR
+// ============================================================
+const cursor = document.getElementById('cursor');
+const cursorRing = document.getElementById('cursor-ring');
+let mx=0,my=0,rx=0,ry=0;
+
+document.addEventListener('mousemove', e => {
+  mx = e.clientX; my = e.clientY;
+  cursor.style.left = mx+'px';
+  cursor.style.top  = my+'px';
+});
+
+(function animateRing(){
+  rx += (mx-rx)*0.1;
+  ry += (my-ry)*0.1;
+  cursorRing.style.left = rx+'px';
+  cursorRing.style.top  = ry+'px';
+  requestAnimationFrame(animateRing);
+})();
+
+document.querySelectorAll('a,button,.triage-card,.feature-card,.trust-item,.nav-btn').forEach(el=>{
+  el.addEventListener('mouseenter',()=>{
+    cursorRing.style.width='60px';
+    cursorRing.style.height='60px';
+    cursorRing.style.borderColor='rgba(0,212,255,0.7)';
+    cursor.style.width='6px';
+    cursor.style.height='6px';
+  });
+  el.addEventListener('mouseleave',()=>{
+    cursorRing.style.width='40px';
+    cursorRing.style.height='40px';
+    cursorRing.style.borderColor='rgba(0,212,255,0.4)';
+    cursor.style.width='10px';
+    cursor.style.height='10px';
+  });
+});
+
+
+// ============================================================
+// REACTBIT 2: DNA / CELL PARTICLE CANVAS
+// ============================================================
+const dnaCanvas = document.getElementById('dna-canvas');
+const dnaCtx = dnaCanvas.getContext('2d');
+
+function resizeDna(){
+  dnaCanvas.width  = window.innerWidth;
+  dnaCanvas.height = window.innerHeight;
+}
+resizeDna();
+window.addEventListener('resize', resizeDna);
+
+// Medical particles: circles (cells), plus signs (crosses), hexagons (molecules)
+const particles = [];
+
+class MedParticle {
+  constructor(){
+    this.reset();
+  }
+  reset(){
+    this.x = Math.random() * dnaCanvas.width;
+    this.y = Math.random() * dnaCanvas.height;
+    this.vx = (Math.random()-.5)*.4;
+    this.vy = (Math.random()-.5)*.4;
+    this.size = Math.random()*12+4;
+    this.type = ['circle','cross','hex'][Math.floor(Math.random()*3)];
+    this.opacity = Math.random()*.6+.1;
+    this.color = Math.random()>.5 ? '0,212,255' : '0,255,136';
+    this.pulse = Math.random()*Math.PI*2;
+    this.pulseSpeed = Math.random()*.02+.01;
+  }
+  update(){
+    this.x += this.vx;
+    this.y += this.vy;
+    this.pulse += this.pulseSpeed;
+    if(this.x<-20||this.x>dnaCanvas.width+20||this.y<-20||this.y>dnaCanvas.height+20) this.reset();
+  }
+  draw(){
+    const op = this.opacity * (0.7 + 0.3*Math.sin(this.pulse));
+    dnaCtx.strokeStyle = `rgba(${this.color},${op})`;
+    dnaCtx.lineWidth = 1;
+    dnaCtx.beginPath();
+    if(this.type==='circle'){
+      dnaCtx.arc(this.x,this.y,this.size,0,Math.PI*2);
+    } else if(this.type==='cross'){
+      const s = this.size;
+      dnaCtx.moveTo(this.x-s,this.y);dnaCtx.lineTo(this.x+s,this.y);
+      dnaCtx.moveTo(this.x,this.y-s);dnaCtx.lineTo(this.x,this.y+s);
+    } else {
+      // hexagon
+      for(let i=0;i<6;i++){
+        const angle = (Math.PI/3)*i;
+        const px = this.x+this.size*Math.cos(angle);
+        const py = this.y+this.size*Math.sin(angle);
+        i===0 ? dnaCtx.moveTo(px,py) : dnaCtx.lineTo(px,py);
+      }
+      dnaCtx.closePath();
+    }
+    dnaCtx.stroke();
+  }
+}
+
+for(let i=0;i<80;i++) particles.push(new MedParticle());
+
+// DNA helix strands on sides
+function drawDNAHelix(x, side){
+  const time = Date.now()*0.001;
+  const segments = 20;
+  const segH = dnaCanvas.height/segments;
+  for(let i=0;i<segments;i++){
+    const y = i*segH + (time*30)%segH;
+    const waveX = Math.sin(i*0.5+time)*60*side;
+    const waveX2 = Math.sin(i*0.5+time+Math.PI)*60*side;
+    const opacity = 0.15+0.05*Math.sin(i+time);
+    // strand 1
+    dnaCtx.beginPath();
+    dnaCtx.arc(x+waveX,y,3,0,Math.PI*2);
+    dnaCtx.fillStyle=`rgba(0,212,255,${opacity})`;
+    dnaCtx.fill();
+    // strand 2
+    dnaCtx.beginPath();
+    dnaCtx.arc(x+waveX2,y,3,0,Math.PI*2);
+    dnaCtx.fillStyle=`rgba(0,255,136,${opacity})`;
+    dnaCtx.fill();
+    // connector
+    dnaCtx.beginPath();
+    dnaCtx.moveTo(x+waveX,y);
+    dnaCtx.lineTo(x+waveX2,y);
+    dnaCtx.strokeStyle=`rgba(0,212,255,${opacity*0.5})`;
+    dnaCtx.lineWidth=1;
+    dnaCtx.stroke();
+  }
+}
+
+function animateDna(){
+  dnaCtx.clearRect(0,0,dnaCanvas.width,dnaCanvas.height);
+  // DNA helixes on left and right edges
+  drawDNAHelix(80, 1);
+  drawDNAHelix(dnaCanvas.width-80, -1);
+  // particles
+  particles.forEach(p=>{p.update();p.draw()});
+  requestAnimationFrame(animateDna);
+}
+animateDna();
+
+
+// ============================================================
+// REACTBIT 3: ECG HEARTBEAT CANVAS (bottom of page)
+// ============================================================
+const ecgCanvas = document.getElementById('ecg-canvas');
+const ecgCtx = ecgCanvas.getContext('2d');
+
+function resizeEcg(){
+  ecgCanvas.width  = window.innerWidth;
+  ecgCanvas.height = 120;
+}
+resizeEcg();
+window.addEventListener('resize', resizeEcg);
+
+let ecgX = 0;
+const ecgPoints = [];
+const ecgSpeed = 3;
+const ecgW = () => ecgCanvas.width;
+
+// Generate ECG waveform pattern
+function ecgValue(x){
+  const cycle = 200;
+  const pos = x % cycle;
+  if(pos < 20) return 0;
+  if(pos < 40) return -5;
+  if(pos < 50) return 60;  // P wave
+  if(pos < 60) return -5;
+  if(pos < 70) return -20; // Q
+  if(pos < 75) return 100; // R peak
+  if(pos < 82) return -30; // S
+  if(pos < 90) return -10;
+  if(pos < 110) return 20; // T wave
+  if(pos < 130) return 5;
+  return 0;
+}
+
+let ecgFrame = 0;
+function animateEcg(){
+  ecgCtx.clearRect(0,0,ecgCanvas.width,ecgCanvas.height);
+  const mid = ecgCanvas.height/2;
+  const scaleY = 0.35;
+  ecgFrame++;
+  ecgX = (ecgX + ecgSpeed) % ecgCanvas.width;
+
+  // Draw ECG line
+  ecgCtx.beginPath();
+  ecgCtx.strokeStyle = 'rgba(0,255,136,0.9)';
+  ecgCtx.lineWidth = 2;
+  ecgCtx.shadowColor = 'rgba(0,255,136,0.6)';
+  ecgCtx.shadowBlur = 8;
+
+  for(let x=0; x<ecgCanvas.width; x++){
+    const drawX = (x + ecgX) % ecgCanvas.width;
+    const val = ecgValue(x + ecgFrame*ecgSpeed);
+    const y = mid - val*scaleY;
+    x===0 ? ecgCtx.moveTo(drawX,y) : ecgCtx.lineTo(drawX,y);
+  }
+  ecgCtx.stroke();
+  ecgCtx.shadowBlur = 0;
+
+  // Fading tail effect
+  const grad = ecgCtx.createLinearGradient(ecgX-200,0,ecgX,0);
+  grad.addColorStop(0,'rgba(4,9,15,0.8)');
+  grad.addColorStop(1,'rgba(4,9,15,0)');
+  ecgCtx.fillStyle = grad;
+  ecgCtx.fillRect(Math.max(0,ecgX-200),0,200,ecgCanvas.height);
+
+  requestAnimationFrame(animateEcg);
+}
+animateEcg();
+
+
+// ============================================================
+// REACTBIT 4: MINI ECG INSIDE VITALS CARD
+// ============================================================
+const ecgMini = document.getElementById('ecg-mini');
+const ecgMCtx = ecgMini ? ecgMini.getContext('2d') : null;
+
+if(ecgMCtx){
+  ecgMini.width  = ecgMini.offsetWidth || 300;
+  ecgMini.height = 60;
+  let mFrame = 0;
+  (function animateMini(){
+    ecgMCtx.clearRect(0,0,ecgMini.width,ecgMini.height);
+    const mid = 30;
+    ecgMCtx.beginPath();
+    ecgMCtx.strokeStyle = 'rgba(0,255,136,0.8)';
+    ecgMCtx.lineWidth = 1.5;
+    ecgMCtx.shadowColor = 'rgba(0,255,136,0.5)';
+    ecgMCtx.shadowBlur = 6;
+    for(let x=0;x<ecgMini.width;x++){
+      const val = ecgValue(x + mFrame*2);
+      const y = mid - val*0.18;
+      x===0 ? ecgMCtx.moveTo(x,y) : ecgMCtx.lineTo(x,y);
+    }
+    ecgMCtx.stroke();
+    ecgMCtx.shadowBlur=0;
+    mFrame++;
+    requestAnimationFrame(animateMini);
+  })();
+}
+
+
+// ============================================================
+// REACTBIT 5: ANIMATED VITALS FLUCTUATION
+// ============================================================
+function fluctuate(el, base, range, suffix=''){
+  setInterval(()=>{
+    const val = base + (Math.random()-.5)*range;
+    el.textContent = suffix ? val.toFixed(1)+suffix : Math.round(val);
+  }, 2000 + Math.random()*1000);
+}
+
+const hrEl   = document.getElementById('v-hr');
+const spo2El = document.getElementById('v-spo2');
+const tempEl = document.getElementById('v-temp');
+
+if(hrEl)   fluctuate(hrEl,   72, 10);
+if(spo2El) fluctuate(spo2El, 98,  2);
+if(tempEl) fluctuate(tempEl, 37.2, 0.4);
+
+
+// ============================================================
+// REACTBIT 6: FLOATING MEDICAL SYMBOLS
+// ============================================================
+const symbols = ['✚','⚕','🧬','💊','🔬','🩻','❤','⚡'];
+function spawnMedFloat(){
+  const el = document.createElement('div');
+  el.className = 'med-float';
+  el.textContent = symbols[Math.floor(Math.random()*symbols.length)];
+  el.style.left  = Math.random()*100+'vw';
+  el.style.animationDuration = (12+Math.random()*10)+'s';
+  el.style.animationDelay   = (Math.random()*4)+'s';
+  el.style.fontSize = (10+Math.random()*14)+'px';
+  document.getElementById('hero').appendChild(el);
+  setTimeout(()=>el.remove(),(22000));
+}
+for(let i=0;i<12;i++) spawnMedFloat();
+setInterval(spawnMedFloat, 3000);
+
+
+// ============================================================
+// GSAP SCROLL ANIMATIONS
+// ============================================================
+gsap.registerPlugin(ScrollTrigger);
+
+// Stagger animations — use autoAlpha + clearProps so elements are never stuck hidden
+gsap.from('.feature-card', {
+  scrollTrigger:{trigger:'.features-grid',start:'top 85%'},
+  autoAlpha:0, y:30, stagger:0.08, duration:0.6, ease:'power2.out', clearProps:'all'
+});
+
+gsap.from('.triage-card', {
+  scrollTrigger:{trigger:'.triage-grid',start:'top 85%'},
+  autoAlpha:0, y:40, scale:0.95, stagger:0.12, duration:0.7, ease:'back.out(1.4)', clearProps:'all'
+});
+
+gsap.from('.trust-item', {
+  scrollTrigger:{trigger:'.trust-list',start:'top 85%'},
+  autoAlpha:0, x:-20, stagger:0.1, duration:0.5, ease:'power2.out', clearProps:'all'
+});
+
+// Nuclear fallback — after 2.5s force everything visible no matter what
+setTimeout(()=>{
+  document.querySelectorAll('.feature-card,.triage-card,.trust-item,.reveal').forEach(el=>{
+    el.style.opacity='1';
+    el.style.transform='none';
+    el.style.visibility='visible';
+  });
+}, 2500);
+
+// Vitals card parallax
+gsap.to('.vitals-card',{
+  scrollTrigger:{trigger:'#hero',scrub:1},
+  y:-40, ease:'none'
+});
+
+
+// ============================================================
+// SCROLL REVEAL
+// ============================================================
+const revObs = new IntersectionObserver(entries=>{
+  entries.forEach(e=>{if(e.isIntersecting) e.target.classList.add('visible')});
+},{threshold:0.1});
+document.querySelectorAll('.reveal').forEach(el=>revObs.observe(el));
+
+
+// ============================================================
+// WAITLIST FORMS
+// ============================================================
+const waitlistEmails = [];
+let waitlistCount = 247;
+
+function joinWaitlist(source){
+  const ids = {
+    email:   source==='hero' ? 'hero-email'    : 'cta-email',
+    btn:     source==='hero' ? 'hero-btn'       : 'cta-btn',
+    btnText: source==='hero' ? 'hero-btn-text'  : 'cta-btn-text',
+    success: source==='hero' ? 'hero-success'   : 'cta-success',
+    form:    source==='hero' ? 'hero-form'      : 'cta-form',
+  };
+
+  const emailEl = document.getElementById(ids.email);
+  const btn     = document.getElementById(ids.btn);
+  const btnText = document.getElementById(ids.btnText);
+  const success = document.getElementById(ids.success);
+  const form    = document.getElementById(ids.form);
+  const email   = emailEl.value.trim();
+
+  if(!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
+    emailEl.style.borderColor = 'var(--danger)';
+    emailEl.style.boxShadow   = '0 0 0 3px rgba(255,77,109,0.1)';
+    emailEl.focus();
+    setTimeout(()=>{ emailEl.style.borderColor=''; emailEl.style.boxShadow=''; },2000);
+    return;
+  }
+
+  if(waitlistEmails.includes(email)){
+    success.textContent = "✓ You're already on the list! We'll be in touch soon.";
+    form.style.display='none';
+    success.style.display='block';
+    return;
+  }
+
+  btn.disabled=true;
+  btnText.textContent='Joining…';
+
+  setTimeout(()=>{
+    waitlistEmails.push(email);
+    waitlistCount++;
+    const countEl = document.getElementById('cta-count');
+    if(countEl) countEl.textContent = waitlistCount;
+    form.style.display='none';
+    success.style.display='block';
+    btn.disabled=false;
+  }, 900);
+}
+
+document.getElementById('hero-email').addEventListener('keydown', e=>{ if(e.key==='Enter') joinWaitlist('hero'); });
+document.getElementById('cta-email').addEventListener('keydown',  e=>{ if(e.key==='Enter') joinWaitlist('cta');  });
+
+
+// ============================================================
+// COUNTER ANIMATION FOR WAITLIST PILL
+// ============================================================
+function animCount(el, target, dur=1400){
+  let s=0; const step=target/(dur/16);
+  const t=setInterval(()=>{
+    s=Math.min(s+step,target);
+    el.textContent=Math.floor(s);
+    if(s>=target)clearInterval(t);
+  },16);
+}
+
+const ctaCount = document.getElementById('cta-count');
+const countObs = new IntersectionObserver(entries=>{
+  entries.forEach(e=>{
+    if(e.isIntersecting){ animCount(ctaCount,247); countObs.disconnect(); }
+  });
+},{threshold:0.5});
+if(ctaCount) countObs.observe(ctaCount);
+
+</script>
+</body>
+</html>

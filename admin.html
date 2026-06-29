@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>MedAI Admin Panel</title>
+<script>
+if(sessionStorage.getItem('medai_admin_session') !== 'active'){
+  window.location.replace('Login_page.html');
+}
+</script>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&family=Share+Tech+Mono&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#020a0f;--surface:#071018;--surface2:#0c1a26;
+  --border:rgba(255,80,0,0.1);--border2:rgba(255,80,0,0.22);
+  --accent:#ff5000;--accent2:#ff8c00;--safe:#00ff88;
+  --danger:#ff4d6d;--warning:#ffaa33;--blue:#00d4ff;
+  --text:#f0e8e0;--muted:rgba(200,170,140,0.5);
+  --sidebar-w:240px;--head:'Syne',sans-serif;
+  --mono:'Share Tech Mono',monospace;--body:'DM Sans',sans-serif;
+  --radius:14px;
+}
+html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--text);overflow:hidden}
+
+/* BG */
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(255,80,0,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,80,0,0.025) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0}
+body::after{content:'';position:fixed;top:-200px;right:-100px;width:600px;height:600px;background:radial-gradient(circle,rgba(255,80,0,0.06),transparent 70%);pointer-events:none;z-index:0}
+
+/* CURSOR */
+#cursor{position:fixed;width:10px;height:10px;border-radius:50%;background:var(--accent);pointer-events:none;z-index:99999;transform:translate(-50%,-50%);mix-blend-mode:screen}
+#cursor-ring{position:fixed;width:36px;height:36px;border-radius:50%;border:1px solid rgba(255,80,0,0.5);pointer-events:none;z-index:99998;transform:translate(-50%,-50%);transition:width .2s,height .2s}
+
+/* LOGIN SCREEN */
+#login-screen{position:fixed;inset:0;z-index:10000;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:1rem}
+.admin-login-card{width:100%;max-width:400px;background:rgba(7,16,24,0.9);border:1px solid var(--border2);border-radius:20px;padding:2.5rem;backdrop-filter:blur(20px);box-shadow:0 40px 80px rgba(0,0,0,0.6),inset 0 1px 0 rgba(255,80,0,0.15)}
+.admin-logo{display:flex;align-items:center;gap:12px;margin-bottom:1.5rem}
+.admin-logo-icon{width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,#ff5000,#ff8c00);display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 0 24px rgba(255,80,0,0.4)}
+.admin-logo-text{font-family:var(--head);font-size:18px;font-weight:800}
+.admin-logo-text span{color:var(--accent)}
+.admin-title{font-family:var(--head);font-size:22px;font-weight:800;margin-bottom:4px}
+.admin-sub{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:1.75rem;display:flex;align-items:center;gap:8px}
+.sec-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:blink 1.5s step-end infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+.admin-field{margin-bottom:1rem}
+.admin-field label{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;display:block;margin-bottom:7px}
+.admin-input{width:100%;background:rgba(255,80,0,0.04);border:1px solid rgba(255,80,0,0.15);border-radius:10px;color:var(--text);font-family:var(--body);font-size:14px;padding:12px 16px;outline:none;transition:border-color .2s,box-shadow .2s}
+.admin-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(255,80,0,0.1)}
+.admin-input::placeholder{color:rgba(200,170,140,0.25)}
+.admin-login-btn{width:100%;background:linear-gradient(135deg,#ff5000,#ff8c00);border:none;border-radius:10px;color:#fff;font-family:var(--head);font-size:14px;font-weight:700;padding:13px;cursor:pointer;transition:all .3s;margin-top:.5rem}
+.admin-login-btn:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(255,80,0,0.4)}
+.admin-err{font-family:var(--mono);font-size:11px;color:var(--danger);letter-spacing:1px;margin-top:.75rem;display:none;text-align:center}
+.admin-back{display:block;text-align:center;margin-top:1rem;font-family:var(--mono);font-size:10px;color:var(--muted);text-decoration:none;letter-spacing:1px;transition:color .2s}
+.admin-back:hover{color:var(--accent)}
+
+/* MAIN ADMIN SHELL */
+#admin-shell{position:relative;z-index:1;display:flex;height:100vh;display:none}
+
+/* SIDEBAR */
+.admin-sidebar{width:var(--sidebar-w);min-width:var(--sidebar-w);height:100vh;background:rgba(7,16,24,0.9);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;backdrop-filter:blur(20px)}
+.as-logo{padding:18px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.as-logo-icon{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#ff5000,#ff8c00);display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 0 16px rgba(255,80,0,0.4)}
+.as-logo-text{font-family:var(--head);font-size:15px;font-weight:800}.as-logo-text span{color:var(--accent)}
+.as-nav{flex:1;overflow-y:auto;padding:8px 0}
+.as-section{font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:2.5px;text-transform:uppercase;padding:14px 16px 6px}
+.as-item{display:flex;align-items:center;gap:10px;padding:10px 16px;cursor:pointer;border-left:3px solid transparent;transition:all .2s;border-radius:0 8px 8px 0;margin:1px 8px 1px 0;font-size:13px;color:var(--muted)}
+.as-item:hover{background:rgba(255,80,0,0.06);border-left-color:rgba(255,80,0,0.3);color:var(--text)}
+.as-item.active{background:rgba(255,80,0,0.1);border-left-color:var(--accent);color:var(--accent)}
+.as-item-icon{font-size:16px;width:28px;text-align:center;flex-shrink:0}
+.as-bottom{padding:12px 16px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.as-admin-badge{font-family:var(--mono);font-size:9px;color:#000;background:var(--accent);border-radius:6px;padding:2px 8px;letter-spacing:1px}
+
+/* MAIN */
+.admin-main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.admin-topbar{height:58px;flex-shrink:0;background:rgba(7,16,24,0.8);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 2rem;backdrop-filter:blur(16px)}
+.admin-topbar-title{font-family:var(--head);font-size:15px;font-weight:700}
+.admin-topbar-right{display:flex;align-items:center;gap:12px}
+.admin-topbar-stat{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1px;display:flex;align-items:center;gap:6px}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--safe);animation:live-p 1.5s ease-in-out infinite}
+@keyframes live-p{0%,100%{box-shadow:0 0 0 0 rgba(0,255,136,0.4)}50%{box-shadow:0 0 0 5px rgba(0,255,136,0)}}
+.admin-logout-btn{font-family:var(--mono);font-size:10px;letter-spacing:1.5px;color:var(--danger);background:rgba(255,77,109,0.08);border:1px solid rgba(255,77,109,0.2);border-radius:8px;padding:6px 14px;cursor:pointer;transition:all .2s}
+.admin-logout-btn:hover{background:rgba(255,77,109,0.2)}
+.admin-content{flex:1;overflow-y:auto;padding:1.75rem 2rem}
+.admin-content::-webkit-scrollbar{width:4px}
+.admin-content::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+
+/* TAB PANELS */
+.a-panel{display:none;animation:fadeUp .3s ease}
+.a-panel.active{display:block}
+@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+
+/* COMPONENTS */
+.a-section-label{font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:3px;text-transform:uppercase;margin-bottom:.5rem;display:flex;align-items:center;gap:8px}
+.a-section-label::before{content:'';display:block;width:14px;height:1px;background:var(--accent)}
+.a-title{font-family:var(--head);font-size:1.5rem;font-weight:800;letter-spacing:-0.5px;margin-bottom:1.5rem}
+.a-title span{color:var(--accent)}
+.a-grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1.5rem}
+.a-grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1.5rem}
+.a-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.5rem}
+@media(max-width:900px){.a-grid-4{grid-template-columns:1fr 1fr}.a-grid-3{grid-template-columns:1fr 1fr}.a-grid-2{grid-template-columns:1fr}}
+.a-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);position:relative;overflow:hidden}
+.a-card::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,80,0,0.3),transparent)}
+.a-stat-card{padding:1.25rem}
+.a-stat-val{font-family:var(--head);font-size:2rem;font-weight:800;color:var(--accent);margin-bottom:2px}
+.a-stat-label{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase}
+.a-stat-sub{font-size:12px;color:var(--muted);margin-top:4px}
+.a-card-header{padding:1rem 1.25rem;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:2px;display:flex;justify-content:space-between;align-items:center}
+.a-table{width:100%;border-collapse:collapse}
+.a-table th{font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;padding:10px 16px;border-bottom:1px solid var(--border);text-align:left;background:rgba(255,80,0,0.03)}
+.a-table td{padding:12px 16px;border-bottom:1px solid rgba(255,80,0,0.05);font-size:13px;color:var(--text)}
+.a-table tr:hover td{background:rgba(255,80,0,0.03)}
+.a-table tr:last-child td{border-bottom:none}
+.a-badge{display:inline-flex;align-items:center;gap:4px;font-family:var(--mono);font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:3px 10px;border-radius:20px;border:1px solid}
+.ab-green{color:var(--safe);border-color:rgba(0,255,136,0.3);background:rgba(0,255,136,0.08)}
+.ab-warn{color:var(--warning);border-color:rgba(255,170,51,0.3);background:rgba(255,170,51,0.08)}
+.ab-danger{color:var(--danger);border-color:rgba(255,77,109,0.3);background:rgba(255,77,109,0.08)}
+.ab-orange{color:var(--accent);border-color:rgba(255,80,0,0.3);background:rgba(255,80,0,0.08)}
+.ab-blue{color:var(--blue);border-color:rgba(0,212,255,0.3);background:rgba(0,212,255,0.08)}
+.search-bar{display:flex;align-items:center;gap:8px;background:rgba(255,80,0,0.04);border:1px solid var(--border2);border-radius:8px;padding:8px 14px;font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:1px;width:240px}
+.search-input{background:none;border:none;outline:none;color:var(--text);font-family:var(--mono);font-size:11px;width:100%}
+.search-input::placeholder{color:rgba(200,170,140,0.3)}
+.a-btn{font-family:var(--mono);font-size:10px;letter-spacing:1.5px;text-transform:uppercase;padding:8px 18px;border:1px solid;border-radius:8px;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:6px}
+.a-btn-primary{background:rgba(255,80,0,0.1);border-color:rgba(255,80,0,0.3);color:var(--accent)}
+.a-btn-primary:hover{background:rgba(255,80,0,0.2)}
+.a-btn-danger{background:rgba(255,77,109,0.08);border-color:rgba(255,77,109,0.25);color:var(--danger)}
+.a-btn-danger:hover{background:rgba(255,77,109,0.18)}
+.progress-bar{height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden;margin-top:6px}
+.progress-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--accent),var(--accent2))}
+.user-detail-modal{position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,0.8);backdrop-filter:blur(8px);display:none;align-items:center;justify-content:center;padding:1rem}
+.udm-card{background:#071018;border:1px solid var(--border2);border-radius:20px;width:100%;max-width:600px;max-height:85vh;overflow-y:auto}
+.udm-header{padding:1.25rem 1.5rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:#071018;z-index:1}
+.udm-close{cursor:pointer;color:var(--muted);font-size:20px;transition:color .2s}
+.udm-close:hover{color:var(--accent)}
+.udm-body{padding:1.5rem}
+.udm-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,80,0,0.06);font-size:13px}
+.udm-key{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:1px}
+.udm-val{color:var(--text);text-align:right;max-width:60%}
+.allergy-chip{display:inline-flex;align-items:center;gap:4px;background:rgba(255,77,109,0.1);border:1px solid rgba(255,77,109,0.25);border-radius:20px;padding:3px 10px;font-size:11px;color:#ff8899;font-family:var(--mono);margin:2px}
+.condition-chip{display:inline-flex;align-items:center;gap:4px;background:rgba(0,212,255,0.08);border:1px solid rgba(0,212,255,0.2);border-radius:20px;padding:3px 10px;font-size:11px;color:var(--blue);font-family:var(--mono);margin:2px}
+</style>
+</head>
+<body>
+
+<div id="cursor"></div>
+<div id="cursor-ring"></div>
+
+<!-- LOGIN SCREEN -->
+<div id="login-screen">
+  <div class="admin-login-card">
+    <div class="admin-logo">
+      <div class="admin-logo-icon">🛡️</div>
+      <div class="admin-logo-text">Med<span>AI</span> Admin</div>
+    </div>
+    <h1 class="admin-title">Admin Access</h1>
+    <div class="admin-sub"><div class="sec-dot"></div>Restricted Area — Authorized Personnel Only</div>
+    <div class="admin-field">
+      <label>Admin Username</label>
+      <input class="admin-input" type="text" id="admin-username" placeholder="admin" onkeydown="if(event.key==='Enter')adminLogin()"/>
+    </div>
+    <div class="admin-field">
+      <label>Admin Password</label>
+      <input class="admin-input" type="password" id="admin-password" placeholder="••••••••" onkeydown="if(event.key==='Enter')adminLogin()"/>
+    </div>
+    <button class="admin-login-btn" onclick="adminLogin()">🛡️ &nbsp;Access Admin Panel</button>
+    <div class="admin-err" id="admin-err">Invalid credentials. Access denied.</div>
+    <a href="Login_page.html" class="admin-back">← Back to MedAI</a>
+  </div>
+</div>
+
+<!-- ADMIN SHELL -->
+<div id="admin-shell">
+
+  <!-- SIDEBAR -->
+  <aside class="admin-sidebar">
+    <div class="as-logo">
+      <div class="as-logo-icon">🛡️</div>
+      <div class="as-logo-text">Med<span>AI</span> <span style="color:var(--warning);font-size:11px">ADMIN</span></div>
+    </div>
+    <nav class="as-nav">
+      <div class="as-section">Overview</div>
+      <div class="as-item active" onclick="showAdminTab('overview',this)"><div class="as-item-icon">📊</div>Dashboard</div>
+      <div class="as-item" onclick="showAdminTab('analytics',this)"><div class="as-item-icon">📈</div>Analytics</div>
+
+      <div class="as-section">Users</div>
+      <div class="as-item" onclick="showAdminTab('users',this)"><div class="as-item-icon">👥</div>All Users</div>
+      <div class="as-item" onclick="showAdminTab('health-profiles',this)"><div class="as-item-icon">🩺</div>Health Profiles</div>
+      <div class="as-item" onclick="showAdminTab('triage-logs',this)"><div class="as-item-icon">📋</div>Triage Logs</div>
+
+      <div class="as-section">System</div>
+      <div class="as-item" onclick="showAdminTab('alerts',this)"><div class="as-item-icon">🚨</div>Emergency Alerts</div>
+      <div class="as-item" onclick="showAdminTab('settings-admin',this)"><div class="as-item-icon">⚙️</div>Admin Settings</div>
+      <div class="as-item" onclick="exportAllData()"><div class="as-item-icon">📥</div>Export All Data</div>
+    </nav>
+    <div class="as-bottom">
+      <div style="flex:1">
+        <div style="font-family:var(--head);font-size:13px;font-weight:700" id="as-admin-name">Admin</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1px">Super Admin</div>
+      </div>
+      <span class="as-admin-badge">ADMIN</span>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <div class="admin-main">
+    <div class="admin-topbar">
+      <div class="admin-topbar-title" id="admin-topbar-title">Dashboard Overview</div>
+      <div class="admin-topbar-right">
+        <div class="admin-topbar-stat"><div class="live-dot"></div>LIVE DATA</div>
+        <div class="admin-topbar-stat" id="admin-clock">--:--:--</div>
+        <button class="admin-logout-btn" onclick="adminLogout()">⏻ Logout</button>
+      </div>
+    </div>
+
+    <div class="admin-content" id="admin-content">
+
+      <!-- ========== OVERVIEW ========== -->
+      <div class="a-panel active" id="panel-overview">
+        <div class="a-section-label">// Overview</div>
+        <h2 class="a-title">Admin <span>Dashboard</span></h2>
+
+        <div class="a-grid-4">
+          <div class="a-card a-stat-card">
+            <div class="a-stat-val" id="stat-total-users">0</div>
+            <div class="a-stat-label">Total Users</div>
+            <div class="a-stat-sub" id="stat-new-today">0 registered today</div>
+          </div>
+          <div class="a-card a-stat-card">
+            <div class="a-stat-val" id="stat-total-triage">0</div>
+            <div class="a-stat-label">Triage Sessions</div>
+            <div class="a-stat-sub">Across all users</div>
+          </div>
+          <div class="a-card a-stat-card">
+            <div class="a-stat-val" id="stat-emergency-count" style="color:var(--danger)">0</div>
+            <div class="a-stat-label">Emergency Flags</div>
+            <div class="a-stat-sub">Requires attention</div>
+          </div>
+          <div class="a-card a-stat-card">
+            <div class="a-stat-val" id="stat-premium-count" style="color:var(--warning)">0</div>
+            <div class="a-stat-label">Premium Users</div>
+            <div class="a-stat-sub" id="stat-premium-pct">0% of total</div>
+          </div>
+        </div>
+
+        <!-- Condition & Allergy Overview -->
+        <div class="a-grid-2">
+          <div class="a-card">
+            <div class="a-card-header">// TOP MEDICAL CONDITIONS<span id="cond-total"></span></div>
+            <div style="padding:1rem" id="conditions-chart"></div>
+          </div>
+          <div class="a-card">
+            <div class="a-card-header">// TRIAGE LEVEL BREAKDOWN</div>
+            <div style="padding:1rem" id="triage-breakdown"></div>
+          </div>
+        </div>
+
+        <!-- Recent registrations -->
+        <div class="a-card">
+          <div class="a-card-header">// RECENT REGISTRATIONS</div>
+          <table class="a-table">
+            <thead><tr>
+              <th>User</th><th>Email</th><th>Country</th><th>Blood Group</th><th>Joined</th><th>Plan</th><th>Action</th>
+            </tr></thead>
+            <tbody id="recent-reg-table"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ========== ANALYTICS ========== -->
+      <div class="a-panel" id="panel-analytics">
+        <div class="a-section-label">// Analytics</div>
+        <h2 class="a-title">Platform <span>Analytics</span></h2>
+        <div class="a-grid-3">
+          <div class="a-card a-stat-card">
+            <div class="a-stat-val" id="ana-avg-score">—</div>
+            <div class="a-stat-label">Avg Health Score</div>
+          </div>
+          <div class="a-card a-stat-card">
+            <div class="a-stat-val" id="ana-smokers" style="color:var(--warning)">—</div>
+            <div class="a-stat-label">Users Who Smoke</div>
+          </div>
+          <div class="a-card a-stat-card">
+            <div class="a-stat-val" id="ana-exercisers" style="color:var(--safe)">—</div>
+            <div class="a-stat-label">Users Who Exercise</div>
+          </div>
+        </div>
+        <div class="a-grid-2">
+          <div class="a-card">
+            <div class="a-card-header">// GENDER DISTRIBUTION</div>
+            <div id="gender-chart" style="padding:1.25rem"></div>
+          </div>
+          <div class="a-card">
+            <div class="a-card-header">// TOP ALLERGIES</div>
+            <div id="allergy-chart" style="padding:1.25rem"></div>
+          </div>
+        </div>
+        <div class="a-card">
+          <div class="a-card-header">// BLOOD GROUP DISTRIBUTION</div>
+          <div id="blood-chart" style="padding:1.25rem;display:flex;flex-wrap:wrap;gap:.75rem"></div>
+        </div>
+      </div>
+
+      <!-- ========== ALL USERS ========== -->
+      <div class="a-panel" id="panel-users">
+        <div class="a-section-label">// Users</div>
+        <h2 class="a-title">All <span>Users</span></h2>
+        <div style="display:flex;gap:1rem;align-items:center;margin-bottom:1rem">
+          <div class="search-bar">🔍&nbsp;<input class="search-input" id="user-search" placeholder="Search by name, email, username..." oninput="filterUsers()"/></div>
+          <select id="user-filter" onchange="filterUsers()" style="background:rgba(255,80,0,0.04);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:var(--mono);font-size:11px;padding:8px 14px;outline:none;cursor:pointer">
+            <option value="all">All Plans</option>
+            <option value="Free">Free</option>
+            <option value="Premium">Premium</option>
+          </select>
+          <div style="margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--muted)" id="user-count-label"></div>
+        </div>
+        <div class="a-card">
+          <table class="a-table">
+            <thead><tr>
+              <th>Avatar</th><th>Full Name</th><th>Username</th><th>Email</th><th>Country</th><th>Plan</th><th>Sessions</th><th>Joined</th><th>Actions</th>
+            </tr></thead>
+            <tbody id="all-users-table"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ========== HEALTH PROFILES ========== -->
+      <div class="a-panel" id="panel-health-profiles">
+        <div class="a-section-label">// Health</div>
+        <h2 class="a-title">Health <span>Profiles</span></h2>
+        <div class="a-card">
+          <table class="a-table">
+            <thead><tr>
+              <th>User</th><th>Blood Group</th><th>Height/Weight</th><th>Conditions</th><th>Allergies</th><th>Medications</th><th>Lifestyle</th>
+            </tr></thead>
+            <tbody id="health-profiles-table"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ========== TRIAGE LOGS ========== -->
+      <div class="a-panel" id="panel-triage-logs">
+        <div class="a-section-label">// Triage</div>
+        <h2 class="a-title">Triage <span>Logs</span></h2>
+        <div style="display:flex;gap:1rem;margin-bottom:1rem;align-items:center">
+          <div class="search-bar">🔍&nbsp;<input class="search-input" id="triage-search" placeholder="Search symptoms..." oninput="filterTriage()"/></div>
+          <select id="triage-level-filter" onchange="filterTriage()" style="background:rgba(255,80,0,0.04);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:var(--mono);font-size:11px;padding:8px 14px;outline:none;cursor:pointer">
+            <option value="all">All Levels</option>
+            <option value="home">Home</option>
+            <option value="doctor_soon">Doctor</option>
+            <option value="emergency">Emergency</option>
+          </select>
+          <div style="margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--muted)" id="triage-count-label"></div>
+        </div>
+        <div class="a-card">
+          <table class="a-table">
+            <thead><tr>
+              <th>User</th><th>Symptoms</th><th>Result</th><th>Confidence</th><th>Date</th>
+            </tr></thead>
+            <tbody id="triage-logs-table"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ========== EMERGENCY ALERTS ========== -->
+      <div class="a-panel" id="panel-alerts">
+        <div class="a-section-label">// Alerts</div>
+        <h2 class="a-title">Emergency <span>Alerts</span></h2>
+        <p style="font-size:14px;color:var(--muted);margin-bottom:1.5rem;line-height:1.7">Users who received an EMERGENCY triage result. These should be reviewed and followed up.</p>
+        <div class="a-card" id="emergency-alerts-card">
+          <div style="padding:2rem;text-align:center;font-family:var(--mono);font-size:12px;color:var(--muted)">No emergency triage records found.</div>
+        </div>
+      </div>
+
+      <!-- ========== ADMIN SETTINGS ========== -->
+      <div class="a-panel" id="panel-settings-admin">
+        <div class="a-section-label">// System</div>
+        <h2 class="a-title">Admin <span>Settings</span></h2>
+        <div class="a-grid-2">
+          <div class="a-card" style="padding:1.5rem">
+            <div style="font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:2px;margin-bottom:1rem">// CHANGE ADMIN PASSWORD</div>
+            <div style="margin-bottom:.75rem">
+              <label style="font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:2px;display:block;margin-bottom:7px">NEW PASSWORD</label>
+              <input class="admin-input" type="password" id="new-admin-pass" placeholder="New password"/>
+            </div>
+            <div style="margin-bottom:1rem">
+              <label style="font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:2px;display:block;margin-bottom:7px">CONFIRM PASSWORD</label>
+              <input class="admin-input" type="password" id="confirm-admin-pass" placeholder="Confirm new password"/>
+            </div>
+            <button class="a-btn a-btn-primary" onclick="changeAdminPassword()">🔒 Update Password</button>
+            <div id="pass-change-msg" style="font-family:var(--mono);font-size:11px;margin-top:.75rem;display:none"></div>
+          </div>
+          <div class="a-card" style="padding:1.5rem">
+            <div style="font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:2px;margin-bottom:1rem">// DANGER ZONE</div>
+            <div style="display:flex;flex-direction:column;gap:.75rem">
+              <div>
+                <div style="font-size:13px;font-weight:600;margin-bottom:4px;color:var(--warning)">⚠️ Clear All Triage Logs</div>
+                <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Remove all triage history across all users</div>
+                <button class="a-btn a-btn-danger" onclick="clearAllTriage()">🗑️ Clear Triage Logs</button>
+              </div>
+              <div style="border-top:1px solid var(--border);padding-top:.75rem">
+                <div style="font-size:13px;font-weight:600;margin-bottom:4px;color:var(--danger)">🚨 Delete All User Data</div>
+                <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Permanently removes all users and their data</div>
+                <button class="a-btn a-btn-danger" onclick="nukeAllData()">💀 Wipe All Data</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- USER DETAIL MODAL -->
+<div class="user-detail-modal" id="user-modal">
+  <div class="udm-card">
+    <div class="udm-header">
+      <div style="font-family:var(--head);font-size:16px;font-weight:700">User Details</div>
+      <span class="udm-close" onclick="closeUserModal()">×</span>
+    </div>
+    <div class="udm-body" id="user-modal-body"></div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// CURSOR
+// ============================================================
+const cur=document.getElementById('cursor'),ring=document.getElementById('cursor-ring');
+let mx=0,my=0,rx=0,ry=0;
+document.addEventListener('mousemove',e=>{mx=e.clientX;my=e.clientY;cur.style.left=mx+'px';cur.style.top=my+'px'});
+(function ar(){rx+=(mx-rx)*.1;ry+=(my-ry)*.1;ring.style.left=rx+'px';ring.style.top=ry+'px';requestAnimationFrame(ar)})();
+document.querySelectorAll('button,.a-btn,.as-item').forEach(el=>{
+  el.addEventListener('mouseenter',()=>{ring.style.width='52px';ring.style.height='52px';ring.style.borderColor='rgba(255,80,0,0.8)'});
+  el.addEventListener('mouseleave',()=>{ring.style.width='36px';ring.style.height='36px';ring.style.borderColor='rgba(255,80,0,0.5)'});
+});
+
+// ============================================================
+// ADMIN AUTH
+// ============================================================
+// Default credentials — change these!
+const ADMIN_CREDS = {
+  username: 'Mangu',
+  password: 'Your-momma'
+};
+
+function adminLogin(){
+  const u = document.getElementById('admin-username').value.trim();
+  const p = document.getElementById('admin-password').value;
+  const stored = JSON.parse(localStorage.getItem('medai_admin_creds') || 'null');
+  const creds = stored || ADMIN_CREDS;
+
+  if(u.toLowerCase() === creds.username.toLowerCase() && p === creds.password){
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('admin-shell').style.display  = 'flex';
+    sessionStorage.setItem('medai_admin_session', 'active');
+    document.getElementById('as-admin-name').textContent = u;
+    initAdmin();
+  } else {
+    const errEl = document.getElementById('admin-err');
+    errEl.style.display = 'block';
+    document.getElementById('admin-password').value = '';
+    setTimeout(() => errEl.style.display='none', 3000);
+  }
+}
+
+document.getElementById('admin-username').addEventListener('keydown', e => { if(e.key==='Enter') adminLogin(); });
+document.getElementById('admin-password').addEventListener('keydown', e => { if(e.key==='Enter') adminLogin(); });
+
+function adminLogout(){
+  sessionStorage.removeItem('medai_admin_session');
+  window.location.href = 'Login_page.html';
+}
+
+// Auto-restore session
+if(sessionStorage.getItem('medai_admin_session') === 'active'){
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('admin-shell').style.display  = 'flex';
+  document.getElementById('as-admin-name').textContent = sessionStorage.getItem('medai_admin_name') || ADMIN_CREDS.username;
+  initAdmin();
+}
+
+// Clock
+setInterval(() => {
+  const now = new Date();
+  const el  = document.getElementById('admin-clock');
+  if(el) el.textContent = now.toLocaleTimeString('en-GB');
+}, 1000);
+
+// ============================================================
+// DATA HELPERS
+// ============================================================
+function getAllUsers(){
+  return JSON.parse(localStorage.getItem('medai_users') || '[]');
+}
+
+function getAllTriage(){
+  const users = getAllUsers();
+  const logs  = [];
+  users.forEach(u => {
+    const key  = 'medai_triage_' + u.username;
+    const hist = JSON.parse(localStorage.getItem(key) || '[]');
+    hist.forEach(h => logs.push({ ...h, username: u.username, userFullName: (u.firstname||'') + ' ' + (u.lastname||'') }));
+  });
+  return logs.sort((a,b) => new Date(b.date) - new Date(a.date));
+}
+
+function fmtDate(iso){
+  if(!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) + ' ' + d.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
+}
+
+function triageBadge(level){
+  const map = {
+    home:        '<span class="a-badge ab-green">Home</span>',
+    doctor_soon: '<span class="a-badge ab-warn">Doctor</span>',
+    emergency:   '<span class="a-badge ab-danger">Emergency</span>'
+  };
+  return map[level] || '<span class="a-badge ab-blue">'+level+'</span>';
+}
+
+function planBadge(plan){
+  return plan === 'Premium'
+    ? '<span class="a-badge ab-warn">👑 Premium</span>'
+    : '<span class="a-badge ab-blue">Free</span>';
+}
+
+function calcHealthScore(u){
+  let s = 80;
+  const conds = u.conditions || [];
+  s -= conds.filter(c => c !== 'None of these').length * 4;
+  s -= Math.min((u.allergies||[]).length * 2, 10);
+  if(u.smokes)    s -= 10;
+  if(u.alcohol)   s -= 5;
+  if(u.exercises) s += 8;
+  s += Math.min((u.triageSessions||0), 8);
+  return Math.max(30, Math.min(100, Math.round(s)));
+}
+
+// ============================================================
+// TAB NAVIGATION
+// ============================================================
+const adminTabTitles = {
+  overview:        'Dashboard Overview',
+  analytics:       'Platform Analytics',
+  users:           'All Users',
+  'health-profiles':'Health Profiles',
+  'triage-logs':   'Triage Logs',
+  alerts:          'Emergency Alerts',
+  'settings-admin':'Admin Settings'
+};
+
+function showAdminTab(id, el){
+  document.querySelectorAll('.a-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.as-item').forEach(i => i.classList.remove('active'));
+  const panel = document.getElementById('panel-' + id);
+  if(panel) panel.classList.add('active');
+  if(el)    el.classList.add('active');
+  const titleEl = document.getElementById('admin-topbar-title');
+  if(titleEl) titleEl.textContent = adminTabTitles[id] || id;
+  // Load data for that tab
+  if(id === 'users')            renderUsersTable(getAllUsers());
+  if(id === 'health-profiles')  renderHealthProfiles();
+  if(id === 'triage-logs')      renderTriageLogs(getAllTriage());
+  if(id === 'analytics')        renderAnalytics();
+  if(id === 'alerts')           renderEmergencyAlerts();
+}
+
+// ============================================================
+// INIT
+// ============================================================
+function initAdmin(){
+  renderOverview();
+  renderUsersTable(getAllUsers());
+}
+
+// ============================================================
+// OVERVIEW
+// ============================================================
+function renderOverview(){
+  const users  = getAllUsers();
+  const triage = getAllTriage();
+  const today  = new Date().toDateString();
+
+  const totalUsers   = users.length;
+  const newToday     = users.filter(u => u.joinDate && new Date(u.joinDate).toDateString() === today).length;
+  const totalTriage  = triage.length;
+  const emergencyCount = triage.filter(t => t.triage_level === 'emergency').length;
+  const premiumCount = users.filter(u => u.plan === 'Premium').length;
+
+  const setEl = (id, val) => { const el=document.getElementById(id); if(el) el.textContent=val; };
+  setEl('stat-total-users',   totalUsers);
+  setEl('stat-new-today',     newToday + ' registered today');
+  setEl('stat-total-triage',  totalTriage);
+  setEl('stat-emergency-count', emergencyCount);
+  setEl('stat-premium-count', premiumCount);
+  setEl('stat-premium-pct',   (totalUsers ? Math.round(premiumCount/totalUsers*100) : 0) + '% of total');
+
+  // Conditions chart
+  const condCounts = {};
+  users.forEach(u => (u.conditions||[]).forEach(c => {
+    if(c && c !== 'None of these') condCounts[c] = (condCounts[c]||0)+1;
+  }));
+  const condSorted = Object.entries(condCounts).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  const condEl = document.getElementById('conditions-chart');
+  if(condEl){
+    condEl.innerHTML = condSorted.length ? condSorted.map(([name, count]) => `
+      <div style="margin-bottom:.6rem">
+        <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:4px">
+          <span>${name}</span><span style="color:var(--accent)">${count} user${count>1?'s':''}</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" style="width:${Math.round(count/users.length*100)}%"></div></div>
+      </div>
+    `).join('') : '<div style="font-family:var(--mono);font-size:11px;color:var(--muted)">No data yet</div>';
+  }
+  document.getElementById('cond-total').textContent = Object.keys(condCounts).length + ' conditions tracked';
+
+  // Triage breakdown
+  const levels = { home:0, doctor_soon:0, emergency:0 };
+  triage.forEach(t => { if(levels[t.triage_level] !== undefined) levels[t.triage_level]++; });
+  const total = triage.length || 1;
+  const triageEl = document.getElementById('triage-breakdown');
+  if(triageEl){
+    triageEl.innerHTML = `
+      <div style="margin-bottom:.75rem">
+        <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;margin-bottom:4px"><span style="color:var(--safe)">🏠 Stay Home</span><span style="color:var(--safe)">${levels.home} (${Math.round(levels.home/total*100)}%)</span></div>
+        <div class="progress-bar"><div class="progress-fill" style="width:${Math.round(levels.home/total*100)}%;background:var(--safe)"></div></div>
+      </div>
+      <div style="margin-bottom:.75rem">
+        <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;margin-bottom:4px"><span style="color:var(--warning)">🏥 See Doctor</span><span style="color:var(--warning)">${levels.doctor_soon} (${Math.round(levels.doctor_soon/total*100)}%)</span></div>
+        <div class="progress-bar"><div class="progress-fill" style="width:${Math.round(levels.doctor_soon/total*100)}%;background:var(--warning)"></div></div>
+      </div>
+      <div>
+        <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;margin-bottom:4px"><span style="color:var(--danger)">🚨 Emergency</span><span style="color:var(--danger)">${levels.emergency} (${Math.round(levels.emergency/total*100)}%)</span></div>
+        <div class="progress-bar"><div class="progress-fill" style="width:${Math.round(levels.emergency/total*100)}%;background:var(--danger)"></div></div>
+      </div>
+    `;
+  }
+
+  // Recent registrations (last 5)
+  const recentEl = document.getElementById('recent-reg-table');
+  if(recentEl){
+    const recent = [...users].sort((a,b) => new Date(b.joinDate)-new Date(a.joinDate)).slice(0,5);
+    recentEl.innerHTML = recent.length ? recent.map(u => `<tr>
+      <td><div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;color:#000">${(u.firstname||u.username||'?')[0].toUpperCase()}</div>${(u.firstname||'') + ' ' + (u.lastname||'')}</div></td>
+      <td style="color:var(--muted)">${u.email||'—'}</td>
+      <td>${u.country||'—'}</td>
+      <td><span class="a-badge ab-danger">${u.bloodGroup||'?'}</span></td>
+      <td style="color:var(--muted);font-family:var(--mono);font-size:11px">${fmtDate(u.joinDate)}</td>
+      <td>${planBadge(u.plan)}</td>
+      <td><button class="a-btn a-btn-primary" style="padding:4px 12px;font-size:9px" onclick="showUserModal('${u.username}')">View</button></td>
+    </tr>`).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;font-family:var(--mono);font-size:11px">No users registered yet</td></tr>';
+  }
+}
+
+// ============================================================
+// USERS TABLE
+// ============================================================
+let allUsersCache = [];
+function renderUsersTable(users){
+  allUsersCache = users;
+  const el = document.getElementById('all-users-table');
+  const countEl = document.getElementById('user-count-label');
+  if(countEl) countEl.textContent = users.length + ' user' + (users.length!==1?'s':'') + ' found';
+  if(!el) return;
+  el.innerHTML = users.length ? users.map(u => `<tr>
+    <td><div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-weight:700;color:#000">${(u.firstname||u.username||'?')[0].toUpperCase()}</div></td>
+    <td>${(u.firstname||'') + ' ' + (u.lastname||'')}</td>
+    <td style="font-family:var(--mono);font-size:11px;color:var(--muted)">@${u.username||'—'}</td>
+    <td style="color:var(--muted)">${u.email||'—'}</td>
+    <td>${u.country||'—'}</td>
+    <td>${planBadge(u.plan)}</td>
+    <td style="font-family:var(--mono);font-size:12px;color:var(--accent)">${u.triageSessions||0}</td>
+    <td style="font-family:var(--mono);font-size:10px;color:var(--muted)">${u.joinDate ? new Date(u.joinDate).toLocaleDateString('en-GB') : '—'}</td>
+    <td style="display:flex;gap:6px">
+      <button class="a-btn a-btn-primary" style="padding:4px 10px;font-size:9px" onclick="showUserModal('${u.username}')">View</button>
+      <button class="a-btn a-btn-danger"  style="padding:4px 10px;font-size:9px" onclick="deleteUser('${u.username}')">Del</button>
+    </td>
+  </tr>`).join('') : '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:2rem;font-family:var(--mono);font-size:11px">No users found</td></tr>';
+}
+
+function filterUsers(){
+  const q      = (document.getElementById('user-search')?.value || '').toLowerCase();
+  const plan   = document.getElementById('user-filter')?.value || 'all';
+  const users  = getAllUsers();
+  const filtered = users.filter(u => {
+    const match = !q || (u.username||'').toLowerCase().includes(q) || (u.email||'').toLowerCase().includes(q) || ((u.firstname||'')+' '+(u.lastname||'')).toLowerCase().includes(q);
+    const planMatch = plan === 'all' || u.plan === plan;
+    return match && planMatch;
+  });
+  renderUsersTable(filtered);
+}
+
+function deleteUser(username){
+  if(!confirm(`Delete user @${username}? This removes their account and all data.`)) return;
+  const users = getAllUsers().filter(u => u.username !== username);
+  localStorage.setItem('medai_users', JSON.stringify(users));
+  localStorage.removeItem('medai_triage_' + username);
+  renderUsersTable(getAllUsers());
+  renderOverview();
+  alert('User deleted.');
+}
+
+// ============================================================
+// HEALTH PROFILES TABLE
+// ============================================================
+function renderHealthProfiles(){
+  const users = getAllUsers();
+  const el = document.getElementById('health-profiles-table');
+  if(!el) return;
+  el.innerHTML = users.length ? users.map(u => `<tr>
+    <td><strong>${u.firstname||''} ${u.lastname||''}</strong><br><span style="font-family:var(--mono);font-size:10px;color:var(--muted)">@${u.username}</span></td>
+    <td><span class="a-badge ab-danger">${u.bloodGroup||'?'}</span></td>
+    <td style="font-family:var(--mono);font-size:11px">${u.height||'?'}cm / ${u.weight||'?'}kg</td>
+    <td>${(u.conditions||[]).filter(c=>c!=='None of these').map(c=>`<span class="condition-chip">${c}</span>`).join('')||'<span style="color:var(--muted);font-size:12px">None</span>'}</td>
+    <td>${(u.allergies||[]).map(a=>`<span class="allergy-chip">⚠️ ${a}</span>`).join('')||'<span style="color:var(--muted);font-size:12px">None</span>'}</td>
+    <td style="font-size:12px;color:var(--muted);max-width:160px">${u.medications||'None'}</td>
+    <td style="font-family:var(--mono);font-size:10px">${u.smokes?'🚬 Smokes ':''} ${u.alcohol?'🍺 Drinks ':''} ${u.exercises?'🏃 Exercises':''}</td>
+  </tr>`).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;font-family:var(--mono);font-size:11px">No health profiles yet</td></tr>';
+}
+
+// ============================================================
+// TRIAGE LOGS TABLE
+// ============================================================
+let allTriageCache = [];
+function renderTriageLogs(logs){
+  allTriageCache = logs;
+  const el      = document.getElementById('triage-logs-table');
+  const countEl = document.getElementById('triage-count-label');
+  if(countEl) countEl.textContent = logs.length + ' log' + (logs.length!==1?'s':'');
+  if(!el) return;
+  el.innerHTML = logs.length ? logs.map(h => `<tr>
+    <td><span style="font-family:var(--mono);font-size:11px">@${h.username}</span></td>
+    <td style="max-width:200px;color:var(--muted);font-size:12px">${(h.symptoms||'').slice(0,80)}${(h.symptoms||'').length>80?'…':''}</td>
+    <td>${triageBadge(h.triage_level)} <div style="font-size:11px;color:var(--muted);margin-top:2px">${h.triage_title||''}</div></td>
+    <td><span style="font-family:var(--mono);font-size:12px;color:var(--accent)">${h.confidence||70}%</span></td>
+    <td style="font-family:var(--mono);font-size:10px;color:var(--muted)">${fmtDate(h.date)}</td>
+  </tr>`).join('') : '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:2rem;font-family:var(--mono);font-size:11px">No triage logs yet</td></tr>';
+}
+
+function filterTriage(){
+  const q     = (document.getElementById('triage-search')?.value || '').toLowerCase();
+  const level = document.getElementById('triage-level-filter')?.value || 'all';
+  const logs  = getAllTriage();
+  const filtered = logs.filter(h => {
+    const match = !q || (h.symptoms||'').toLowerCase().includes(q) || (h.username||'').toLowerCase().includes(q);
+    const lvl   = level === 'all' || h.triage_level === level;
+    return match && lvl;
+  });
+  renderTriageLogs(filtered);
+}
+
+// ============================================================
+// EMERGENCY ALERTS
+// ============================================================
+function renderEmergencyAlerts(){
+  const logs = getAllTriage().filter(t => t.triage_level === 'emergency');
+  const el   = document.getElementById('emergency-alerts-card');
+  if(!el) return;
+  if(!logs.length){
+    el.innerHTML = '<div style="padding:2rem;text-align:center;font-family:var(--mono);font-size:12px;color:var(--muted)">No emergency triage records. 🎉</div>';
+    return;
+  }
+  el.innerHTML = `<table class="a-table"><thead><tr><th>User</th><th>Symptoms</th><th>Summary</th><th>Date</th></tr></thead><tbody>` +
+    logs.map(h => `<tr style="border-left:3px solid var(--danger)">
+      <td style="font-family:var(--mono);font-size:11px">@${h.username}</td>
+      <td style="max-width:180px;font-size:12px;color:var(--muted)">${(h.symptoms||'').slice(0,80)}…</td>
+      <td style="max-width:200px;font-size:12px;color:var(--muted)">${(h.summary||'').slice(0,100)}…</td>
+      <td style="font-family:var(--mono);font-size:10px;color:var(--danger)">${fmtDate(h.date)}</td>
+    </tr>`).join('') + '</tbody></table>';
+}
+
+// ============================================================
+// ANALYTICS
+// ============================================================
+function renderAnalytics(){
+  const users = getAllUsers();
+  if(!users.length) return;
+
+  const smokers    = users.filter(u => u.smokes).length;
+  const exercisers = users.filter(u => u.exercises).length;
+  const avgScore   = Math.round(users.reduce((s,u) => s + calcHealthScore(u), 0) / users.length);
+
+  const set = (id, val) => { const el=document.getElementById(id); if(el) el.textContent=val; };
+  set('ana-avg-score', avgScore + '/100');
+  set('ana-smokers',   smokers + ' (' + Math.round(smokers/users.length*100) + '%)');
+  set('ana-exercisers', exercisers + ' (' + Math.round(exercisers/users.length*100) + '%)');
+
+  // Gender chart
+  const genders = {};
+  users.forEach(u => { const g = u.gender||'Unknown'; genders[g]=(genders[g]||0)+1; });
+  const genderEl = document.getElementById('gender-chart');
+  if(genderEl){
+    genderEl.innerHTML = Object.entries(genders).map(([g,c]) => `
+      <div style="margin-bottom:.75rem">
+        <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:4px"><span>${g}</span><span style="color:var(--accent)">${c} (${Math.round(c/users.length*100)}%)</span></div>
+        <div class="progress-bar"><div class="progress-fill" style="width:${Math.round(c/users.length*100)}%"></div></div>
+      </div>
+    `).join('') || '<div style="font-family:var(--mono);font-size:11px;color:var(--muted)">No data</div>';
+  }
+
+  // Allergy chart
+  const allergyCounts = {};
+  users.forEach(u => (u.allergies||[]).forEach(a => { allergyCounts[a]=(allergyCounts[a]||0)+1; }));
+  const allergyEl = document.getElementById('allergy-chart');
+  if(allergyEl){
+    const sorted = Object.entries(allergyCounts).sort((a,b)=>b[1]-a[1]).slice(0,8);
+    allergyEl.innerHTML = sorted.length ? sorted.map(([name,count]) => `
+      <div style="margin-bottom:.6rem">
+        <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:4px"><span>⚠️ ${name}</span><span style="color:var(--warning)">${count}</span></div>
+        <div class="progress-bar"><div class="progress-fill" style="width:${Math.round(count/users.length*100)}%;background:var(--warning)"></div></div>
+      </div>
+    `).join('') : '<div style="font-family:var(--mono);font-size:11px;color:var(--muted)">No allergies recorded</div>';
+  }
+
+  // Blood group chart
+  const bloodGroups = {};
+  users.forEach(u => { if(u.bloodGroup) bloodGroups[u.bloodGroup]=(bloodGroups[u.bloodGroup]||0)+1; });
+  const bloodEl = document.getElementById('blood-chart');
+  if(bloodEl){
+    bloodEl.innerHTML = Object.entries(bloodGroups).map(([bg,c]) => `
+      <div style="background:rgba(255,77,109,0.08);border:1px solid rgba(255,77,109,0.2);border-radius:10px;padding:.75rem 1rem;text-align:center;min-width:80px">
+        <div style="font-family:var(--head);font-size:1.4rem;font-weight:800;color:var(--danger)">${bg}</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted)">${c} user${c>1?'s':''}</div>
+      </div>
+    `).join('') || '<div style="font-family:var(--mono);font-size:11px;color:var(--muted)">No data</div>';
+  }
+}
+
+// ============================================================
+// USER DETAIL MODAL
+// ============================================================
+function showUserModal(username){
+  const users = getAllUsers();
+  const u     = users.find(u => u.username === username);
+  if(!u) return;
+  const triage = getAllTriage().filter(t => t.username === username);
+  const score  = calcHealthScore(u);
+
+  const rows = [
+    ['Full Name',    (u.firstname||'') + ' ' + (u.lastname||'')],
+    ['Username',     '@' + u.username],
+    ['Email',        u.email||'—'],
+    ['Phone',        u.phone||'—'],
+    ['DOB',          u.dob||'—'],
+    ['Gender',       u.gender||'—'],
+    ['Country',      u.country||'—'],
+    ['Blood Group',  u.bloodGroup||'—'],
+    ['Height',       u.height ? u.height+'cm' : '—'],
+    ['Weight',       u.weight ? u.weight+'kg' : '—'],
+    ['BMI',          (u.height&&u.weight) ? (u.weight/((u.height/100)**2)).toFixed(1) : '—'],
+    ['Health Score', score+'/100'],
+    ['Plan',         u.plan||'Free'],
+    ['Joined',       fmtDate(u.joinDate)],
+    ['Triage Sessions', (u.triageSessions||0).toString()],
+    ['Smokes',       u.smokes?'Yes':'No'],
+    ['Alcohol',      u.alcohol?'Yes':'No'],
+    ['Exercises',    u.exercises?'Yes':'No'],
+    ['Emerg. Contact', u.emergName ? u.emergName + ' — ' + (u.emergPhone||'') : '—'],
+  ];
+
+  const body = document.getElementById('user-modal-body');
+  body.innerHTML = `
+    <div style="display:flex;align-items:center;gap:14px;padding-bottom:1rem;margin-bottom:1rem;border-bottom:1px solid var(--border)">
+      <div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-family:var(--head);font-size:22px;font-weight:700;color:#000">${(u.firstname||u.username||'?')[0].toUpperCase()}</div>
+      <div>
+        <div style="font-family:var(--head);font-size:18px;font-weight:700">${(u.firstname||'')+' '+(u.lastname||'')}</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1px">@${u.username} · ${planBadge(u.plan)}</div>
+      </div>
+    </div>
+    ${rows.map(([k,v]) => `<div class="udm-row"><span class="udm-key">${k}</span><span class="udm-val">${v}</span></div>`).join('')}
+    <div style="margin-top:1rem">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:2px;margin-bottom:.5rem">MEDICAL CONDITIONS</div>
+      <div>${(u.conditions||[]).filter(c=>c!=='None of these').map(c=>`<span class="condition-chip">${c}</span>`).join('')||'<span style="font-size:12px;color:var(--muted)">None</span>'}</div>
+    </div>
+    <div style="margin-top:.75rem">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--warning);letter-spacing:2px;margin-bottom:.5rem">⚠️ ALLERGIES</div>
+      <div>${(u.allergies||[]).map(a=>`<span class="allergy-chip">⚠️ ${a}</span>`).join('')||'<span style="font-size:12px;color:var(--muted)">None</span>'}</div>
+    </div>
+    <div style="margin-top:.75rem">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:2px;margin-bottom:.5rem">CURRENT MEDICATIONS</div>
+      <div style="font-size:13px;color:var(--muted)">${u.medications||'None'}</div>
+    </div>
+    <div style="margin-top:1rem">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:2px;margin-bottom:.5rem">TRIAGE HISTORY (${triage.length} sessions)</div>
+      ${triage.slice(0,5).map(h=>`<div style="padding:8px 0;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center"><span>${triageBadge(h.triage_level)}</span><span style="font-size:12px;color:var(--muted);flex:1">${(h.symptoms||'').slice(0,60)}…</span><span style="font-family:var(--mono);font-size:10px;color:var(--muted)">${h.confidence||70}%</span></div>`).join('')}
+    </div>
+    <div style="display:flex;gap:8px;margin-top:1.25rem">
+      <button class="a-btn a-btn-danger" onclick="deleteUser('${u.username}');closeUserModal()">🗑️ Delete User</button>
+    </div>
+  `;
+  document.getElementById('user-modal').style.display = 'flex';
+}
+
+function closeUserModal(){
+  document.getElementById('user-modal').style.display = 'none';
+}
+
+// ============================================================
+// ADMIN SETTINGS ACTIONS
+// ============================================================
+function changeAdminPassword(){
+  const np = document.getElementById('new-admin-pass').value;
+  const cp = document.getElementById('confirm-admin-pass').value;
+  const msgEl = document.getElementById('pass-change-msg');
+  if(!np || np.length < 6){ msgEl.textContent='Password must be at least 6 characters.'; msgEl.style.color='var(--danger)'; msgEl.style.display='block'; return; }
+  if(np !== cp){ msgEl.textContent='Passwords do not match.'; msgEl.style.color='var(--danger)'; msgEl.style.display='block'; return; }
+  const stored = JSON.parse(localStorage.getItem('medai_admin_creds') || 'null') || ADMIN_CREDS;
+  stored.password = np;
+  localStorage.setItem('medai_admin_creds', JSON.stringify(stored));
+  document.getElementById('new-admin-pass').value = '';
+  document.getElementById('confirm-admin-pass').value = '';
+  msgEl.textContent = '✓ Password updated successfully.'; msgEl.style.color='var(--safe)'; msgEl.style.display='block';
+  setTimeout(() => msgEl.style.display='none', 3000);
+}
+
+function clearAllTriage(){
+  if(!confirm('Clear ALL triage logs for ALL users? This cannot be undone.')) return;
+  const users = getAllUsers();
+  users.forEach(u => localStorage.removeItem('medai_triage_' + u.username));
+  alert('All triage logs cleared.');
+  renderOverview();
+}
+
+function nukeAllData(){
+  if(!prompt('Type "WIPE ALL" to confirm:') !== 'WIPE ALL') {
+    const ans = prompt('Type WIPE ALL to confirm permanent deletion of ALL data:');
+    if(ans !== 'WIPE ALL'){ alert('Cancelled.'); return; }
+  }
+  const keys = Object.keys(localStorage).filter(k => k.startsWith('medai_') && k !== 'medai_admin_creds' && k !== 'medai_admin_session');
+  keys.forEach(k => localStorage.removeItem(k));
+  alert('All user data wiped. Admin credentials preserved.');
+  renderOverview();
+  renderUsersTable([]);
+}
+
+// ============================================================
+// EXPORT ALL DATA
+// ============================================================
+function exportAllData(){
+  const users   = getAllUsers();
+  const triage  = getAllTriage();
+  const cleaned = users.map(u => { const c = {...u}; delete c.password; return c; });
+  const data    = { exportedAt: new Date().toISOString(), totalUsers: users.length, totalTriageSessions: triage.length, users: cleaned, triageHistory: triage };
+  const blob    = new Blob([JSON.stringify(data, null, 2)], { type:'application/json' });
+  const url     = URL.createObjectURL(blob);
+  const a       = document.createElement('a');
+  a.href = url; a.download = 'medai_admin_export_' + new Date().toISOString().slice(0,10) + '.json';
+  a.click(); URL.revokeObjectURL(url);
+}
+
+// Close modal on outside click
+document.getElementById('user-modal').addEventListener('click', e => {
+  if(e.target === document.getElementById('user-modal')) closeUserModal();
+});
+</script>
+</body>
+</html>

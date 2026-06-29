@@ -1,0 +1,999 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MedAI — Sign In</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
+  <script src="medai-transition.js" defer></script>
+  <style>
+
+    /* =============================================
+       RESET & VARIABLES
+       ============================================= */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #020c14;
+      --accent:   #00d4ff;
+      --accent2:  #006ecc;
+      --safe:     #00ff88;
+      --danger:   #ff4d6d;
+      --text:     #e2f4ff;
+      --muted:    rgba(180, 220, 255, 0.45);
+      --glass-bg: rgba(6, 20, 38, 0.55);
+      --glass-border: rgba(0, 212, 255, 0.18);
+      --glass-shine: rgba(0, 212, 255, 0.06);
+    }
+
+    html, body {
+      height: 100%;
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      overflow: hidden;
+    }
+
+    /* =============================================
+       REACTBIT 1 — MULTI-LAYER ANIMATED BACKGROUND
+       ============================================= */
+
+    /* Deep space gradient base */
+    .bg-base {
+      position: fixed; inset: 0; z-index: 0;
+      background:
+        radial-gradient(ellipse 80% 60% at 20% 20%, rgba(0, 80, 160, 0.35) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 80% at 80% 80%, rgba(0, 180, 120, 0.2) 0%, transparent 60%),
+        radial-gradient(ellipse 100% 100% at 50% 50%, rgba(0, 30, 60, 0.9) 0%, #020c14 70%);
+    }
+
+    /* Animated orb 1 — cyan pulse */
+    .orb {
+      position: fixed; border-radius: 50%;
+      filter: blur(80px); pointer-events: none; z-index: 1;
+    }
+
+    .orb-1 {
+      width: 500px; height: 500px;
+      top: -120px; left: -100px;
+      background: radial-gradient(circle, rgba(0,212,255,0.18) 0%, transparent 70%);
+      animation: orb-drift-1 12s ease-in-out infinite;
+    }
+
+    .orb-2 {
+      width: 400px; height: 400px;
+      bottom: -80px; right: -80px;
+      background: radial-gradient(circle, rgba(0,255,136,0.14) 0%, transparent 70%);
+      animation: orb-drift-2 16s ease-in-out infinite;
+    }
+
+    .orb-3 {
+      width: 300px; height: 300px;
+      top: 50%; left: 60%;
+      background: radial-gradient(circle, rgba(0,110,204,0.12) 0%, transparent 70%);
+      animation: orb-drift-3 20s ease-in-out infinite;
+    }
+
+    @keyframes orb-drift-1 {
+      0%,100% { transform: translate(0,0) scale(1); }
+      33%      { transform: translate(60px,40px) scale(1.1); }
+      66%      { transform: translate(-30px,80px) scale(0.9); }
+    }
+
+    @keyframes orb-drift-2 {
+      0%,100% { transform: translate(0,0) scale(1); }
+      50%      { transform: translate(-80px,-60px) scale(1.15); }
+    }
+
+    @keyframes orb-drift-3 {
+      0%,100% { transform: translate(-50%,-50%) scale(1); }
+      40%      { transform: translate(-50%,-50%) translate(40px,-30px) scale(1.2); }
+      80%      { transform: translate(-50%,-50%) translate(-40px,20px) scale(0.85); }
+    }
+
+    /* REACTBIT 2 — ECG line across background */
+    #ecg-bg { position: fixed; bottom: 0; left: 0; width: 100%; height: 100px; z-index: 2; opacity: 0.15; pointer-events: none; }
+
+    /* REACTBIT 3 — DNA / cell particle canvas */
+    #particle-canvas { position: fixed; inset: 0; z-index: 2; pointer-events: none; opacity: 0.2; }
+
+    /* REACTBIT 4 — Scanline overlay */
+    .scanlines {
+      position: fixed; inset: 0; z-index: 3; pointer-events: none;
+      background: repeating-linear-gradient(
+        0deg, transparent, transparent 2px,
+        rgba(0, 0, 0, 0.06) 2px, rgba(0, 0, 0, 0.06) 4px
+      );
+    }
+
+    /* REACTBIT 5 — Grid */
+    .grid-overlay {
+      position: fixed; inset: 0; z-index: 2; pointer-events: none;
+      background-image:
+        linear-gradient(rgba(0,212,255,0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,212,255,0.025) 1px, transparent 1px);
+      background-size: 44px 44px;
+    }
+
+    /* =============================================
+       CUSTOM CURSOR
+       ============================================= */
+    #cursor {
+      position: fixed; width: 10px; height: 10px;
+      border-radius: 50%; background: var(--accent);
+      pointer-events: none; z-index: 99999;
+      transform: translate(-50%,-50%);
+      mix-blend-mode: screen;
+      transition: width .15s, height .15s;
+    }
+
+    #cursor-ring {
+      position: fixed; width: 36px; height: 36px;
+      border-radius: 50%;
+      border: 1px solid rgba(0,212,255,0.5);
+      pointer-events: none; z-index: 99998;
+      transform: translate(-50%,-50%);
+      transition: width .25s, height .25s, border-color .2s;
+    }
+
+    /* =============================================
+       PAGE LAYOUT
+       ============================================= */
+    .page {
+      position: relative; z-index: 10;
+      width: 100vw; height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+      padding: 1rem;
+    }
+
+    /* =============================================
+       GLASSMORPHISM LOGIN CARD
+       ============================================= */
+    .login-card {
+      position: relative;
+      width: 100%; max-width: 420px;
+      background: var(--glass-bg);
+      backdrop-filter: blur(28px) saturate(160%);
+      -webkit-backdrop-filter: blur(28px) saturate(160%);
+      border: 1px solid var(--glass-border);
+      border-radius: 28px;
+      padding: 2.75rem 2.5rem 2.5rem;
+      box-shadow:
+        0 0 0 1px rgba(0,212,255,0.05),
+        0 40px 80px rgba(0,0,0,0.5),
+        0 0 60px rgba(0,212,255,0.06),
+        inset 0 1px 0 rgba(0,212,255,0.12),
+        inset 0 -1px 0 rgba(0,0,0,0.3);
+      animation: card-in 0.8s cubic-bezier(.2,.8,.2,1) forwards;
+      overflow: hidden;
+    }
+
+    @keyframes card-in {
+      from { opacity: 0; transform: translateY(32px) scale(0.97); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* Rotating conic gradient shimmer inside card */
+    .card-shimmer {
+      position: absolute; inset: -1px;
+      border-radius: 28px;
+      background: conic-gradient(
+        from var(--angle, 0deg),
+        transparent 0deg,
+        rgba(0,212,255,0.08) 60deg,
+        rgba(0,255,136,0.04) 120deg,
+        transparent 180deg
+      );
+      pointer-events: none; z-index: 0;
+      animation: shimmer-rotate 8s linear infinite;
+    }
+
+    @property --angle {
+      syntax: '<angle>'; initial-value: 0deg; inherits: false;
+    }
+
+    @keyframes shimmer-rotate { to { --angle: 360deg; } }
+
+    /* Top shine streak */
+    .card-shine {
+      position: absolute;
+      top: 0; left: 10%; right: 10%; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(0,212,255,0.4), rgba(0,255,136,0.3), transparent);
+      border-radius: 50%;
+      pointer-events: none; z-index: 1;
+    }
+
+    /* Inner content sits above shimmer */
+    .card-inner { position: relative; z-index: 2; }
+
+    /* =============================================
+       CARD HEADER
+       ============================================= */
+    .card-logo {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 1.75rem;
+    }
+
+    .logo-icon {
+      width: 40px; height: 40px; border-radius: 12px;
+      background: linear-gradient(135deg, #00d4ff, #0044cc);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px;
+      box-shadow: 0 0 24px rgba(0,212,255,0.35), inset 0 1px 0 rgba(255,255,255,0.15);
+      animation: pulse-logo 3s ease-in-out infinite;
+    }
+
+    @keyframes pulse-logo {
+      0%,100% { box-shadow: 0 0 24px rgba(0,212,255,0.35), inset 0 1px 0 rgba(255,255,255,0.15); }
+      50%      { box-shadow: 0 0 40px rgba(0,212,255,0.55), inset 0 1px 0 rgba(255,255,255,0.15); }
+    }
+
+    .logo-name {
+      font-family: 'Syne', sans-serif;
+      font-size: 20px; font-weight: 800;
+    }
+
+    .logo-name span { color: var(--accent); }
+
+    .card-title {
+      font-family: 'Syne', sans-serif;
+      font-size: 26px; font-weight: 800;
+      letter-spacing: -0.8px;
+      margin-bottom: 4px;
+      line-height: 1.1;
+    }
+
+    .card-subtitle {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px; color: var(--muted);
+      letter-spacing: 2px; text-transform: uppercase;
+      margin-bottom: 2rem;
+      display: flex; align-items: center; gap: 8px;
+    }
+
+    .live-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--safe);
+      position: relative;
+    }
+
+    .live-dot::before {
+      content: ''; position: absolute; inset: -4px;
+      border-radius: 50%;
+      border: 1px solid var(--safe);
+      animation: ping-dot 1.5s ease-out infinite;
+    }
+
+    @keyframes ping-dot {
+      0%  { transform: scale(1); opacity: 0.8; }
+      100%{ transform: scale(2.5); opacity: 0; }
+    }
+
+    /* =============================================
+       FORM FIELDS — GLASS INPUTS
+       ============================================= */
+    .form-group {
+      margin-bottom: 1.1rem;
+      opacity: 0; animation: field-in .5s ease forwards;
+    }
+
+    .form-group:nth-child(1) { animation-delay: .3s; }
+    .form-group:nth-child(2) { animation-delay: .45s; }
+    .form-group:nth-child(3) { animation-delay: .6s; }
+
+    @keyframes field-in {
+      from { opacity: 0; transform: translateX(-12px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+
+    .field-label {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 10px; color: var(--muted);
+      letter-spacing: 2.5px; text-transform: uppercase;
+      margin-bottom: 8px; display: block;
+    }
+
+    .field-wrap {
+      position: relative;
+    }
+
+    .field-icon {
+      position: absolute; left: 14px; top: 50%;
+      transform: translateY(-50%);
+      font-size: 15px; pointer-events: none;
+      opacity: 0.5; transition: opacity .2s;
+    }
+
+    .field-input {
+      width: 100%;
+      background: rgba(0, 212, 255, 0.04);
+      border: 1px solid rgba(0, 212, 255, 0.15);
+      border-radius: 12px;
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 15px;
+      padding: 13px 16px 13px 42px;
+      outline: none;
+      transition: border-color .25s, box-shadow .25s, background .25s;
+      backdrop-filter: blur(10px);
+    }
+
+    .field-input::placeholder {
+      color: rgba(180,220,255,0.25);
+      font-size: 14px;
+    }
+
+    .field-input:focus {
+      border-color: var(--accent);
+      background: rgba(0, 212, 255, 0.07);
+      box-shadow:
+        0 0 0 3px rgba(0,212,255,0.1),
+        inset 0 1px 0 rgba(0,212,255,0.08);
+    }
+
+    .field-input:focus + .field-glow {
+      opacity: 1;
+    }
+
+    .field-input:focus ~ .field-icon { opacity: 1; }
+
+    /* Underline glow on focus */
+    .field-glow {
+      position: absolute;
+      bottom: -1px; left: 10%; right: 10%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      opacity: 0; transition: opacity .3s;
+      pointer-events: none;
+    }
+
+    /* Show icon on focus via JS class */
+    .field-wrap:focus-within .field-icon { opacity: 1; }
+
+    /* =============================================
+       FORGOT PASSWORD
+       ============================================= */
+    .forgot-row {
+      display: flex; justify-content: flex-end;
+      margin-bottom: 1.5rem;
+      opacity: 0; animation: field-in .5s .55s ease forwards;
+    }
+
+    .forgot-link {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 10px; color: var(--accent);
+      text-decoration: none; letter-spacing: 1px;
+      text-transform: uppercase;
+      transition: opacity .2s;
+      opacity: 0.7;
+    }
+
+    .forgot-link:hover { opacity: 1; }
+
+    /* =============================================
+       SUBMIT BUTTON — GLASS + GLOW
+       ============================================= */
+    .submit-btn {
+      position: relative; overflow: hidden;
+      width: 100%;
+      background: linear-gradient(135deg, rgba(0,212,255,0.85), rgba(0,100,200,0.9));
+      border: 1px solid rgba(0,212,255,0.4);
+      border-radius: 12px;
+      color: #001a2e;
+      font-family: 'Syne', sans-serif;
+      font-size: 15px; font-weight: 700;
+      letter-spacing: 0.5px;
+      padding: 14px;
+      cursor: pointer;
+      transition: all .3s;
+      backdrop-filter: blur(10px);
+      box-shadow:
+        0 0 24px rgba(0,212,255,0.2),
+        inset 0 1px 0 rgba(255,255,255,0.2);
+      opacity: 0; animation: field-in .5s .7s ease forwards;
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+    }
+
+    /* Ripple layer */
+    .submit-btn::before {
+      content: ''; position: absolute; inset: 0;
+      background: rgba(255,255,255,0);
+      transition: background .3s;
+    }
+
+    .submit-btn:hover {
+      transform: translateY(-2px);
+      box-shadow:
+        0 0 40px rgba(0,212,255,0.4),
+        0 12px 32px rgba(0,0,0,0.3),
+        inset 0 1px 0 rgba(255,255,255,0.25);
+    }
+
+    .submit-btn:hover::before { background: rgba(255,255,255,0.07); }
+    .submit-btn:active { transform: translateY(0); }
+
+    /* Moving shine streak on button */
+    .btn-shine {
+      position: absolute; top: 0; left: -100%;
+      width: 60%; height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+      transform: skewX(-20deg);
+      animation: btn-sweep 3s ease-in-out infinite;
+    }
+
+    @keyframes btn-sweep {
+      0%   { left: -100%; }
+      50%  { left: 150%; }
+      100% { left: 150%; }
+    }
+
+    .btn-icon { font-size: 16px; }
+
+    /* =============================================
+       DIVIDER
+       ============================================= */
+    .divider {
+      display: flex; align-items: center; gap: 12px;
+      margin: 1.25rem 0;
+      opacity: 0; animation: field-in .5s .75s ease forwards;
+    }
+
+    .divider-line {
+      flex: 1; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(0,212,255,0.15), transparent);
+    }
+
+    .divider-text {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 10px; color: var(--muted);
+      letter-spacing: 2px; text-transform: uppercase;
+    }
+
+    /* =============================================
+       REGISTER LINK
+       ============================================= */
+    .register-row {
+      text-align: center;
+      opacity: 0; animation: field-in .5s .85s ease forwards;
+    }
+
+    .register-text {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px; color: var(--muted);
+      letter-spacing: 1px;
+    }
+
+    .register-link {
+      color: var(--accent);
+      text-decoration: none;
+      transition: opacity .2s;
+      opacity: 0.8;
+    }
+
+    .register-link:hover { opacity: 1; text-decoration: underline; }
+
+    /* =============================================
+       VITALS BAR — bottom of card
+       ============================================= */
+    .vitals-bar {
+      display: flex; gap: 1rem;
+      margin-top: 1.5rem; padding-top: 1.25rem;
+      border-top: 1px solid rgba(0,212,255,0.08);
+      opacity: 0; animation: field-in .5s .95s ease forwards;
+    }
+
+    .vital-chip {
+      display: flex; align-items: center; gap: 6px;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 10px; color: var(--muted);
+      letter-spacing: 1px;
+    }
+
+    .vital-chip .dot {
+      width: 5px; height: 5px; border-radius: 50%;
+    }
+
+    .dot-green { background: var(--safe); box-shadow: 0 0 6px var(--safe); animation: dot-pulse 2s ease-in-out infinite; }
+    .dot-blue  { background: var(--accent); box-shadow: 0 0 6px var(--accent); animation: dot-pulse 2s ease-in-out infinite .6s; }
+
+    @keyframes dot-pulse { 0%,100%{opacity:1}50%{opacity:0.4} }
+
+    /* =============================================
+       SIDE DECORATIONS — floating medical icons
+       ============================================= */
+    .deco-icons {
+      position: fixed; inset: 0; pointer-events: none; z-index: 3;
+    }
+
+    .deco-icon {
+      position: absolute;
+      font-size: 18px;
+      opacity: 0;
+      color: rgba(0,212,255,0.5);
+      animation: deco-float linear infinite;
+    }
+
+    @keyframes deco-float {
+      0%   { transform: translateY(0) rotate(0deg); opacity: 0; }
+      10%  { opacity: 0.15; }
+      90%  { opacity: 0.06; }
+      100% { transform: translateY(-100vh) rotate(360deg); opacity: 0; }
+    }
+
+  </style>
+</head>
+<body>
+
+<!-- Background layers -->
+<div class="bg-base"></div>
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<div class="orb orb-3"></div>
+<div class="grid-overlay"></div>
+<div class="scanlines"></div>
+<div class="deco-icons" id="deco-icons"></div>
+
+<!-- Canvases -->
+<canvas id="particle-canvas"></canvas>
+<canvas id="ecg-bg"></canvas>
+
+<!-- Custom cursor -->
+<div id="cursor"></div>
+<div id="cursor-ring"></div>
+
+<!-- =============================================
+     LOGIN PAGE
+     ============================================= -->
+<div class="page">
+  <div class="login-card">
+    <div class="card-shimmer"></div>
+    <div class="card-shine"></div>
+
+    <div class="card-inner">
+
+      <!-- Logo -->
+      <div class="card-logo">
+        <div class="logo-icon">🩺</div>
+        <div class="logo-name">Med<span>AI</span></div>
+      </div>
+
+      <!-- Title -->
+      <h1 class="card-title">Welcome back.</h1>
+      <div class="card-subtitle">
+        <div class="live-dot"></div>
+        Secure Medical Access Portal
+      </div>
+
+      <!-- Error box -->
+      <div id="login-error" style="display:none;background:rgba(255,77,109,0.08);border:1px solid rgba(255,77,109,0.3);border-radius:10px;padding:12px 16px;font-size:13px;color:#ff8899;margin-bottom:1rem;line-height:1.5"></div>
+
+      <!-- Form -->
+      <form autocomplete="off" onsubmit="return handleLogin(event)">
+
+        <div class="form-group">
+          <label class="field-label" for="username">Username</label>
+          <div class="field-wrap">
+            <span class="field-icon">👤</span>
+            <input
+              class="field-input"
+              type="text"
+              id="username"
+              name="username"
+              placeholder="Enter your username"
+              required
+              autocomplete="username"
+            />
+            <div class="field-glow"></div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="field-label" for="password">Password</label>
+          <div class="field-wrap">
+            <span class="field-icon">🔒</span>
+            <input
+              class="field-input"
+              type="password"
+              id="password"
+              name="password"
+              placeholder="Enter your password"
+              required
+              maxlength="20"
+              aria-required="true"
+              autocomplete="current-password"
+            />
+            <div class="field-glow"></div>
+          </div>
+        </div>
+
+        <!-- Forgot -->
+        <div class="forgot-row">
+          <a href="Forget_Password.html" class="forgot-link" onclick="showPasswordHelp(event)">Forgot password?</a>
+        </div>
+
+        <!-- Submit -->
+        <button type="submit" class="submit-btn">
+          <div class="btn-shine"></div>
+          <span class="btn-icon">⚡</span>
+          <span>Sign In to MedAI</span>
+        </button>
+
+      </form>
+
+      <button type="button" class="submit-btn" onclick="startGoogleLogin()" style="margin-top:12px;background:rgba(255,255,255,0.92);color:#1f2937;border-color:rgba(255,255,255,0.55)">
+        <div class="btn-shine"></div>
+        <img alt="Google" width="18" height="18" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cpath fill='%23FFC107' d='M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z'/%3E%3Cpath fill='%23FF3D00' d='M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 16.318 4 9.656 8.337 6.306 14.691z'/%3E%3Cpath fill='%234CAF50' d='M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238C29.211 35.091 26.715 36 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z'/%3E%3Cpath fill='%231976D2' d='M43.611 20.083H42V20H24v8h11.303a12.04 12.04 0 0 1-4.087 5.571l.003-.002 6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z'/%3E%3C/svg%3E" />
+        <span>Sign in with Google</span>
+      </button>
+
+      <!-- Divider -->
+      <div class="divider">
+        <div class="divider-line"></div>
+        <div class="divider-text">or</div>
+        <div class="divider-line"></div>
+      </div>
+
+      <!-- Register -->
+      <div class="register-row">
+        <span class="register-text">
+          New to MedAI? &nbsp;
+          <a href="register.html" class="register-link">Create an account →</a>
+        </span>
+      </div>
+
+      <!-- Vitals status bar -->
+      <div class="vitals-bar">
+        <div class="vital-chip"><div class="dot dot-green"></div>System Online</div>
+        <div class="vital-chip"><div class="dot dot-blue"></div>Encrypted</div>
+        <div class="vital-chip"><div class="dot dot-green"></div>HIPAA Safe</div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+
+<!-- =============================================
+     JAVASCRIPT — All ReactBit effects
+     ============================================= -->
+<script>
+
+  // ============================================================
+  // REACTBIT 1 — CUSTOM CURSOR
+  // ============================================================
+  const cur = document.getElementById('cursor');
+  const ring = document.getElementById('cursor-ring');
+  let mx=0, my=0, rx=0, ry=0;
+
+  document.addEventListener('mousemove', e => {
+    mx = e.clientX; my = e.clientY;
+    cur.style.left = mx + 'px'; cur.style.top = my + 'px';
+  });
+
+  (function animRing(){
+    rx += (mx-rx) * 0.1;
+    ry += (my-ry) * 0.1;
+    ring.style.left = rx + 'px';
+    ring.style.top  = ry + 'px';
+    requestAnimationFrame(animRing);
+  })();
+
+  // Expand ring on interactive elements
+  document.querySelectorAll('input, button, a').forEach(el => {
+    el.addEventListener('mouseenter', () => {
+      ring.style.width = '56px';
+      ring.style.height = '56px';
+      ring.style.borderColor = 'rgba(0,212,255,0.8)';
+      cur.style.width = '6px';
+      cur.style.height = '6px';
+    });
+    el.addEventListener('mouseleave', () => {
+      ring.style.width = '36px';
+      ring.style.height = '36px';
+      ring.style.borderColor = 'rgba(0,212,255,0.5)';
+      cur.style.width = '10px';
+      cur.style.height = '10px';
+    });
+  });
+
+
+  // ============================================================
+  // REACTBIT 2 — MEDICAL PARTICLE CANVAS
+  // (cells, DNA hexagons, plus crosses)
+  // ============================================================
+  const pc = document.getElementById('particle-canvas');
+  const px = pc.getContext('2d');
+
+  function resizePC() {
+    pc.width  = window.innerWidth;
+    pc.height = window.innerHeight;
+  }
+  resizePC();
+  window.addEventListener('resize', resizePC);
+
+  class MedParticle {
+    constructor() { this.reset(true); }
+    reset(init) {
+      this.x  = Math.random() * pc.width;
+      this.y  = init ? Math.random() * pc.height : pc.height + 20;
+      this.vx = (Math.random() - 0.5) * 0.3;
+      this.vy = -(Math.random() * 0.5 + 0.2);
+      this.size = Math.random() * 10 + 4;
+      this.type = ['circle','cross','hex','ring'][Math.floor(Math.random()*4)];
+      this.color = Math.random() > 0.5 ? '0,212,255' : '0,255,136';
+      this.alpha = Math.random() * 0.5 + 0.1;
+      this.rot   = Math.random() * Math.PI * 2;
+      this.rotV  = (Math.random() - 0.5) * 0.02;
+      this.pulse = Math.random() * Math.PI * 2;
+      this.pspeed= Math.random() * 0.02 + 0.01;
+    }
+    update() {
+      this.x += this.vx;
+      this.y += this.vy;
+      this.rot += this.rotV;
+      this.pulse += this.pspeed;
+      if (this.y < -20) this.reset(false);
+    }
+    draw() {
+      const a = this.alpha * (0.6 + 0.4 * Math.sin(this.pulse));
+      px.save();
+      px.translate(this.x, this.y);
+      px.rotate(this.rot);
+      px.strokeStyle = `rgba(${this.color},${a})`;
+      px.lineWidth = 0.8;
+      px.beginPath();
+
+      if (this.type === 'circle') {
+        px.arc(0, 0, this.size, 0, Math.PI * 2);
+      } else if (this.type === 'ring') {
+        px.arc(0, 0, this.size, 0, Math.PI * 2);
+        px.stroke();
+        px.beginPath();
+        px.arc(0, 0, this.size * 0.6, 0, Math.PI * 2);
+      } else if (this.type === 'cross') {
+        const s = this.size;
+        px.moveTo(-s, 0); px.lineTo(s, 0);
+        px.moveTo(0, -s); px.lineTo(0, s);
+      } else {
+        // hexagon
+        for (let i = 0; i < 6; i++) {
+          const a2 = (Math.PI/3) * i;
+          const hx = this.size * Math.cos(a2);
+          const hy = this.size * Math.sin(a2);
+          i === 0 ? px.moveTo(hx, hy) : px.lineTo(hx, hy);
+        }
+        px.closePath();
+      }
+      px.stroke();
+      px.restore();
+    }
+  }
+
+  const particles = Array.from({length: 60}, () => new MedParticle());
+
+  function animParticles() {
+    px.clearRect(0, 0, pc.width, pc.height);
+    particles.forEach(p => { p.update(); p.draw(); });
+    requestAnimationFrame(animParticles);
+  }
+  animParticles();
+
+
+  // ============================================================
+  // REACTBIT 3 — ECG HEARTBEAT BACKGROUND
+  // ============================================================
+  const ecgC = document.getElementById('ecg-bg');
+  const ecgX = ecgC.getContext('2d');
+
+  function resizeEcg() {
+    ecgC.width  = window.innerWidth;
+    ecgC.height = 100;
+  }
+  resizeEcg();
+  window.addEventListener('resize', resizeEcg);
+
+  let ecgOff = 0;
+  const ecgSpd = 2.5;
+
+  function ecgVal(x) {
+    const c = 200, p = x % c;
+    if (p < 20)  return 0;
+    if (p < 35)  return -8;
+    if (p < 45)  return 70;
+    if (p < 55)  return -8;
+    if (p < 62)  return -25;
+    if (p < 67)  return 100;
+    if (p < 75)  return -35;
+    if (p < 85)  return -12;
+    if (p < 110) return 22;
+    if (p < 130) return 6;
+    return 0;
+  }
+
+  let ecgFrame = 0;
+  function animEcg() {
+    ecgX.clearRect(0, 0, ecgC.width, ecgC.height);
+    const mid = 60;
+    ecgX.beginPath();
+    ecgX.strokeStyle = 'rgba(0,255,136,1)';
+    ecgX.lineWidth = 1.5;
+    ecgX.shadowColor = 'rgba(0,255,136,0.8)';
+    ecgX.shadowBlur = 8;
+
+    for (let x = 0; x < ecgC.width; x++) {
+      const v = ecgVal(x + ecgFrame * ecgSpd);
+      const y = mid - v * 0.3;
+      x === 0 ? ecgX.moveTo(x, y) : ecgX.lineTo(x, y);
+    }
+    ecgX.stroke();
+    ecgX.shadowBlur = 0;
+
+    // Erase front segment for moving effect
+    const erase = (ecgFrame * ecgSpd) % ecgC.width;
+    const grad  = ecgX.createLinearGradient(erase - 150, 0, erase, 0);
+    grad.addColorStop(0, 'rgba(2,12,20,0.9)');
+    grad.addColorStop(1, 'rgba(2,12,20,0)');
+    ecgX.fillStyle = grad;
+    ecgX.fillRect(Math.max(0, erase - 150), 0, 150, ecgC.height);
+
+    ecgFrame++;
+    requestAnimationFrame(animEcg);
+  }
+  animEcg();
+
+
+  // ============================================================
+  // REACTBIT 4 — FLOATING MEDICAL DECO ICONS
+  // ============================================================
+  const decoWrap = document.getElementById('deco-icons');
+  const decoSyms = ['✚','⚕','🧬','💊','🔬','🩻','❤','⚡','🧪','🩺'];
+
+  function spawnDeco() {
+    const el = document.createElement('div');
+    el.className = 'deco-icon';
+    el.textContent = decoSyms[Math.floor(Math.random() * decoSyms.length)];
+    const dur  = 12 + Math.random() * 10;
+    const size = 10 + Math.random() * 14;
+    el.style.cssText = `
+      left: ${Math.random() * 100}vw;
+      bottom: -40px;
+      font-size: ${size}px;
+      animation-duration: ${dur}s;
+      animation-delay: ${Math.random() * 3}s;
+    `;
+    decoWrap.appendChild(el);
+    setTimeout(() => el.remove(), (dur + 3) * 1000);
+  }
+
+  for (let i = 0; i < 14; i++) spawnDeco();
+  setInterval(spawnDeco, 2500);
+
+
+  // ============================================================
+  // REACTBIT 5 — CARD TILT ON MOUSE MOVE (3D Parallax)
+  // ============================================================
+  const card = document.querySelector('.login-card');
+
+  document.addEventListener('mousemove', e => {
+    const cx = window.innerWidth  / 2;
+    const cy = window.innerHeight / 2;
+    const dx = (e.clientX - cx) / cx;
+    const dy = (e.clientY - cy) / cy;
+    const tiltX = dy * 6;
+    const tiltY = dx * -6;
+    card.style.transform = `perspective(900px) rotateX(${tiltX}deg) rotateY(${tiltY}deg) translateZ(0)`;
+  });
+
+  document.addEventListener('mouseleave', () => {
+    card.style.transform = 'perspective(900px) rotateX(0) rotateY(0)';
+  });
+
+
+  // ============================================================
+  // REACTBIT 6 — BUTTON RIPPLE CLICK EFFECT
+  // ============================================================
+  document.querySelector('.submit-btn').addEventListener('click', function(e) {
+    const rect   = this.getBoundingClientRect();
+    const ripple = document.createElement('span');
+    const size   = Math.max(rect.width, rect.height);
+    ripple.style.cssText = `
+      position:absolute;
+      width:${size}px;height:${size}px;
+      left:${e.clientX - rect.left - size/2}px;
+      top:${e.clientY  - rect.top  - size/2}px;
+      background:rgba(255,255,255,0.15);
+      border-radius:50%;
+      transform:scale(0);
+      animation:ripple-anim .6s ease-out forwards;
+      pointer-events:none;
+    `;
+    this.appendChild(ripple);
+    setTimeout(() => ripple.remove(), 700);
+  });
+
+  const style = document.createElement('style');
+  style.textContent = '@keyframes ripple-anim{to{transform:scale(3);opacity:0}}';
+  document.head.appendChild(style);
+
+  // ============================================================
+  // LOGIN WITH LOCALSTORAGE AUTH
+  // ============================================================
+  // Default backend URL should match server PORT in server/.env.
+  const API_BASE_URL = localStorage.getItem('medai_api_base_url') || 'http://localhost:5500';
+  const ADMIN_USERNAME = 'Mangu';
+  const ADMIN_PASSWORD = 'Your-momma';
+
+  function startGoogleLogin(){
+    window.location.href = `${API_BASE_URL}/api/auth/google`;
+  }
+
+  function getAdminCredentials(){
+    try{
+      return JSON.parse(localStorage.getItem('medai_admin_creds') || 'null') || { username: ADMIN_USERNAME, password: ADMIN_PASSWORD };
+    }catch(e){
+      return { username: ADMIN_USERNAME, password: ADMIN_PASSWORD };
+    }
+  }
+
+  function showPasswordHelp(e){
+    e.preventDefault();
+    const errorBox = document.getElementById('login-error');
+    const usernameVal = document.getElementById('username').value.trim().toLowerCase();
+    const users = JSON.parse(localStorage.getItem('medai_users') || '[]');
+    const user = users.find(u =>
+      (u.username && u.username.toLowerCase() === usernameVal) ||
+      (u.email && u.email.toLowerCase() === usernameVal)
+    );
+    errorBox.style.display = 'block';
+    if(user){
+      errorBox.textContent = 'Password reset needs backend email later. For now, sign in if you remember it or ask the developer to reset the local test account.';
+    }else{
+      errorBox.textContent = 'Enter your username or email first. Backend email recovery will be added later.';
+    }
+  }
+
+  async function handleLogin(e){
+    e.preventDefault();
+    const errorBox = document.getElementById('login-error');
+    const usernameVal = document.getElementById('username').value.trim();
+    const passwordVal = document.getElementById('password').value;
+
+    if(!usernameVal || !passwordVal){
+      errorBox.textContent = 'Please enter your username and password.';
+      errorBox.style.display = 'block';
+      return false;
+    }
+
+    try{
+      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ usernameOrEmail: usernameVal, password: passwordVal })
+      });
+      const data = await response.json().catch(()=>({}));
+      if(response.ok && data.token){
+        localStorage.setItem('medai_token', data.token);
+        localStorage.setItem('medai_current_user', JSON.stringify(data.user || {}));
+        if(data.user && data.user.role === 'ADMIN'){
+          sessionStorage.setItem('medai_admin_session','active');
+          sessionStorage.setItem('medai_admin_started_at', new Date().toISOString());
+          sessionStorage.setItem('medai_admin_name', data.user.username);
+          if(window.medaiShowLoader) window.medaiShowLoader('Opening admin console');
+          setTimeout(()=>{ window.location.href = 'admin.html'; }, 420);
+        } else {
+          if(window.medaiShowLoader) window.medaiShowLoader('Opening dashboard');
+          setTimeout(()=>{ window.location.href = 'dashboard.html'; }, 420);
+        }
+        return false;
+      }
+      throw new Error(data.message || 'Login failed. Please check your details.');
+    }catch(apiError){
+      errorBox.textContent = apiError.message || 'Login failed. Please check backend connection.';
+      errorBox.style.display = 'block';
+      return false;
+    }
+  }
+
+</script>
+</body>
+</html>

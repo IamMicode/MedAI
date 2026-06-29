@@ -1,0 +1,92 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+model User {
+  id              String              @id @default(cuid())
+  firstname       String?
+  lastname        String?
+  username        String              @unique
+  email           String              @unique
+  password        String?
+  googleId        String?             @unique
+  authProvider    String?
+  avatarUrl       String?
+  emailVerified   Boolean             @default(false)
+  role            Role                @default(USER)
+  plan            String              @default("Free")
+  dob             String?
+  gender          String?
+  height          String?
+  weight          String?
+  bloodGroup      String?
+  country         String?
+  phone           String?
+  conditions      String[]            @default([])
+  otherConditions String?
+  allergies       String[]            @default([])
+  medications     String?
+  smokes          String?
+  alcohol         String?
+  exercises       String?
+  emergName       String?
+  emergPhone      String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  triageRecords   TriageRecord[]
+  achievements    Achievement[]
+  resetCodes      PasswordResetCode[]
+}
+
+model TriageRecord {
+  id          String   @id @default(cuid())
+  userId      String
+  symptoms    String
+  triageLevel String
+  triageTitle String?
+  summary     String?
+  confidence  Float?
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+model Achievement {
+  id            String   @id @default(cuid())
+  userId        String
+  achievementId String
+  unlockedAt    DateTime @default(now())
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, achievementId])
+}
+
+model WaitlistEmail {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  createdAt DateTime @default(now())
+}
+
+model PasswordResetCode {
+  id        String   @id @default(cuid())
+  userId    String
+  codeHash  String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}

@@ -1,0 +1,1725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>MedAI — Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&family=Share+Tech+Mono&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+<script>
+  (function(){
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+    if(token){
+      localStorage.setItem('medai_token', token);
+      params.delete('token');
+      const cleanUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}${window.location.hash}`;
+      window.history.replaceState({}, document.title, cleanUrl);
+    }
+  })();
+</script>
+<script src="medai-transition.js" defer></script>
+<style>
+/* =============================================
+   RESET & VARIABLES
+   ============================================= */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  --bg:        #030b14;
+  --bg2:       #060f1c;
+  --surface:   #0a1828;
+  --surface2:  #0e2038;
+  --surface3:  #122540;
+  --border:    rgba(0,212,255,0.08);
+  --border2:   rgba(0,212,255,0.16);
+  --accent:    #00d4ff;
+  --accent2:   #0066cc;
+  --safe:      #00ff88;
+  --danger:    #ff4d6d;
+  --warning:   #ffaa33;
+  --purple:    #a855f7;
+  --pink:      #ec4899;
+  --text:      #ddeeff;
+  --muted:     rgba(150,200,230,0.45);
+  --sidebar-w: 260px;
+  --sidebar-w-collapsed: 68px;
+  --nav-h:     60px;
+  --mono:      'Share Tech Mono',monospace;
+  --head:      'Syne',sans-serif;
+  --body:      'DM Sans',sans-serif;
+  --radius:    16px;
+  --radius-sm: 10px;
+}
+
+html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--text);overflow:hidden}
+
+/* =============================================
+   BACKGROUND EFFECTS
+   ============================================= */
+#particle-canvas,#ecg-canvas{position:fixed;pointer-events:none;z-index:0}
+#particle-canvas{inset:0;opacity:.1}
+#ecg-canvas{bottom:0;left:0;width:100%;height:80px;opacity:.12}
+
+.grid-bg{
+  position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:
+    linear-gradient(rgba(0,212,255,0.02) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(0,212,255,0.02) 1px,transparent 1px);
+  background-size:40px 40px;
+}
+
+.scanlines{
+  position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.04) 2px,rgba(0,0,0,0.04) 4px);
+}
+
+.orb{position:fixed;border-radius:50%;filter:blur(100px);pointer-events:none;z-index:0}
+.orb-1{width:600px;height:600px;top:-200px;right:-200px;background:radial-gradient(circle,rgba(0,180,255,0.1),transparent 70%);animation:orb-a 15s ease-in-out infinite}
+.orb-2{width:500px;height:500px;bottom:-150px;left:-100px;background:radial-gradient(circle,rgba(0,255,136,0.07),transparent 70%);animation:orb-b 20s ease-in-out infinite}
+@keyframes orb-a{0%,100%{transform:translate(0,0)}50%{transform:translate(-60px,50px)}}
+@keyframes orb-b{0%,100%{transform:translate(0,0)}50%{transform:translate(60px,-40px)}}
+
+/* CURSOR */
+#cursor{position:fixed;width:10px;height:10px;border-radius:50%;background:var(--accent);pointer-events:none;z-index:99999;transform:translate(-50%,-50%);mix-blend-mode:screen;transition:width .15s,height .15s}
+#cursor-ring{position:fixed;width:36px;height:36px;border-radius:50%;border:1px solid rgba(0,212,255,0.5);pointer-events:none;z-index:99998;transform:translate(-50%,-50%);transition:width .25s,height .25s}
+
+/* =============================================
+   LAYOUT SHELL
+   ============================================= */
+.shell{position:relative;z-index:10;display:flex;height:100vh;overflow:hidden}
+
+/* =============================================
+   SIDEBAR
+   ============================================= */
+.sidebar{
+  width:var(--sidebar-w);
+  min-width:var(--sidebar-w);
+  height:100vh;
+  background:rgba(6,15,28,0.85);
+  backdrop-filter:blur(24px);
+  border-right:1px solid var(--border);
+  display:flex;flex-direction:column;
+  transition:width .3s cubic-bezier(.4,0,.2,1),min-width .3s;
+  overflow:visible;position:relative;z-index:50;
+  flex-shrink:0;
+}
+
+.sidebar.collapsed{width:var(--sidebar-w-collapsed);min-width:var(--sidebar-w-collapsed)}
+
+/* Sidebar top glow */
+.sidebar::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(0,212,255,0.3),transparent);
+}
+
+/* Logo area */
+.sb-logo{
+  display:flex;align-items:center;gap:12px;
+  padding:18px 16px;border-bottom:1px solid var(--border);
+  min-height:64px;flex-shrink:0;
+}
+
+.sb-logo-icon{
+  width:36px;height:36px;border-radius:10px;flex-shrink:0;
+  background:linear-gradient(135deg,#00d4ff,#0044cc);
+  display:flex;align-items:center;justify-content:center;font-size:18px;
+  box-shadow:0 0 20px rgba(0,212,255,0.3);
+  animation:logo-pulse 3s ease-in-out infinite;
+}
+@keyframes logo-pulse{0%,100%{box-shadow:0 0 20px rgba(0,212,255,0.3)}50%{box-shadow:0 0 35px rgba(0,212,255,0.5)}}
+
+.sb-logo-text{
+  font-family:var(--head);font-size:18px;font-weight:800;
+  white-space:nowrap;overflow:hidden;
+  transition:opacity .2s,width .3s;
+}
+.sb-logo-text span{color:var(--accent)}
+.sidebar.collapsed .sb-logo-text{opacity:0;width:0}
+
+/* Toggle button */
+.sb-toggle{
+  position:fixed;top:18px;left:calc(var(--sidebar-w) - 14px);
+  width:28px;height:28px;border-radius:50%;
+  background:var(--surface2);border:1px solid var(--border2);
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;font-size:12px;color:var(--accent);
+  transition:all .3s cubic-bezier(.4,0,.2,1),background .2s;z-index:200;box-shadow:0 2px 10px rgba(0,0,0,0.5);
+}
+.sb-toggle:hover{background:var(--accent);color:#000}
+.sidebar.collapsed .sb-toggle{transform:rotate(180deg)}
+
+/* Nav sections */
+.sb-nav{flex:1;overflow-y:auto;overflow-x:hidden;padding:8px 0}
+.sb-nav::-webkit-scrollbar{width:3px}
+.sb-nav::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+
+.sb-section-label{
+  font-family:var(--mono);font-size:9px;color:var(--muted);
+  letter-spacing:2.5px;text-transform:uppercase;
+  padding:14px 16px 6px;white-space:nowrap;
+  transition:opacity .2s;
+}
+.sidebar.collapsed .sb-section-label{opacity:0;height:0;padding:0;overflow:hidden}
+
+.sb-item{
+  display:flex;align-items:center;gap:12px;
+  padding:10px 16px;cursor:pointer;
+  border-left:3px solid transparent;
+  transition:all .2s;position:relative;
+  white-space:nowrap;overflow:hidden;
+  border-radius:0 8px 8px 0;margin:1px 8px 1px 0;
+}
+
+.sb-item:hover{background:rgba(0,212,255,0.06);border-left-color:rgba(0,212,255,0.3)}
+.sb-item.active{background:rgba(0,212,255,0.1);border-left-color:var(--accent)}
+.sb-item.active .sb-item-label{color:var(--accent)}
+
+.sb-item-icon{
+  width:36px;height:36px;border-radius:10px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:16px;transition:all .2s;
+  background:rgba(0,212,255,0.05);
+}
+
+.sb-item.active .sb-item-icon{background:rgba(0,212,255,0.15)}
+.sb-item:hover .sb-item-icon{transform:scale(1.08)}
+
+.sb-item-label{
+  font-family:var(--body);font-size:13.5px;font-weight:500;
+  color:var(--muted);transition:color .2s,opacity .2s;
+  flex:1;
+}
+.sidebar.collapsed .sb-item-label{opacity:0;width:0}
+
+.sb-badge{
+  font-family:var(--mono);font-size:9px;color:#000;
+  background:var(--accent);border-radius:10px;padding:2px 7px;
+  letter-spacing:.5px;flex-shrink:0;
+  transition:opacity .2s;
+}
+.sidebar.collapsed .sb-badge{opacity:0}
+
+/* Sidebar bottom user area */
+.sb-user{
+  padding:12px 16px;border-top:1px solid var(--border);
+  display:flex;align-items:center;gap:12px;flex-shrink:0;
+}
+
+.sb-avatar{
+  width:36px;height:36px;border-radius:50%;flex-shrink:0;
+  background:linear-gradient(135deg,var(--accent),var(--safe));
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--head);font-size:14px;font-weight:700;color:#000;
+  border:2px solid rgba(0,212,255,0.3);
+}
+
+.sb-user-info{overflow:hidden;transition:opacity .2s,width .3s}
+.sidebar.collapsed .sb-user-info{opacity:0;width:0}
+.sb-user-name{font-size:13px;font-weight:600;white-space:nowrap}
+.sb-user-plan{font-family:var(--mono);font-size:10px;color:var(--warning);letter-spacing:1px}
+
+/* =============================================
+   MAIN CONTENT
+   ============================================= */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+
+/* TOP NAV BAR */
+.topbar{
+  height:var(--nav-h);flex-shrink:0;
+  background:rgba(3,11,20,0.8);backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 2rem;gap:1rem;
+  position:relative;z-index:40;
+}
+
+.topbar-left{display:flex;align-items:center;gap:1rem}
+.topbar-title{font-family:var(--head);font-size:16px;font-weight:700;white-space:nowrap}
+.topbar-breadcrumb{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1.5px}
+
+.topbar-right{display:flex;align-items:center;gap:12px}
+
+.topbar-btn{
+  width:36px;height:36px;border-radius:10px;
+  background:rgba(0,212,255,0.05);border:1px solid var(--border);
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;font-size:16px;transition:all .2s;position:relative;
+}
+.topbar-btn:hover{border-color:var(--accent);background:rgba(0,212,255,0.1)}
+
+.notif-dot{
+  position:absolute;top:6px;right:6px;
+  width:7px;height:7px;border-radius:50%;
+  background:var(--danger);border:1.5px solid var(--bg);
+  animation:notif-pulse 2s ease-in-out infinite;
+}
+@keyframes notif-pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,77,109,0.4)}50%{box-shadow:0 0 0 4px rgba(255,77,109,0)}}
+.notif-panel{position:absolute;right:5rem;top:54px;width:320px;z-index:120;background:rgba(10,24,40,.96);border:1px solid var(--border2);border-radius:14px;box-shadow:0 24px 70px rgba(0,0,0,.45);backdrop-filter:blur(20px);display:none;overflow:hidden}
+.notif-panel.open{display:block;animation:panel-in .25s ease forwards}
+.notif-head{padding:14px 16px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:2px;text-transform:uppercase}
+.notif-item{padding:12px 16px;border-bottom:1px solid var(--border);font-size:13px;line-height:1.5;color:var(--text)}
+.notif-item:last-child{border-bottom:none}
+.notif-time{font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px;margin-top:4px}
+.search-pop{position:absolute;right:8.2rem;top:54px;width:360px;max-height:360px;overflow:auto;z-index:121;background:rgba(10,24,40,.96);border:1px solid var(--border2);border-radius:14px;box-shadow:0 24px 70px rgba(0,0,0,.45);display:none}
+.search-pop.open{display:block}
+.search-row{padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer}
+.search-row:hover{background:rgba(0,212,255,.06)}
+.search-title{font-size:13px;font-weight:700;margin-bottom:3px}
+.search-meta{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.8px}
+
+.topbar-search{
+  display:flex;align-items:center;gap:8px;
+  background:rgba(0,212,255,0.04);border:1px solid var(--border);
+  border-radius:8px;padding:6px 14px;
+  font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:1px;
+  cursor:pointer;transition:border-color .2s;
+  white-space:nowrap;
+}
+.topbar-search:hover{border-color:var(--accent)}
+.topbar-search input{background:transparent;border:none;outline:none;color:var(--text);font-family:var(--mono);font-size:11px;width:160px}
+.topbar-search input::placeholder{color:var(--muted)}
+
+.live-indicator{
+  display:flex;align-items:center;gap:6px;
+  font-family:var(--mono);font-size:10px;color:var(--safe);letter-spacing:1px;
+}
+.live-dot-anim{
+  width:7px;height:7px;border-radius:50%;background:var(--safe);
+  animation:live-pulse 1.5s ease-in-out infinite;
+}
+@keyframes live-pulse{0%,100%{box-shadow:0 0 0 0 rgba(0,255,136,0.4)}50%{box-shadow:0 0 0 5px rgba(0,255,136,0)}}
+
+/* CONTENT AREA */
+.content{flex:1;overflow-y:auto;overflow-x:hidden;padding:1.75rem 2rem;position:relative}
+.content::-webkit-scrollbar{width:4px}
+.content::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+
+/* Tab panels */
+.tab-panel{display:none;animation:panel-in .4s cubic-bezier(.2,.8,.2,1) forwards}
+.tab-panel.active{display:block}
+@keyframes panel-in{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+
+/* =============================================
+   REUSABLE COMPONENTS
+   ============================================= */
+
+/* Glass card */
+.glass-card{
+  background:rgba(10,24,40,0.7);
+  backdrop-filter:blur(16px);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  transition:border-color .3s,transform .3s,box-shadow .3s;
+  position:relative;overflow:hidden;
+}
+.glass-card::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(0,212,255,0.2),transparent);
+}
+.glass-card:hover{border-color:var(--border2);transform:translateY(-2px);box-shadow:0 16px 40px rgba(0,0,0,0.3),0 0 0 1px rgba(0,212,255,0.05)}
+
+/* Section heading */
+.sec-label{font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:3px;text-transform:uppercase;margin-bottom:.4rem;display:flex;align-items:center;gap:8px}
+.sec-label::before{content:'';display:block;width:16px;height:1px;background:var(--accent)}
+.sec-title{font-family:var(--head);font-size:1.6rem;font-weight:800;letter-spacing:-0.5px;margin-bottom:.5rem}
+.sec-sub{font-size:14px;color:var(--muted);line-height:1.6;margin-bottom:1.5rem}
+
+/* Gradient text */
+.grad{background:linear-gradient(135deg,#00d4ff,#00ff88);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+
+/* Grid layouts */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem}
+.grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem}
+@media(max-width:900px){.grid-4{grid-template-columns:1fr 1fr}.grid-3{grid-template-columns:1fr 1fr}}
+@media(max-width:600px){.grid-2,.grid-3,.grid-4{grid-template-columns:1fr}}
+
+/* Stat card */
+.stat-card{padding:1.25rem;display:flex;flex-direction:column;gap:.5rem}
+.stat-icon-box{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.stat-value{font-family:var(--head);font-size:2rem;font-weight:800;line-height:1}
+.stat-label{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase}
+.stat-change{font-family:var(--mono);font-size:10px;letter-spacing:1px;display:flex;align-items:center;gap:4px}
+.stat-change.up{color:var(--safe)}.stat-change.down{color:var(--danger)}
+
+/* Skill/progress bar */
+.prog-bar{height:3px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden;margin-top:6px}
+.prog-fill{height:100%;border-radius:2px;transition:width 1.2s cubic-bezier(.4,0,.2,1)}
+
+/* Badge */
+.badge{display:inline-flex;align-items:center;gap:4px;font-family:var(--mono);font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:3px 10px;border-radius:20px;border:1px solid}
+.badge-green{color:var(--safe);border-color:rgba(0,255,136,0.3);background:rgba(0,255,136,0.08)}
+.badge-blue{color:var(--accent);border-color:rgba(0,212,255,0.3);background:rgba(0,212,255,0.08)}
+.badge-warn{color:var(--warning);border-color:rgba(255,170,51,0.3);background:rgba(255,170,51,0.08)}
+.badge-danger{color:var(--danger);border-color:rgba(255,77,109,0.3);background:rgba(255,77,109,0.08)}
+.badge-purple{color:var(--purple);border-color:rgba(168,85,247,0.3);background:rgba(168,85,247,0.08)}
+
+/* Button */
+.btn{font-family:var(--mono);font-size:11px;letter-spacing:2px;text-transform:uppercase;padding:10px 22px;border:1px solid;border-radius:8px;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:8px;text-decoration:none}
+.btn-primary{background:linear-gradient(135deg,rgba(0,212,255,0.9),rgba(0,100,200,0.9));border-color:rgba(0,212,255,0.4);color:#001a2e}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,212,255,0.3)}
+.btn-outline{background:transparent;border-color:var(--border2);color:var(--muted)}
+.btn-outline:hover{border-color:var(--accent);color:var(--accent)}
+.btn-danger{background:rgba(255,77,109,0.1);border-color:rgba(255,77,109,0.3);color:var(--danger)}
+.btn-danger:hover{background:rgba(255,77,109,0.2)}
+
+/* AI Chat interface */
+.chat-wrap{display:flex;flex-direction:column;height:calc(100vh - var(--nav-h) - 3.5rem);max-height:620px}
+.chat-messages{flex:1;overflow-y:auto;padding:1rem;display:flex;flex-direction:column;gap:.75rem}
+.chat-messages::-webkit-scrollbar{width:3px}
+.chat-messages::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+.chat-bubble{max-width:80%;padding:12px 16px;border-radius:16px;font-size:14px;line-height:1.6;animation:bubble-in .3s ease}
+@keyframes bubble-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.chat-bubble.ai{background:rgba(0,212,255,0.06);border:1px solid rgba(0,212,255,0.1);border-radius:16px 16px 16px 4px;align-self:flex-start}
+.chat-bubble.user{background:rgba(0,212,255,0.12);border:1px solid rgba(0,212,255,0.2);border-radius:16px 16px 4px 16px;align-self:flex-end}
+.chat-bubble .ai-label{font-family:var(--mono);font-size:9px;color:var(--accent);letter-spacing:2px;margin-bottom:4px}
+.chat-input-row{display:flex;gap:10px;padding:1rem;border-top:1px solid var(--border)}
+.chat-input{flex:1;background:rgba(0,212,255,0.04);border:1px solid var(--border2);border-radius:10px;color:var(--text);font-family:var(--body);font-size:14px;padding:10px 16px;outline:none;transition:border-color .2s}
+.chat-input:focus{border-color:var(--accent)}
+.chat-send-btn{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:#000;font-size:16px;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.chat-send-btn:hover{transform:scale(1.08);box-shadow:0 6px 20px rgba(0,212,255,0.3)}
+
+/* Typing dots */
+.typing-dots{display:flex;gap:4px;padding:4px 0}
+.typing-dots span{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:dot-bounce .8s ease-in-out infinite}
+.typing-dots span:nth-child(2){animation-delay:.15s}
+.typing-dots span:nth-child(3){animation-delay:.3s}
+@keyframes dot-bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-8px)}}
+
+/* Achievement card */
+.ach-card{padding:1.25rem;display:flex;align-items:center;gap:14px}
+.ach-icon{width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;position:relative}
+.ach-icon.locked{filter:grayscale(1);opacity:.4}
+.ach-icon.unlocked::after{content:'';position:absolute;inset:-3px;border-radius:17px;border:1px solid rgba(0,212,255,0.3);animation:ach-shine 2s ease-in-out infinite}
+@keyframes ach-shine{0%,100%{opacity:1}50%{opacity:.4}}
+.ach-name{font-family:var(--head);font-size:14px;font-weight:700;margin-bottom:2px}
+.ach-desc{font-size:12px;color:var(--muted);line-height:1.4}
+
+/* Vital row */
+.vital-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)}
+.vital-row:last-child{border-bottom:none}
+.vital-label{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:1px;display:flex;align-items:center;gap:8px}
+.vital-val{font-family:var(--head);font-size:20px;font-weight:700}
+.vital-unit{font-family:var(--mono);font-size:10px;color:var(--muted);margin-left:3px}
+
+/* Health feature cards */
+.feature-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1.25rem}
+.feature-card{padding:1.1rem;min-height:150px;display:flex;flex-direction:column;gap:.75rem}
+.feature-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.feature-icon{width:40px;height:40px;border-radius:12px;background:rgba(0,212,255,0.08);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:12px;color:var(--accent);font-weight:700}
+.feature-title{font-family:var(--head);font-size:15px;font-weight:800;line-height:1.2}
+.feature-copy{font-size:12px;color:var(--muted);line-height:1.55;flex:1}
+.tool-input,.tool-select,.tool-textarea{width:100%;background:rgba(0,212,255,0.04);border:1px solid var(--border2);border-radius:10px;color:var(--text);font-family:var(--body);font-size:13px;padding:10px 12px;outline:none}
+.tool-textarea{min-height:94px;resize:vertical;line-height:1.55}
+.tool-input:focus,.tool-select:focus,.tool-textarea:focus{border-color:var(--accent)}
+.mini-form{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}
+.mini-result{margin-top:.75rem;padding:.8rem;border:1px solid var(--border);border-radius:10px;background:rgba(0,0,0,0.22);font-size:12px;color:var(--muted);line-height:1.55}
+.tracker-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:.75rem;border:1px solid var(--border);border-radius:10px;background:rgba(0,212,255,0.035)}
+.tracker-stepper{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:13px}
+.round-btn{width:30px;height:30px;border-radius:9px;border:1px solid var(--border2);background:rgba(0,212,255,0.06);color:var(--accent);cursor:pointer;font-family:var(--mono);font-size:16px;display:flex;align-items:center;justify-content:center}
+.timeline{display:flex;flex-direction:column;gap:.75rem}
+.timeline-item{display:grid;grid-template-columns:86px 1fr auto;gap:12px;align-items:center;padding:.85rem 1rem;border:1px solid var(--border);border-radius:12px;background:rgba(0,212,255,0.035)}
+.timeline-time{font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:1px}
+.timeline-title{font-size:13px;font-weight:700;margin-bottom:2px}
+.timeline-meta{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.8px}
+.camera-preview{height:180px;border-radius:14px;border:1px dashed rgba(255,77,109,0.35);background:linear-gradient(135deg,rgba(255,77,109,0.08),rgba(0,212,255,0.05));display:flex;align-items:center;justify-content:center;text-align:center;padding:1rem;color:var(--muted);font-size:13px;line-height:1.6}
+.camera-preview video{width:100%;height:100%;object-fit:cover;border-radius:12px;filter:saturate(1.2) contrast(1.05)}
+.scanner-meter{height:42px;border-radius:10px;border:1px solid var(--border);background:rgba(0,0,0,.2);overflow:hidden;margin-top:.75rem}
+.scanner-meter canvas{width:100%;height:100%;display:block}
+.score-pill{display:inline-flex;align-items:center;gap:6px;border-radius:20px;border:1px solid var(--border2);padding:5px 10px;font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:1px;background:rgba(0,212,255,0.06)}
+.profile-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:1rem}
+.profile-actions{display:flex;gap:.75rem;flex-wrap:wrap;margin-top:1rem}
+.profile-shell{padding:0;overflow:hidden}
+.profile-hero{display:grid;grid-template-columns:auto 1fr minmax(220px,300px);gap:1.25rem;align-items:center;padding:1.4rem;border-bottom:1px solid var(--border);background:linear-gradient(135deg,rgba(0,212,255,.12),rgba(0,255,136,.06) 48%,rgba(255,77,109,.08))}
+.profile-avatar-stage{display:flex;flex-direction:column;align-items:center;gap:.75rem}
+.profile-avatar-preview{width:108px;height:108px;border:1px solid rgba(0,212,255,.42);border-radius:26px;background:linear-gradient(135deg,var(--accent),var(--safe));box-shadow:0 18px 46px rgba(0,212,255,.18);display:flex;align-items:center;justify-content:center;color:#00111d;font-family:var(--head);font-size:42px;font-weight:900;cursor:pointer;background-size:cover;background-position:center;overflow:hidden}
+.profile-avatar-preview.has-photo{color:transparent;text-shadow:none}
+.profile-photo-input{display:none}
+.profile-upload-actions{display:flex;gap:.55rem;flex-wrap:wrap;justify-content:center}
+.profile-name{font-family:var(--head);font-size:28px;font-weight:900;line-height:1.1;margin:.15rem 0 .5rem}
+.profile-meta{font-size:13px;color:var(--muted);line-height:1.65;max-width:620px}
+.profile-health-strip{display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.85rem}
+.profile-chip{border:1px solid var(--border2);border-radius:999px;background:rgba(0,212,255,.055);padding:6px 10px;font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.9px}
+.profile-chip strong{color:var(--text);font-weight:700}
+.profile-highlight-grid{display:grid;grid-template-columns:1fr;gap:.65rem}
+.profile-highlight{border:1px solid var(--border);border-radius:12px;background:rgba(0,0,0,.18);padding:.8rem}
+.profile-highlight span{display:block;font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1.4px;text-transform:uppercase;margin-bottom:.25rem}
+.profile-highlight strong{font-family:var(--head);font-size:20px;color:var(--accent)}
+.profile-body{padding:1.4rem}
+.profile-section-title{font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:2px;text-transform:uppercase;margin:1.2rem 0 .8rem}
+.profile-section-title:first-child{margin-top:0}
+.profile-note{margin-top:1rem;border:1px solid var(--border);border-radius:12px;background:rgba(0,0,0,.2);padding:.85rem;font-size:12px;color:var(--muted);line-height:1.6}
+.tour-overlay{position:fixed;inset:0;z-index:8000;background:rgba(0,0,0,.55);backdrop-filter:blur(5px);display:none;align-items:center;justify-content:center;padding:1rem}
+.tour-overlay.open{display:flex}
+.tour-card{max-width:460px;width:100%;border:1px solid var(--border2);border-radius:16px;background:#0a1828;padding:1.5rem;box-shadow:0 30px 90px rgba(0,0,0,.55)}
+.tour-step{font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:2px;text-transform:uppercase;margin-bottom:.5rem}
+.tour-card h3{font-family:var(--head);font-size:20px;margin-bottom:.5rem}
+.tour-card p{font-size:14px;color:var(--muted);line-height:1.7}
+.settings-panel{grid-column:1/-1;padding:1.5rem;display:none}
+.settings-panel.open{display:block}
+.settings-panel-title{font-family:var(--head);font-size:18px;font-weight:800;margin-bottom:.5rem}
+.settings-panel-copy{font-size:13px;color:var(--muted);line-height:1.7;margin-bottom:1rem}
+.settings-actions{display:flex;gap:.75rem;flex-wrap:wrap;margin-top:1rem}
+.privacy-row{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.8rem;border:1px solid var(--border);border-radius:10px;background:rgba(0,212,255,.035);margin-top:.65rem}
+.privacy-row strong{font-size:13px}
+.privacy-row span{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.8px}
+.therapy-card{padding:1.1rem;display:flex;flex-direction:column;gap:.75rem;min-height:220px}
+.therapy-card-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.therapy-name{font-family:var(--head);font-size:17px;font-weight:850;line-height:1.2}
+.therapy-meta{font-size:12px;color:var(--muted);line-height:1.6}
+.therapy-tags{display:flex;gap:6px;flex-wrap:wrap}
+.therapy-map{height:96px;border:1px dashed var(--border2);border-radius:12px;background:linear-gradient(135deg,rgba(0,212,255,.06),rgba(0,255,136,.035));display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1px;text-align:center;padding:1rem}
+.panic-wave{height:42px;border:1px solid rgba(0,212,255,.12);border-radius:12px;background:rgba(0,0,0,.18);display:flex;align-items:center;justify-content:center;gap:5px;overflow:hidden}
+.panic-wave span{width:5px;height:10px;border-radius:999px;background:linear-gradient(180deg,var(--accent),var(--safe));opacity:.45;animation:panic-wave 1.2s ease-in-out infinite;animation-play-state:paused}
+.panic-wave.on span{animation-play-state:running}
+.panic-wave span:nth-child(2){animation-delay:.1s}.panic-wave span:nth-child(3){animation-delay:.2s}.panic-wave span:nth-child(4){animation-delay:.3s}.panic-wave span:nth-child(5){animation-delay:.4s}.panic-wave span:nth-child(6){animation-delay:.5s}.panic-wave span:nth-child(7){animation-delay:.6s}
+@keyframes panic-wave{0%,100%{height:9px;opacity:.35}50%{height:34px;opacity:1}}
+@media(max-width:700px){.profile-grid{grid-template-columns:1fr}}
+@media(max-width:1000px){.profile-hero{grid-template-columns:auto 1fr}.profile-highlight-grid{grid-column:1/-1;grid-template-columns:repeat(3,1fr)}}
+@media(max-width:700px){.profile-hero{grid-template-columns:1fr;text-align:center}.profile-health-strip{justify-content:center}.profile-highlight-grid{grid-template-columns:1fr}.profile-avatar-stage{align-items:center}}
+@media(max-width:1100px){.feature-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:700px){.feature-grid,.mini-form{grid-template-columns:1fr}.timeline-item{grid-template-columns:1fr}.timeline-item .btn{justify-content:center}}
+
+/* Settings list */
+.settings-item{display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid var(--border);cursor:pointer;transition:background .2s}
+.settings-item:hover{background:rgba(0,212,255,0.04)}
+.settings-item:last-child{border-bottom:none}
+.settings-item-left{display:flex;align-items:center;gap:12px}
+.settings-icon{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px}
+.settings-label{font-size:14px;font-weight:500}
+.settings-desc{font-size:12px;color:var(--muted);margin-top:2px}
+.settings-arrow{color:var(--muted);font-size:12px;transition:transform .2s}
+.settings-item:hover .settings-arrow{transform:translateX(4px);color:var(--accent)}
+
+/* Toggle switch */
+.toggle{width:40px;height:22px;border-radius:11px;background:rgba(255,255,255,0.1);border:1px solid var(--border2);position:relative;cursor:pointer;transition:background .3s}
+.toggle.on{background:rgba(0,212,255,0.3);border-color:var(--accent)}
+.toggle::after{content:'';position:absolute;width:16px;height:16px;border-radius:50%;background:#fff;top:2px;left:2px;transition:transform .3s;box-shadow:0 1px 4px rgba(0,0,0,0.3)}
+.toggle.on::after{transform:translateX(18px)}
+
+/* Premium card */
+.premium-glow{
+  background:linear-gradient(135deg,rgba(168,85,247,0.1),rgba(236,72,153,0.08));
+  border:1px solid rgba(168,85,247,0.25);
+  border-radius:var(--radius);padding:2rem;
+  position:relative;overflow:hidden;
+}
+.premium-glow::before{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(135deg,rgba(168,85,247,0.05),transparent);
+  pointer-events:none;
+}
+
+/* History row */
+.history-row{display:flex;align-items:center;gap:14px;padding:1rem 1.25rem;border-bottom:1px solid var(--border);cursor:pointer;transition:background .2s}
+.history-row:hover{background:rgba(0,212,255,0.03)}
+.history-row:last-child{border-bottom:none}
+.history-triage-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.history-triage-dot.home{background:var(--safe);box-shadow:0 0 8px var(--safe)}
+.history-triage-dot.soon{background:var(--warning);box-shadow:0 0 8px var(--warning)}
+.history-triage-dot.emergency{background:var(--danger);box-shadow:0 0 8px var(--danger);animation:danger-pulse 2s ease-in-out infinite}
+@keyframes danger-pulse{0%,100%{box-shadow:0 0 8px var(--danger)}50%{box-shadow:0 0 16px var(--danger)}}
+.history-info{flex:1}
+.history-symptom{font-size:14px;font-weight:500;margin-bottom:2px}
+.history-meta{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1px}
+
+/* FAQs */
+.faq-item{border-bottom:1px solid var(--border);overflow:hidden}
+.faq-q{display:flex;justify-content:space-between;align-items:center;padding:1rem 1.25rem;cursor:pointer;font-size:14px;font-weight:500;transition:color .2s}
+.faq-q:hover{color:var(--accent)}
+.faq-chevron{font-size:12px;transition:transform .3s;color:var(--muted)}
+.faq-a{max-height:0;overflow:hidden;transition:max-height .4s ease,padding .3s}
+.faq-a.open{max-height:200px;padding:0 1.25rem 1rem}
+.faq-a p{font-size:13px;color:var(--muted);line-height:1.7}
+.faq-item.open .faq-chevron{transform:rotate(180deg)}
+
+/* Star rating */
+.star-row{display:flex;gap:8px;justify-content:center;margin:1rem 0}
+.star{font-size:28px;cursor:pointer;transition:transform .15s,filter .15s;filter:grayscale(1);opacity:.4}
+.star.active{filter:none;opacity:1;animation:star-pop .2s cubic-bezier(.2,.8,.2,1)}
+@keyframes star-pop{0%{transform:scale(1)}50%{transform:scale(1.35)}100%{transform:scale(1)}}
+
+/* Mobile bottom nav */
+.mobile-nav{
+  display:none;
+  position:fixed;bottom:0;left:0;right:0;
+  background:rgba(6,15,28,0.95);
+  backdrop-filter:blur(20px);
+  border-top:1px solid var(--border);
+  padding:8px 0;z-index:200;
+}
+.mobile-nav-items{display:flex;justify-content:space-around}
+.mob-item{display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;padding:4px 12px;transition:color .2s;color:var(--muted)}
+.mob-item.active,.mob-item:hover{color:var(--accent)}
+.mob-item-icon{font-size:20px}
+.mob-item-label{font-family:var(--mono);font-size:9px;letter-spacing:1px}
+
+@media(max-width:768px){
+  .sidebar{display:none}
+  .mobile-nav{display:block}
+  .content{padding:1rem;padding-bottom:80px}
+  .grid-2,.grid-3,.grid-4{grid-template-columns:1fr}
+  .chat-wrap{height:calc(100vh - var(--nav-h) - 80px - 2rem);max-height:none}
+}
+
+/* Floating deco */
+.deco-wrap{position:fixed;inset:0;pointer-events:none;z-index:1;overflow:hidden}
+.deco-icon{position:absolute;opacity:0;font-size:14px;color:rgba(0,212,255,0.4);animation:deco-rise linear infinite}
+@keyframes deco-rise{0%{transform:translateY(0) rotate(0deg);opacity:0}10%{opacity:.12}90%{opacity:.04}100%{transform:translateY(-100vh) rotate(360deg);opacity:0}}
+</style>
+</head>
+<body>
+
+<!-- BACKGROUND -->
+<canvas id="particle-canvas"></canvas>
+<canvas id="ecg-canvas"></canvas>
+<div class="grid-bg"></div>
+<div class="scanlines"></div>
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<div class="deco-wrap" id="deco-wrap"></div>
+
+<!-- CURSOR -->
+<div id="cursor"></div>
+<div id="cursor-ring"></div>
+
+<div class="shell">
+
+<!-- =============================================
+     SIDEBAR
+     ============================================= -->
+<aside class="sidebar" id="sidebar">
+  <div class="sb-toggle" onclick="toggleSidebar()">‹</div>
+
+  <div class="sb-logo">
+    <div class="sb-logo-icon">🩺</div>
+    <div class="sb-logo-text">Med<span>AI</span></div>
+  </div>
+
+  <nav class="sb-nav">
+
+    <!-- MAIN -->
+    <div class="sb-section-label">Main</div>
+    <div class="sb-item active" onclick="showTab('dashboard',this)">
+      <div class="sb-item-icon">🏠</div>
+      <span class="sb-item-label">Dashboard</span>
+    </div>
+    <div class="sb-item" onclick="showTab('triage',this)">
+      <div class="sb-item-icon">⚡</div>
+      <span class="sb-item-label">Quick Triage</span>
+      <span class="sb-badge">NEW</span>
+    </div>
+
+    <!-- AI SUPPORT -->
+    <div class="sb-section-label">AI Support</div>
+    <div class="sb-item" onclick="showTab('chatbot',this)">
+      <div class="sb-item-icon">🤖</div>
+      <span class="sb-item-label">AI Chatbot</span>
+    </div>
+    <div class="sb-item" onclick="showTab('medical-ai',this)">
+      <div class="sb-item-icon">🏥</div>
+      <span class="sb-item-label">Medical Health AI</span>
+    </div>
+    <div class="sb-item" onclick="showTab('emotional-ai',this)">
+      <div class="sb-item-icon">💭</div>
+      <span class="sb-item-label">Emotional AI</span>
+    </div>
+    <div class="sb-item" onclick="showTab('mental-ai',this)">
+      <div class="sb-item-icon">🧠</div>
+      <span class="sb-item-label">Mental Health AI</span>
+    </div>
+    <div class="sb-item" onclick="showTab('physical-ai',this)">
+      <div class="sb-item-icon">💪</div>
+      <span class="sb-item-label">Physical Health AI</span>
+    </div>
+
+    <!-- MY HEALTH -->
+    <div class="sb-section-label">My Health</div>
+    <div class="sb-item" onclick="showTab('history',this)">
+      <div class="sb-item-icon">📋</div>
+      <span class="sb-item-label">Symptom History</span>
+    </div>
+    <div class="sb-item" onclick="showTab('vitals',this)">
+      <div class="sb-item-icon">❤️</div>
+      <span class="sb-item-label">Vitals Monitor</span>
+    </div>
+    <div class="sb-item" onclick="showTab('tools',this)">
+      <div class="sb-item-icon">+</div>
+      <span class="sb-item-label">Health Tools</span>
+      <span class="sb-badge">NEW</span>
+    </div>
+    <div class="sb-item" onclick="showTab('reports',this)">
+      <div class="sb-item-icon">Rx</div>
+      <span class="sb-item-label">Reports & OCR</span>
+    </div>
+    <div class="sb-item" onclick="showTab('appointments',this)">
+      <div class="sb-item-icon">📅</div>
+      <span class="sb-item-label">Appointments</span>
+    </div>
+    <div class="sb-item" onclick="showTab('therapy',this)">
+      <div class="sb-item-icon">🧘</div>
+      <span class="sb-item-label">Therapy Finder</span>
+      <span class="sb-badge">NEW</span>
+    </div>
+    <div class="sb-item" onclick="showTab('achievements',this)">
+      <div class="sb-item-icon">🏆</div>
+      <span class="sb-item-label">Achievements</span>
+      <span class="sb-badge" style="background:var(--warning);color:#000">3</span>
+    </div>
+
+    <!-- ACCOUNT -->
+    <div class="sb-section-label">Account</div>
+    <div class="sb-item" onclick="showTab('profile',this)">
+      <div class="sb-item-icon">ID</div>
+      <span class="sb-item-label">My Profile</span>
+    </div>
+    <div class="sb-item" onclick="showTab('settings',this)">
+      <div class="sb-item-icon">⚙️</div>
+      <span class="sb-item-label">Settings</span>
+    </div>
+    <div class="sb-item" onclick="showTab('premium',this)">
+      <div class="sb-item-icon">👑</div>
+      <span class="sb-item-label">Unlock Premium</span>
+    </div>
+    <div class="sb-item" onclick="openPanicMode()" style="background:rgba(255,77,109,0.06);border-left:3px solid rgba(255,77,109,0.35);margin:8px 8px 8px 0;border-radius:0 8px 8px 0">
+      <div class="sb-item-icon" style="background:rgba(255,77,109,0.12);color:var(--danger)">🚨</div>
+      <span class="sb-item-label" style="color:var(--danger);font-weight:700">PANIC MODE</span>
+    </div>
+
+  </nav>
+
+  <div class="sb-user">
+    <div class="sb-avatar">M</div>
+    <div class="sb-user-info">
+      <div class="sb-user-name">Mangu3x3</div>
+      <div class="sb-user-plan">Free Plan</div>
+    </div>
+    <button onclick="logoutUser()" title="Logout" style="margin-left:auto;width:34px;height:34px;border-radius:10px;border:1px solid rgba(255,77,109,0.28);background:rgba(255,77,109,0.08);color:var(--danger);font-family:var(--mono);font-size:10px;cursor:pointer">OUT</button>
+  </div>
+</aside>
+
+<!-- =============================================
+     MAIN CONTENT
+     ============================================= -->
+<div class="main">
+
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="topbar-title" id="topbar-title">Dashboard</div>
+      <div class="topbar-breadcrumb" id="topbar-bc">// HOME / DASHBOARD</div>
+    </div>
+    <div class="topbar-right">
+      <div class="live-indicator"><div class="live-dot-anim"></div>LIVE</div>
+      <div class="topbar-search">🔍 <input id="global-search" placeholder="Search history..." oninput="searchHealthData(this.value)" onfocus="searchHealthData(this.value)"/></div>
+      <div class="topbar-btn" onclick="openPanicMode()" style="background:rgba(255,77,109,0.08);border-color:rgba(255,77,109,0.3);color:var(--danger);animation:danger-pulse 2s ease-in-out infinite;margin-right:2px" title="SOS Panic Mode">🚨</div>
+      <div class="topbar-btn" onclick="toggleNotifications()">🔔<div class="notif-dot" id="notif-dot"></div></div>
+      <div class="topbar-btn" onclick="showTab('settings',null)">⚙️</div>
+    </div>
+    <div class="search-pop" id="search-results"></div>
+    <div class="notif-panel" id="notif-panel">
+      <div class="notif-head">Notifications</div>
+      <div id="notif-list"></div>
+    </div>
+  </div>
+
+  <!-- CONTENT -->
+  <div class="content" id="content">
+
+    <!-- ==================== DASHBOARD ==================== -->
+    <div class="tab-panel active" id="tab-dashboard">
+
+      <!-- Welcome -->
+      <div style="margin-bottom:1.5rem">
+        <div class="sec-label">// Overview</div>
+        <h1 class="sec-title">Good morning, <span class="grad">Mangu3x3</span> 👋</h1>
+        <p class="sec-sub">Here's your health summary for today. Everything looks stable.</p>
+      </div>
+
+      <div class="glass-card" style="padding:1.25rem;margin-bottom:1.25rem;display:flex;justify-content:space-between;gap:1rem;align-items:center;flex-wrap:wrap">
+        <div>
+          <div class="sec-label" style="margin-bottom:.4rem">// Daily Health Tip</div>
+          <div id="daily-tip" style="font-size:14px;color:var(--text);line-height:1.6">Loading today's tip...</div>
+        </div>
+        <button class="btn btn-outline" onclick="startOnboardingTour()">Show Tour</button>
+      </div>
+
+      <!-- Stats row -->
+      <div class="grid-4" style="margin-bottom:1.25rem">
+        <div class="glass-card stat-card">
+          <div class="stat-icon-box" style="background:rgba(0,255,136,0.1);border:1px solid rgba(0,255,136,0.2)">❤️</div>
+          <div class="stat-value" style="color:var(--safe)" id="stat-hr">--</div>
+          <div class="stat-label">Heart Rate BPM</div>
+          <div class="stat-change up" id="stat-hr-change">Log manually or scan</div>
+        </div>
+        <div class="glass-card stat-card">
+          <div class="stat-icon-box" style="background:rgba(0,212,255,0.1);border:1px solid rgba(0,212,255,0.2)">🫁</div>
+          <div class="stat-value" style="color:var(--accent)" id="stat-spo2">--</div>
+          <div class="stat-label">Blood Oxygen SpO2</div>
+          <div class="stat-change up" id="stat-spo2-change">Log manually</div>
+        </div>
+        <div class="glass-card stat-card">
+          <div class="stat-icon-box" style="background:rgba(255,170,51,0.1);border:1px solid rgba(255,170,51,0.2)">🌡️</div>
+          <div class="stat-value" style="color:var(--warning)" id="stat-temp">--</div>
+          <div class="stat-label">Temperature °C</div>
+          <div class="stat-change up" id="stat-temp-change">Log manually</div>
+        </div>
+        <div class="glass-card stat-card">
+          <div class="stat-icon-box" style="background:rgba(168,85,247,0.1);border:1px solid rgba(168,85,247,0.2)">📋</div>
+          <div class="stat-value" style="color:var(--purple)" id="stat-triage-count">0</div>
+          <div class="stat-label">Triage Sessions</div>
+          <div class="stat-change up" id="stat-triage-change">No sessions yet</div>
+        </div>
+      </div>
+
+      <!-- Feature command center -->
+      <div class="feature-grid">
+        <div class="glass-card feature-card">
+          <div class="feature-head"><div class="feature-icon">HR</div><span class="badge badge-green">Ready</span></div>
+          <div class="feature-title">Camera Heart Rate</div>
+          <div class="feature-copy">Uses your camera to estimate pulse from fingertip color changes. Best on phones with the flashlight on.</div>
+          <div class="btn btn-outline" onclick="showTab('tools',null);setTimeout(()=>document.getElementById('heart-tool')?.scrollIntoView({behavior:'smooth'}),150)">Open Tool</div>
+        </div>
+        <div class="glass-card feature-card">
+          <div class="feature-head"><div class="feature-icon">AI</div><span class="badge badge-blue">Live</span></div>
+          <div class="feature-title">Symptom Checker</div>
+          <div class="feature-copy">Quick triage is already active, plus chatbot support for questions after the result.</div>
+          <div class="btn btn-outline" onclick="showTab('triage',null)">Start Check</div>
+        </div>
+        <div class="glass-card feature-card">
+          <div class="feature-head"><div class="feature-icon">Rx</div><span class="badge badge-warn">Demo</span></div>
+          <div class="feature-title">Medicine Reminders</div>
+          <div class="feature-copy">Create reminder cards and mark doses as taken in the browser while backend storage waits.</div>
+          <div class="btn btn-outline" onclick="showTab('tools',null)">Add Reminder</div>
+        </div>
+        <div class="glass-card feature-card">
+          <div class="feature-head"><div class="feature-icon">OCR</div><span class="badge badge-purple">New</span></div>
+          <div class="feature-title">Reports & Lab AI</div>
+          <div class="feature-copy">Upload or paste report text, then generate a plain-English explanation preview.</div>
+          <div class="btn btn-outline" onclick="showTab('reports',null)">Analyze</div>
+        </div>
+      </div>
+
+      <!-- Middle row -->
+      <div class="grid-2" style="margin-bottom:1.25rem">
+
+        <!-- Recent triage -->
+        <div class="glass-card" id="recent-triage-card">
+          <div style="padding:1.25rem;border-bottom:1px solid var(--border)">
+            <div class="sec-label" style="margin-bottom:0">// Recent Triage</div>
+          </div>
+          <div class="mini-result" style="margin:1rem 1.25rem">No triage sessions yet. Run Quick Triage and your real results will appear here.</div>
+          <div style="padding:1rem 1.25rem">
+            <div class="btn btn-outline" onclick="showTab('triage',null)" style="width:100%;justify-content:center;font-size:10px">Start Triage →</div>
+          </div>
+        </div>
+
+        <!-- Vitals mini -->
+        <div class="glass-card" style="padding:1.25rem">
+          <div class="sec-label" style="margin-bottom:.75rem">// Live Vitals</div>
+          <canvas id="mini-ecg" style="width:100%;height:60px;margin-bottom:1rem"></canvas>
+          <div class="vital-row">
+            <div class="vital-label">❤️ Heart Rate</div>
+            <div><span class="vital-val" style="color:var(--safe)" id="v-hr">72</span><span class="vital-unit">BPM</span></div>
+          </div>
+          <div class="vital-row">
+            <div class="vital-label">🫁 SpO2</div>
+            <div><span class="vital-val" style="color:var(--accent)" id="v-spo2">98</span><span class="vital-unit">%</span></div>
+          </div>
+          <div class="vital-row">
+            <div class="vital-label">🌡️ Temp</div>
+            <div><span class="vital-val" style="color:var(--warning)" id="v-temp">37.1</span><span class="vital-unit">°C</span></div>
+          </div>
+          <div class="vital-row">
+            <div class="vital-label">💉 BP</div>
+            <div><span class="vital-val" style="color:var(--safe);font-size:1.1rem">120/80</span><span class="vital-unit">mmHg</span></div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Bottom row -->
+      <div class="grid-3">
+        <!-- Quick actions -->
+        <div class="glass-card" style="padding:1.25rem">
+          <div class="sec-label" style="margin-bottom:.75rem">// Quick Actions</div>
+          <div style="display:flex;flex-direction:column;gap:.6rem">
+            <div class="btn btn-primary" onclick="showTab('triage',null)" style="justify-content:center">⚡ Start Triage</div>
+            <div class="btn btn-outline" onclick="showTab('chatbot',null)" style="justify-content:center">🤖 Ask AI Chatbot</div>
+            <div class="btn btn-outline" onclick="showTab('medical-ai',null)" style="justify-content:center">🏥 Medical AI</div>
+            <div class="btn btn-outline" onclick="showTab('emotional-ai',null)" style="justify-content:center">💭 Emotional Support</div>
+            <div class="btn btn-outline" onclick="showTab('tools',null)" style="justify-content:center">+ Health Tools</div>
+            <div class="btn btn-outline" onclick="showTab('appointments',null)" style="justify-content:center">Book Appointment</div>
+          </div>
+        </div>
+
+        <!-- Health score -->
+        <div class="glass-card" style="padding:1.25rem">
+          <div class="sec-label" style="margin-bottom:.75rem">// Health Score</div>
+          <div style="text-align:center;padding:1rem 0">
+            <div style="position:relative;display:inline-block">
+              <svg width="120" height="120" viewBox="0 0 120 120">
+                <circle cx="60" cy="60" r="50" fill="none" stroke="rgba(0,212,255,0.08)" stroke-width="8"/>
+                <circle cx="60" cy="60" r="50" fill="none" stroke="url(#scoreGrad)" stroke-width="8" stroke-linecap="round" stroke-dasharray="314" stroke-dashoffset="47" transform="rotate(-90 60 60)"/>
+                <defs><linearGradient id="scoreGrad" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#00d4ff"/><stop offset="100%" stop-color="#00ff88"/></linearGradient></defs>
+              </svg>
+              <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+                <div style="font-family:var(--head);font-size:28px;font-weight:800;background:linear-gradient(135deg,#00d4ff,#00ff88);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">85</div>
+                <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px">/100</div>
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:.6rem">
+            <div>
+              <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:4px"><span>Physical</span><span style="color:var(--safe)">88%</span></div>
+              <div class="prog-bar"><div class="prog-fill" style="width:88%;background:linear-gradient(90deg,var(--accent),var(--safe))"></div></div>
+            </div>
+            <div>
+              <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:4px"><span>Mental</span><span style="color:var(--accent)">82%</span></div>
+              <div class="prog-bar"><div class="prog-fill" style="width:82%;background:linear-gradient(90deg,var(--accent2),var(--accent))"></div></div>
+            </div>
+            <div>
+              <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:4px"><span>Emotional</span><span style="color:var(--purple)">79%</span></div>
+              <div class="prog-bar"><div class="prog-fill" style="width:79%;background:linear-gradient(90deg,var(--purple),var(--pink))"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Emergency contacts -->
+        <div class="glass-card" style="padding:1.25rem">
+          <div class="sec-label" style="margin-bottom:.75rem">// Emergency Contacts</div>
+          <div style="display:flex;flex-direction:column;gap:.75rem">
+            <div style="display:flex;align-items:center;gap:10px;padding:.75rem;background:rgba(255,77,109,0.06);border:1px solid rgba(255,77,109,0.15);border-radius:10px">
+              <div style="font-size:22px">🚑</div>
+              <div>
+                <div style="font-size:13px;font-weight:600">Emergency Services</div>
+                <div style="font-family:var(--mono);font-size:11px;color:var(--danger)">199 / 112</div>
+              </div>
+              <a href="tel:199" style="margin-left:auto;text-decoration:none" class="btn btn-danger" style="padding:6px 12px;font-size:9px">CALL</a>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:.75rem;background:rgba(0,212,255,0.04);border:1px solid var(--border);border-radius:10px">
+              <div style="font-size:22px">👨‍⚕️</div>
+              <div>
+                <div style="font-size:13px;font-weight:600">Dr. Afolabi</div>
+                <div style="font-family:var(--mono);font-size:11px;color:var(--muted)">Primary Physician</div>
+              </div>
+              <a href="tel:+2348000000" style="margin-left:auto;text-decoration:none" class="btn btn-outline" style="padding:6px 12px;font-size:9px">CALL</a>
+            </div>
+            <div class="btn btn-outline" onclick="showTab('settings',null)" style="justify-content:center;font-size:10px">+ Manage Contacts</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== QUICK TRIAGE ==================== -->
+    <div class="tab-panel" id="tab-triage">
+      <div class="sec-label">// Quick Triage</div>
+      <h2 class="sec-title">Start a <span class="grad">Triage Session</span></h2>
+      <div class="glass-card" style="padding:2rem;max-width:600px">
+        <p style="font-size:14px;color:var(--muted);margin-bottom:1.5rem;line-height:1.7">Describe your symptoms below. Our AI will analyze them and give you an instant triage recommendation.</p>
+        <div style="margin-bottom:1rem">
+          <label style="font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:2px;display:block;margin-bottom:8px">YOUR SYMPTOMS</label>
+          <textarea id="triage-input" style="width:100%;background:rgba(0,212,255,0.04);border:1px solid var(--border2);border-radius:10px;color:var(--text);font-family:var(--body);font-size:14px;padding:14px;outline:none;resize:none;min-height:100px;line-height:1.6" placeholder="e.g. I have a severe headache on my left side, started 3 hours ago..."></textarea>
+        </div>
+        <div class="btn btn-primary" onclick="startTriage()" style="justify-content:center">⚡ Analyze Symptoms</div>
+        <div id="triage-result" style="margin-top:1.5rem;display:none"></div>
+      </div>
+    </div>
+
+    <!-- ==================== AI CHATBOT ==================== -->
+    <div class="tab-panel" id="tab-chatbot">
+      <div class="sec-label">// AI Support</div>
+      <h2 class="sec-title">MedAI <span class="grad">Chatbot</span></h2>
+      <div class="glass-card chat-wrap">
+        <div class="chat-messages" id="chat-chatbot">
+          <div class="chat-bubble ai"><div class="ai-label">🤖 MEDAI CHATBOT</div>Hello! I'm your MedAI assistant. I can answer general health questions, explain medical terms, or help you understand your triage results. How can I help you today?</div>
+        </div>
+        <div class="chat-input-row">
+          <input class="chat-input" id="input-chatbot" placeholder="Ask me anything about your health..." onkeydown="if(event.key==='Enter')sendChat('chatbot','general')"/>
+          <button class="chat-send-btn" onclick="sendChat('chatbot','general')">→</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== MEDICAL AI ==================== -->
+    <div class="tab-panel" id="tab-medical-ai">
+      <div class="sec-label">// AI Support</div>
+      <h2 class="sec-title">Medical <span class="grad">Health AI</span></h2>
+      <p class="sec-sub" style="margin-bottom:1.5rem">Your dedicated Medical Health AI — powered by advanced AI to answer clinical questions, explain conditions, and guide your understanding of symptoms and treatments.</p>
+      <div class="glass-card" style="padding:2rem;text-align:center;max-width:500px">
+        <div style="font-size:56px;margin-bottom:1rem">🏥</div>
+        <div style="font-family:var(--head);font-size:18px;font-weight:700;margin-bottom:.5rem">Medical Health AI</div>
+        <p style="font-size:14px;color:var(--muted);line-height:1.7;margin-bottom:1.5rem">Click below to launch the full Medical Health AI interface — your dedicated AI for symptoms, medications, conditions, and medical procedures.</p>
+        <a href="Med_AI_2.html" target="_blank" class="btn btn-primary" style="display:inline-flex;margin:0 auto;text-decoration:none">🏥 &nbsp;Launch Medical Health AI →</a>
+        <div style="margin-top:1rem;font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1px">Opens in a new tab &nbsp;·&nbsp; Powered by Gemini AI</div>
+      </div>
+    </div>
+
+    <!-- ==================== EMOTIONAL AI ==================== -->
+    <div class="tab-panel" id="tab-emotional-ai">
+      <div class="sec-label">// AI Support</div>
+      <h2 class="sec-title">Emotional <span class="grad">AI Support</span></h2>
+      <div class="glass-card chat-wrap">
+        <div class="chat-messages" id="chat-emotional-ai">
+          <div class="chat-bubble ai"><div class="ai-label">💭 EMOTIONAL AI</div>Hi, I'm here for you. This is a safe, judgment-free space to talk about how you're feeling emotionally. Whether you're stressed, anxious, overwhelmed, or just need someone to listen — I'm here. How are you feeling right now?</div>
+        </div>
+        <div class="chat-input-row">
+          <input class="chat-input" id="input-emotional-ai" placeholder="Share how you're feeling..." onkeydown="if(event.key==='Enter')sendChat('emotional-ai','emotional')"/>
+          <button class="chat-send-btn" onclick="sendChat('emotional-ai','emotional')">→</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== MENTAL AI ==================== -->
+    <div class="tab-panel" id="tab-mental-ai">
+      <div class="sec-label">// AI Support</div>
+      <h2 class="sec-title">Mental <span class="grad">Health AI</span></h2>
+      <div class="glass-card chat-wrap">
+        <div class="chat-messages" id="chat-mental-ai">
+          <div class="chat-bubble ai"><div class="ai-label">🧠 MENTAL HEALTH AI</div>Welcome. I'm your Mental Health AI companion. I can support you through anxiety, depression, stress management, sleep issues, and general wellbeing. I'm not a therapist, but I'm here to help. What's on your mind?</div>
+        </div>
+        <div class="chat-input-row">
+          <input class="chat-input" id="input-mental-ai" placeholder="Talk to me about your mental wellbeing..." onkeydown="if(event.key==='Enter')sendChat('mental-ai','mental')"/>
+          <button class="chat-send-btn" onclick="sendChat('mental-ai','mental')">→</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== PHYSICAL AI ==================== -->
+    <div class="tab-panel" id="tab-physical-ai">
+      <div class="sec-label">// AI Support</div>
+      <h2 class="sec-title">Physical <span class="grad">Health AI</span></h2>
+      <div class="glass-card chat-wrap">
+        <div class="chat-messages" id="chat-physical-ai">
+          <div class="chat-bubble ai"><div class="ai-label">💪 PHYSICAL AI</div>I'm your Physical Health AI. I can guide you on exercise, nutrition, recovery, fitness goals, injury prevention, and body performance. Let's work on your physical wellbeing together. What's your goal?</div>
+        </div>
+        <div class="chat-input-row">
+          <input class="chat-input" id="input-physical-ai" placeholder="Ask about fitness, nutrition, recovery..." onkeydown="if(event.key==='Enter')sendChat('physical-ai','physical')"/>
+          <button class="chat-send-btn" onclick="sendChat('physical-ai','physical')">→</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== SYMPTOM HISTORY ==================== -->
+    <div class="tab-panel" id="tab-history">
+      <div class="sec-label">// My Health</div>
+      <h2 class="sec-title">Symptom <span class="grad">History</span></h2>
+      <div class="glass-card" id="history-list">
+        <div class="mini-result" style="margin:1rem 1.25rem">No symptom history yet. Your completed Quick Triage sessions will appear here.</div>
+      </div>
+    </div>
+
+    <!-- ==================== VITALS ==================== -->
+    <div class="tab-panel" id="tab-vitals">
+      <div class="sec-label">// My Health</div>
+      <h2 class="sec-title">Vitals <span class="grad">Monitor</span></h2>
+      <div class="grid-2">
+        <div class="glass-card" style="padding:1.5rem">
+          <div class="sec-label" style="margin-bottom:.75rem">// Live ECG</div>
+          <canvas id="vitals-ecg" style="width:100%;height:80px"></canvas>
+          <div style="margin-top:1rem;display:flex;flex-direction:column;gap:.5rem">
+            <div class="vital-row"><div class="vital-label">❤️ Heart Rate</div><div><span class="vital-val" style="color:var(--safe)" id="vt-hr">--</span><span class="vital-unit">BPM</span></div></div>
+            <div class="vital-row"><div class="vital-label">🫁 Blood Oxygen</div><div><span class="vital-val" style="color:var(--accent)" id="vt-spo2">--</span><span class="vital-unit">%</span></div></div>
+            <div class="vital-row"><div class="vital-label">🌡️ Temperature</div><div><span class="vital-val" style="color:var(--warning)" id="vt-temp">--</span><span class="vital-unit">°C</span></div></div>
+            <div class="vital-row"><div class="vital-label">💉 Blood Pressure</div><div><span class="vital-val" style="color:var(--safe);font-size:1.1rem" id="vt-bp">--</span><span class="vital-unit">mmHg</span></div></div>
+            <div class="vital-row"><div class="vital-label">🩸 Blood Sugar</div><div><span class="vital-val" style="color:var(--accent);font-size:1.1rem" id="vt-glucose">--</span><span class="vital-unit">mg/dL</span></div></div>
+          </div>
+        </div>
+        <div class="glass-card" style="padding:1.5rem">
+          <div class="sec-label" style="margin-bottom:.75rem">// Manual Vitals Log</div>
+          <div class="mini-form">
+            <input class="tool-input" id="manual-hr" type="number" placeholder="Heart rate BPM"/>
+            <input class="tool-input" id="manual-spo2" type="number" placeholder="SpO2 %"/>
+            <input class="tool-input" id="manual-temp" type="number" step="0.1" placeholder="Temperature C"/>
+            <input class="tool-input" id="manual-bp" placeholder="BP e.g. 120/80"/>
+            <input class="tool-input" id="manual-glucose" type="number" placeholder="Glucose mg/dL"/>
+            <input class="tool-input" id="manual-weight" type="number" placeholder="Weight kg"/>
+          </div>
+          <button class="btn btn-primary" onclick="logManualVitals()" style="margin-top:.75rem">Save Vitals</button>
+          <div class="mini-result" id="manual-vitals-msg">Use this when no wearable is connected. Saved readings stay in this browser.</div>
+        </div>
+        <div class="glass-card" style="padding:1.5rem">
+          <div class="sec-label" style="margin-bottom:.75rem">// Weekly Summary</div>
+          <div style="display:flex;flex-direction:column;gap:1rem">
+            <div><div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:6px"><span>Avg Heart Rate</span><span style="color:var(--safe)">71 BPM</span></div><div class="prog-bar"><div class="prog-fill" style="width:71%;background:var(--safe)"></div></div></div>
+            <div><div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:6px"><span>Avg SpO2</span><span style="color:var(--accent)">97.8%</span></div><div class="prog-bar"><div class="prog-fill" style="width:97%;background:var(--accent)"></div></div></div>
+            <div><div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:6px"><span>Sleep Quality</span><span style="color:var(--purple)">74%</span></div><div class="prog-bar"><div class="prog-fill" style="width:74%;background:var(--purple)"></div></div></div>
+            <div><div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:6px"><span>Activity Score</span><span style="color:var(--warning)">62%</span></div><div class="prog-bar"><div class="prog-fill" style="width:62%;background:var(--warning)"></div></div></div>
+            <div><div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:6px"><span>Hydration</span><span style="color:var(--accent)">80%</span></div><div class="prog-bar"><div class="prog-fill" style="width:80%;background:linear-gradient(90deg,var(--accent2),var(--accent))"></div></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== HEALTH TOOLS ==================== -->
+    <div class="tab-panel" id="tab-tools">
+      <div class="sec-label">// My Health</div>
+      <h2 class="sec-title">Health <span class="grad">Tools</span></h2>
+      <p class="sec-sub">Frontend-ready tools for daily tracking, reminders, BMI, stress checks, calories, and heart-rate capture.</p>
+
+      <div class="grid-2" style="margin-bottom:1.25rem">
+        <div class="glass-card" id="heart-tool" style="padding:1.5rem">
+          <div class="sec-label" style="margin-bottom:.75rem">// Camera Heart Rate</div>
+          <div class="camera-preview" id="heart-preview">Place your fingertip over the rear camera. On phones, allow camera access and turn on the flashlight if prompted.</div>
+          <div class="scanner-meter"><canvas id="heart-wave" width="100" height="42"></canvas></div>
+          <div style="display:flex;gap:.75rem;flex-wrap:wrap;margin-top:1rem">
+            <div class="btn btn-primary" onclick="startHeartScan()">Start 20s Scan</div>
+            <div class="btn btn-outline" onclick="stopHeartScan()">Stop</div>
+          </div>
+          <div class="mini-result" id="heart-result" style="min-height:40px">✓ Position fingertip to fully cover camera lens. ✓ Good lighting helps. ✓ Keep steady for best results.</div>
+        </div>
+
+        <div class="glass-card" style="padding:1.5rem">
+          <div class="sec-label" style="margin-bottom:.75rem">// Medicine Reminder</div>
+          <div class="mini-form">
+            <input class="tool-input" id="med-name" placeholder="Medicine name"/>
+            <input class="tool-input" id="med-time" type="time"/>
+            <input class="tool-input" id="med-dose" placeholder="Dose e.g. 1 tablet"/>
+            <select class="tool-select" id="med-frequency">
+              <option>Daily</option><option>Twice daily</option><option>Weekly</option><option>As needed</option>
+            </select>
+          </div>
+          <div class="btn btn-primary" onclick="addMedicineReminder()" style="margin-top:.75rem">Add Reminder</div>
+          <div class="timeline" id="medicine-list" style="margin-top:1rem">
+            <div class="timeline-item"><div class="timeline-time">08:00</div><div><div class="timeline-title">Vitamin D</div><div class="timeline-meta">1 capsule - Daily</div></div><span class="badge badge-green">Taken</span></div>
+            <div class="timeline-item"><div class="timeline-time">21:00</div><div><div class="timeline-title">Allergy Tablet</div><div class="timeline-meta">1 tablet - Daily</div></div><span class="badge badge-warn">Due</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-3" style="margin-bottom:1.25rem">
+        <div class="glass-card" style="padding:1.25rem">
+          <div class="sec-label" style="margin-bottom:.75rem">// Water & Sleep</div>
+          <div class="tracker-row"><div><div class="feature-title">Water</div><div class="history-meta">Goal: 8 cups</div></div><div class="tracker-stepper"><button class="round-btn" onclick="stepTracker('water-count',-1)">-</button><span id="water-count">5</span><button class="round-btn" onclick="stepTracker('water-count',1)">+</button></div></div>
+          <div class="tracker-row" style="margin-top:.75rem"><div><div class="feature-title">Sleep</div><div class="history-meta">Goal: 8 hours</div></div><div class="tracker-stepper"><button class="round-btn" onclick="stepTracker('sleep-count',-0.5)">-</button><span id="sleep-count">6.5</span><button class="round-btn" onclick="stepTracker('sleep-count',0.5)">+</button></div></div>
+          <div class="mini-result">Hydration 62% complete. Sleep quality is fair today.</div>
+        </div>
+
+        <div class="glass-card" style="padding:1.25rem">
+          <div class="sec-label" style="margin-bottom:.75rem">// BMI Calculator</div>
+          <div class="mini-form">
+            <input class="tool-input" id="bmi-height" type="number" placeholder="Height cm"/>
+            <input class="tool-input" id="bmi-weight" type="number" placeholder="Weight kg"/>
+          </div>
+          <div class="btn btn-outline" onclick="calculateBmi()" style="margin-top:.75rem">Calculate BMI</div>
+          <div class="mini-result" id="bmi-result">Enter height and weight to calculate BMI.</div>
+        </div>
+
+        <div class="glass-card" style="padding:1.25rem">
+          <div class="sec-label" style="margin-bottom:.75rem">// Stress Check</div>
+          <div style="display:flex;flex-direction:column;gap:.75rem">
+            <label class="history-meta">Stress today <input id="stress-level" type="range" min="1" max="10" value="4" style="width:100%;margin-top:8px"/></label>
+            <label class="history-meta">Anxiety today <input id="anxiety-level" type="range" min="1" max="10" value="3" style="width:100%;margin-top:8px"/></label>
+          </div>
+          <div class="btn btn-outline" onclick="calculateStress()" style="margin-top:.75rem">Score Mood</div>
+          <div class="mini-result" id="stress-result">Stress score waits for your check-in.</div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="glass-card" style="padding:1.5rem">
+          <div class="sec-label" style="margin-bottom:.75rem">// Food & Calories</div>
+          <div class="mini-form">
+            <input class="tool-input" id="food-name" placeholder="Food e.g. Rice and chicken"/>
+            <input class="tool-input" id="food-cal" type="number" placeholder="Calories"/>
+          </div>
+          <div class="btn btn-primary" onclick="addFoodLog()" style="margin-top:.75rem">Add Food</div>
+          <div class="mini-result"><strong id="calorie-total" style="color:var(--accent)">1260</strong> kcal logged today. Goal: 2200 kcal.</div>
+          <div class="timeline" id="food-list" style="margin-top:1rem">
+            <div class="timeline-item"><div class="timeline-time">AM</div><div><div class="timeline-title">Oats + banana</div><div class="timeline-meta">420 kcal</div></div><span class="badge badge-blue">Meal</span></div>
+            <div class="timeline-item"><div class="timeline-time">PM</div><div><div class="timeline-title">Jollof rice + chicken</div><div class="timeline-meta">840 kcal</div></div><span class="badge badge-blue">Meal</span></div>
+          </div>
+        </div>
+
+        <div class="glass-card" style="padding:1.5rem">
+          <div class="sec-label" style="margin-bottom:.75rem">// Daily Health Score</div>
+          <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+            <div style="font-family:var(--head);font-size:52px;font-weight:800;color:var(--safe)" id="daily-score">85</div>
+            <div>
+              <div class="score-pill">Auto-updates from trackers</div>
+              <p style="font-size:13px;color:var(--muted);line-height:1.7;margin-top:.75rem">Score combines sleep, water, mood, calories, vitals, and completed medicines. For now it is simulated on the frontend.</p>
+            </div>
+          </div>
+          <div class="btn btn-outline" onclick="refreshDailyScore()" style="margin-top:1rem">Refresh Score</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== REPORTS & OCR ==================== -->
+    <div class="tab-panel" id="tab-reports">
+      <div class="sec-label">// Reports</div>
+      <h2 class="sec-title">Medical Reports <span class="grad">& Lab AI</span></h2>
+      <p class="sec-sub">OCR upload placeholders and AI explanations are prepared for the frontend. Backend OCR or API integration can come later.</p>
+
+      <div class="grid-2" style="margin-bottom:1.25rem">
+        <div class="glass-card" style="padding:1.5rem">
+          <div class="sec-label" style="margin-bottom:.75rem">// OCR Intake</div>
+          <input class="tool-input" id="report-file" type="file" accept="image/*,.pdf" onchange="fakeOcrFileName()"/>
+          <textarea class="tool-textarea" id="report-text" style="margin-top:.75rem" placeholder="Paste prescription, lab result, or report text here..."></textarea>
+          <div style="display:flex;gap:.75rem;flex-wrap:wrap;margin-top:.75rem">
+            <div class="btn btn-primary" onclick="explainLabReport()">Explain Results</div>
+            <div class="btn btn-outline" onclick="fillSampleReport()">Use Sample</div>
+          </div>
+          <div class="mini-result" id="ocr-status">No file selected yet.</div>
+        </div>
+
+        <div class="glass-card" style="padding:1.5rem">
+          <div class="sec-label" style="margin-bottom:.75rem">// AI Explanation</div>
+          <div class="mini-result" id="lab-explanation" style="min-height:250px">Upload or paste a result, then tap Explain Results. The explanation will summarize normal values, possible concerns, and next questions for a doctor.</div>
+        </div>
+      </div>
+
+      <div class="glass-card" style="padding:1.5rem">
+        <div class="sec-label" style="margin-bottom:.75rem">// Health History Dashboard</div>
+        <div class="grid-4">
+          <div class="stat-card"><div class="stat-value" style="color:var(--accent)" id="history-records-count">0</div><div class="stat-label">Health Records</div><div class="stat-change up" id="history-records-meta">No records yet</div></div>
+          <div class="stat-card"><div class="stat-value" style="color:var(--safe)" id="active-goals-count">0</div><div class="stat-label">Active Goals</div><div class="stat-change up" id="active-goals-meta">Start tracking goals</div></div>
+          <div class="stat-card"><div class="stat-value" style="color:var(--warning)" id="followups-count">0</div><div class="stat-label">Follow-ups</div><div class="stat-change" id="followups-meta">No appointments yet</div></div>
+          <div class="stat-card"><div class="stat-value" style="color:var(--purple)" id="trend-window">0d</div><div class="stat-label">Trend Window</div><div class="stat-change up" id="trend-window-meta">Needs real records</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== APPOINTMENTS ==================== -->
+    <div class="tab-panel" id="tab-appointments">
+      <div class="sec-label">// Care Access</div>
+      <h2 class="sec-title">Appointment <span class="grad">Booking</span></h2>
+      <p class="sec-sub">A frontend booking flow for choosing doctor, reason, date, and urgency. It stores demo appointments in the page for now.</p>
+
+      <div class="grid-2">
+        <div class="glass-card" style="padding:1.5rem">
+          <div class="sec-label" style="margin-bottom:.75rem">// Book Visit</div>
+          <div class="mini-form">
+            <select class="tool-select" id="appt-doctor"><option>Dr. Afolabi - General Physician</option><option>Therapist - Mental Health</option><option>Nutritionist</option><option>Fitness Coach</option></select>
+            <select class="tool-select" id="appt-urgency"><option>Routine</option><option>Soon</option><option>Urgent</option></select>
+            <input class="tool-input" id="appt-date" type="date"/>
+            <input class="tool-input" id="appt-time" type="time"/>
+          </div>
+          <textarea class="tool-textarea" id="appt-reason" style="margin-top:.75rem" placeholder="Reason for visit..."></textarea>
+          <div class="btn btn-primary" onclick="bookAppointment()" style="margin-top:.75rem">Book Appointment</div>
+          <div class="mini-result">Emergency symptoms should use the emergency call button instead of booking.</div>
+        </div>
+
+        <div class="glass-card" style="padding:1.5rem">
+          <div class="sec-label" style="margin-bottom:.75rem">// Upcoming</div>
+          <div class="timeline" id="appointment-list">
+            <div class="timeline-item"><div class="timeline-time">May 14</div><div><div class="timeline-title">Dr. Afolabi</div><div class="timeline-meta">General checkup - 10:00</div></div><span class="badge badge-blue">Booked</span></div>
+            <div class="timeline-item"><div class="timeline-time">May 18</div><div><div class="timeline-title">Nutritionist</div><div class="timeline-meta">Meal planning - 15:30</div></div><span class="badge badge-green">Online</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== THERAPY FINDER ==================== -->
+    <div class="tab-panel" id="tab-therapy">
+      <div class="sec-label">// Mental Wellness</div>
+      <h2 class="sec-title">Therapy & <span class="grad">Locations Finder</span></h2>
+      <p class="sec-sub">Find sample therapy options by country, specialty, and need. Listings are frontend directory samples, so verify details before visiting or calling.</p>
+
+      <div class="glass-card" style="padding:1.5rem;margin-bottom:1.25rem">
+        <div class="mini-form">
+          <select class="tool-select" id="therapy-country" onchange="renderTherapyFinder()">
+            <option value="NG">Nigeria</option>
+            <option value="US">United States</option>
+            <option value="GB">United Kingdom</option>
+            <option value="ZA">South Africa</option>
+          </select>
+          <select class="tool-select" id="therapy-specialty" onchange="renderTherapyFinder()">
+            <option value="">All specialties</option>
+            <option value="anxiety">Anxiety</option>
+            <option value="depression">Depression</option>
+            <option value="cbt">CBT</option>
+            <option value="family">Family</option>
+            <option value="youth">Youth</option>
+            <option value="trauma">Trauma</option>
+          </select>
+          <input class="tool-input" id="therapy-search" placeholder="Search city, name, or specialty..." oninput="renderTherapyFinder()"/>
+          <button class="btn btn-primary" onclick="renderTherapyFinder()">Search</button>
+        </div>
+        <div class="mini-result" id="therapy-summary">Therapy options will use your profile country when available.</div>
+      </div>
+
+      <div class="grid-3" id="therapy-list" style="margin-bottom:1.25rem"></div>
+
+      <div class="grid-2">
+        <div class="glass-card" style="padding:1.5rem">
+          <div class="sec-label" style="margin-bottom:.75rem">// Referral Letter</div>
+          <p style="font-size:13px;color:var(--muted);line-height:1.7;margin-bottom:1rem">Generate a simple introductory note from your profile and saved triage history. You can copy it for a therapist, doctor, or clinic intake form.</p>
+          <div class="settings-actions">
+            <button class="btn btn-primary" onclick="generateTherapyReferral()">Generate Referral</button>
+            <button class="btn btn-outline" onclick="copyTherapyReferral()">Copy</button>
+            <button class="btn btn-outline" onclick="exportTherapyReferral()">Export TXT</button>
+          </div>
+          <div class="mini-result" id="therapy-referral-status">No referral generated yet.</div>
+        </div>
+        <div class="glass-card" style="padding:1.5rem">
+          <div class="sec-label" style="margin-bottom:.75rem">// Preview</div>
+          <textarea class="tool-textarea" id="therapy-referral" style="min-height:250px" placeholder="Your referral letter will appear here..."></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== ACHIEVEMENTS ==================== -->
+    <div class="tab-panel" id="tab-achievements">
+      <div class="sec-label">// My Health</div>
+      <h2 class="sec-title"><span class="grad">Achievements</span> & Milestones</h2>
+      <div class="grid-3">
+        <div class="glass-card ach-card"><div class="ach-icon unlocked" style="background:rgba(255,215,0,0.1);border:1px solid rgba(255,215,0,0.3)">🏆</div><div><div class="ach-name">First Triage</div><div class="ach-desc">Completed your first triage session</div><span class="badge badge-green" style="margin-top:6px">Unlocked</span></div></div>
+        <div class="glass-card ach-card"><div class="ach-icon unlocked" style="background:rgba(0,212,255,0.1);border:1px solid rgba(0,212,255,0.2)">⚡</div><div><div class="ach-name">Speed Healer</div><div class="ach-desc">Completed 5 triages in one week</div><span class="badge badge-green" style="margin-top:6px">Unlocked</span></div></div>
+        <div class="glass-card ach-card"><div class="ach-icon unlocked" style="background:rgba(0,255,136,0.1);border:1px solid rgba(0,255,136,0.2)">💚</div><div><div class="ach-name">Health Conscious</div><div class="ach-desc">Logged vitals 7 days in a row</div><span class="badge badge-green" style="margin-top:6px">Unlocked</span></div></div>
+        <div class="glass-card ach-card"><div class="ach-icon locked" style="background:rgba(168,85,247,0.1);border:1px solid rgba(168,85,247,0.2)">🧠</div><div><div class="ach-name">Mind Master</div><div class="ach-desc">Use Mental AI 10 times</div><span class="badge" style="color:var(--muted);border-color:var(--border);margin-top:6px">3/10</span></div></div>
+        <div class="glass-card ach-card"><div class="ach-icon locked" style="background:rgba(236,72,153,0.1);border:1px solid rgba(236,72,153,0.2)">💪</div><div><div class="ach-name">Iron Body</div><div class="ach-desc">Complete Physical AI workout plan</div><span class="badge" style="color:var(--muted);border-color:var(--border);margin-top:6px">Locked</span></div></div>
+        <div class="glass-card ach-card"><div class="ach-icon locked" style="background:rgba(255,170,51,0.1);border:1px solid rgba(255,170,51,0.2)">👑</div><div><div class="ach-name">Premium Member</div><div class="ach-desc">Upgrade to MedAI Premium</div><span class="badge badge-warn" style="margin-top:6px">Locked</span></div></div>
+        <div class="glass-card ach-card"><div class="ach-icon locked" style="background:rgba(0,212,255,0.1);border:1px solid rgba(0,212,255,0.2)">🔬</div><div><div class="ach-name">Lab Rat</div><div class="ach-desc">Run 50 triage sessions</div><span class="badge" style="color:var(--muted);border-color:var(--border);margin-top:6px">12/50</span></div></div>
+        <div class="glass-card ach-card"><div class="ach-icon locked" style="background:rgba(255,77,109,0.1);border:1px solid rgba(255,77,109,0.2)">🚨</div><div><div class="ach-name">Life Saver</div><div class="ach-desc">Emergency triage caught in time</div><span class="badge badge-danger" style="margin-top:6px">1/1 ✓</span></div></div>
+        <div class="glass-card ach-card"><div class="ach-icon locked" style="background:rgba(0,255,136,0.1);border:1px solid rgba(0,255,136,0.2)">📅</div><div><div class="ach-name">Committed</div><div class="ach-desc">30-day streak on MedAI</div><span class="badge" style="color:var(--muted);border-color:var(--border);margin-top:6px">12/30 days</span></div></div>
+      </div>
+    </div>
+
+    <!-- ==================== PROFILE ==================== -->
+    <div class="tab-panel" id="tab-profile">
+      <div class="sec-label">// Account</div>
+      <h2 class="sec-title">My <span class="grad">Profile</span></h2>
+      <p class="sec-sub">View and update the health profile MedAI uses for personalization.</p>
+      <div class="glass-card profile-shell">
+        <div class="profile-hero">
+          <div class="profile-avatar-stage">
+            <button class="profile-avatar-preview" id="profile-avatar-preview" onclick="document.getElementById('profile-photo-input')?.click()" title="Change profile photo">U</button>
+            <input class="profile-photo-input" id="profile-photo-input" type="file" accept="image/*" onchange="handleProfilePhoto(event)"/>
+            <div class="profile-upload-actions">
+              <button class="btn btn-primary" onclick="document.getElementById('profile-photo-input')?.click()">Add Photo</button>
+              <button class="btn btn-outline" onclick="removeProfilePhoto()">Remove</button>
+            </div>
+          </div>
+          <div>
+            <div class="sec-label" style="margin-bottom:.55rem">// Health Identity</div>
+            <div class="profile-name" id="profile-display-name">Your Profile</div>
+            <div class="profile-meta" id="profile-display-meta">Complete your details so MedAI can personalize triage, reminders, emergency info, and daily score.</div>
+            <div class="profile-health-strip">
+              <span class="profile-chip">PLAN <strong id="profile-chip-plan">Free</strong></span>
+              <span class="profile-chip">BLOOD <strong id="profile-chip-blood">Unknown</strong></span>
+              <span class="profile-chip">COUNTRY <strong id="profile-chip-country">Not set</strong></span>
+            </div>
+          </div>
+          <div class="profile-highlight-grid">
+            <div class="profile-highlight"><span>Health Score</span><strong id="profile-health-score">--</strong></div>
+            <div class="profile-highlight"><span>Body Profile</span><strong id="profile-height-weight">--</strong></div>
+            <div class="profile-highlight"><span>Safety Notes</span><strong id="profile-safety-count">--</strong></div>
+          </div>
+        </div>
+
+        <div class="profile-body">
+          <div class="profile-section-title">Personal Details</div>
+          <div class="profile-grid">
+            <input class="tool-input" id="profile-firstname" placeholder="First name"/>
+            <input class="tool-input" id="profile-lastname" placeholder="Last name"/>
+            <input class="tool-input" id="profile-email" type="email" placeholder="Email"/>
+            <input class="tool-input" id="profile-phone" placeholder="Phone"/>
+            <input class="tool-input" id="profile-dob" type="date"/>
+            <select class="tool-select" id="profile-gender"><option value="">Gender</option><option>Male</option><option>Female</option><option>Non-binary</option><option>Prefer not to say</option></select>
+            <input class="tool-input" id="profile-country" placeholder="Country"/>
+            <select class="tool-select" id="profile-blood"><option value="">Blood group</option><option>A+</option><option>A-</option><option>B+</option><option>B-</option><option>AB+</option><option>AB-</option><option>O+</option><option>O-</option><option>Unknown</option></select>
+          </div>
+
+          <div class="profile-section-title">Body & Emergency</div>
+          <div class="profile-grid">
+            <input class="tool-input" id="profile-height" type="number" placeholder="Height cm"/>
+            <input class="tool-input" id="profile-weight" type="number" placeholder="Weight kg"/>
+            <input class="tool-input" id="profile-emerg-name" placeholder="Emergency contact name"/>
+            <input class="tool-input" id="profile-emerg-phone" placeholder="Emergency contact phone"/>
+          </div>
+
+          <div class="profile-section-title">Medical Context</div>
+          <div class="grid-2">
+            <textarea class="tool-textarea" id="profile-conditions" placeholder="Conditions, comma separated"></textarea>
+            <textarea class="tool-textarea" id="profile-allergies" placeholder="Allergies, comma separated"></textarea>
+          </div>
+          <textarea class="tool-textarea" id="profile-medications" style="margin-top:1rem" placeholder="Current medications"></textarea>
+
+          <div class="profile-section-title">Lifestyle</div>
+          <div class="profile-actions">
+            <label class="tracker-row" style="cursor:pointer"><span>Smokes</span><input id="profile-smokes" type="checkbox"/></label>
+            <label class="tracker-row" style="cursor:pointer"><span>Alcohol</span><input id="profile-alcohol" type="checkbox"/></label>
+            <label class="tracker-row" style="cursor:pointer"><span>Exercises</span><input id="profile-exercises" type="checkbox"/></label>
+          </div>
+          <div class="profile-actions">
+            <button class="btn btn-primary" onclick="saveProfile()">Save Profile</button>
+            <button class="btn btn-outline" onclick="loadProfileForm()">Reset Changes</button>
+          </div>
+          <div class="profile-note" id="profile-save-msg">Profile data and your photo stay in this browser until backend storage is added.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== SETTINGS ==================== -->
+    <div class="tab-panel" id="tab-settings">
+      <div class="sec-label">// Account</div>
+      <h2 class="sec-title">Settings & <span class="grad">Preferences</span></h2>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+
+        <!-- General settings -->
+        <div class="glass-card">
+          <div style="padding:1rem 1.25rem;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:2px">// GENERAL</div>
+          <div class="settings-item" onclick="showFaq()"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(0,212,255,0.1)">❓</div><div><div class="settings-label">FAQs</div><div class="settings-desc">Frequently asked questions</div></div></div><span class="settings-arrow">›</span></div>
+          <div class="settings-item" onclick="showSettingsPanel('rating-panel')"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(255,215,0,0.1)">⭐</div><div><div class="settings-label">Rate the App</div><div class="settings-desc">Share your feedback</div></div></div><span class="settings-arrow">›</span></div>
+          <div class="settings-item" onclick="showSettingsPanel('language-panel')"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(0,212,255,0.1)">🌐</div><div><div class="settings-label">Language</div><div class="settings-desc" id="language-desc">English (US)</div></div></div><span class="settings-arrow">›</span></div>
+          <div class="settings-item" onclick="showSettingsPanel('emergency-panel')"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(255,77,109,0.1)">📞</div><div><div class="settings-label">Emergency Contacts</div><div class="settings-desc">Quick dial numbers</div></div></div><span class="settings-arrow">›</span></div>
+          <div class="settings-item" onclick="showSettingsPanel('notifications-panel')"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(0,212,255,0.1)">🔔</div><div><div class="settings-label">Notifications</div><div class="settings-desc">Push & email alerts</div></div></div><div class="toggle on" id="settings-notif-toggle" onclick="event.stopPropagation();toggleSettingFlag('notifications_enabled',this)"></div></div>
+          <div class="settings-item"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(0,212,255,0.1)">🌙</div><div><div class="settings-label">Dark Mode</div><div class="settings-desc">Always on</div></div></div><div class="toggle on"></div></div>
+          <div class="settings-item" onclick="showSettingsPanel('openrouter-panel')"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(168,85,247,0.1)">AI</div><div><div class="settings-label">OpenRouter API</div><div class="settings-desc">Support AI provider</div></div></div><span class="settings-arrow">›</span></div>
+          <div class="settings-item" onclick="showSettingsPanel('gemini-panel')"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(0,212,255,0.1)">AI</div><div><div class="settings-label">Gemini API</div><div class="settings-desc">Triage & general chatbot provider</div></div></div><span class="settings-arrow">›</span></div>
+        </div>
+
+        <!-- Privacy & Security -->
+        <div class="glass-card">
+          <div style="padding:1rem 1.25rem;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:2px">// PRIVACY & SECURITY</div>
+          <div class="settings-item" onclick="showSettingsPanel('password-panel')"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(0,255,136,0.1)">🔒</div><div><div class="settings-label">Change Password</div><div class="settings-desc" id="password-desc">Local account password</div></div></div><span class="settings-arrow">›</span></div>
+          <div class="settings-item"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(0,212,255,0.1)">🛡️</div><div><div class="settings-label">Two-Factor Auth</div><div class="settings-desc">Frontend demo flag</div></div></div><div class="toggle" id="twofa-toggle" onclick="toggleSettingFlag('twofa_enabled',this)"></div></div>
+          <div class="settings-item" onclick="showSettingsPanel('privacy-panel')"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(0,212,255,0.1)">📊</div><div><div class="settings-label">Data & Privacy</div><div class="settings-desc">Manage your data</div></div></div><span class="settings-arrow">›</span></div>
+          <div class="settings-item" onclick="exportHealthData()"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(0,212,255,0.1)">🗂️</div><div><div class="settings-label">Export Health Data</div><div class="settings-desc">Download your records</div></div></div><span class="settings-arrow">›</span></div>
+          <div class="settings-item" onclick="clearLocalHistory()"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(255,170,51,0.1)">⚠️</div><div><div class="settings-label">Clear History</div><div class="settings-desc">Remove all triage records</div></div></div><span class="settings-arrow" style="color:var(--warning)">›</span></div>
+          <div class="settings-item" onclick="confirmDelete()"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(255,77,109,0.1)">🗑️</div><div><div class="settings-label" style="color:var(--danger)">Delete Account</div><div class="settings-desc">Permanently remove your data</div></div></div><span class="settings-arrow" style="color:var(--danger)">›</span></div>
+        </div>
+
+        <div class="glass-card settings-panel" id="openrouter-panel">
+          <div class="settings-panel-title">OpenRouter API</div>
+          <p class="settings-panel-copy">Emotional, Mental, and Physical AI support now use OpenRouter. Paste your key here. Frontend storage is convenient for testing, but backend proxying is safer for production.</p>
+          <div class="grid-2">
+            <input class="tool-input" id="openrouter-key" type="password" placeholder="OpenRouter API key"/>
+            <input class="tool-input" id="openrouter-model" placeholder="Model e.g. openai/gpt-4o-mini"/>
+          </div>
+          <div class="settings-actions">
+            <button class="btn btn-primary" onclick="saveOpenRouterSettings()">Save OpenRouter</button>
+            <button class="btn btn-outline" onclick="testOpenRouter()">Test Connection</button>
+            <button class="btn btn-danger" onclick="clearOpenRouterSettings()">Clear Key</button>
+          </div>
+          <div class="mini-result" id="openrouter-status">No OpenRouter key saved yet.</div>
+        </div>
+
+        <div class="glass-card settings-panel" id="gemini-panel">
+          <div class="settings-panel-title">Gemini API Settings</div>
+          <p class="settings-panel-copy">General AI Chatbot and Quick Triage both use Gemini. Paste your key here to configure it dynamically. Your key stays in this browser.</p>
+          <div class="grid-2">
+            <input class="tool-input" id="gemini-key-input" type="password" placeholder="Gemini API key (AIzaSy...)"/>
+          </div>
+          <div class="settings-actions">
+            <button class="btn btn-primary" onclick="saveGeminiSettings()">Save Gemini Key</button>
+            <button class="btn btn-outline" onclick="testGeminiConnection()">Test Connection</button>
+            <button class="btn btn-danger" onclick="clearGeminiSettings()">Clear Key</button>
+          </div>
+          <div class="mini-result" id="gemini-status">Using default system key.</div>
+        </div>
+
+        <div class="glass-card settings-panel" id="password-panel">
+          <div class="settings-panel-title">Change Password</div>
+          <p class="settings-panel-copy">Updates the password saved for this local frontend account.</p>
+          <div class="grid-2">
+            <input class="tool-input" id="current-password" type="password" placeholder="Current password"/>
+            <input class="tool-input" id="new-password" type="password" placeholder="New password"/>
+          </div>
+          <div class="settings-actions"><button class="btn btn-primary" onclick="changeLocalPassword()">Update Password</button></div>
+          <div class="mini-result" id="password-status">Use at least 8 characters for the new password.</div>
+        </div>
+
+        <div class="glass-card settings-panel" id="privacy-panel">
+          <div class="settings-panel-title">Data & Privacy</div>
+          <p class="settings-panel-copy">Control what is saved in this browser. Backend privacy controls can replace this later.</p>
+          <div class="privacy-row"><div><strong>Local profile</strong><br><span>Used for AI personalization and dashboard score</span></div><button class="btn btn-outline" onclick="showTab('profile',null)">Edit</button></div>
+          <div class="privacy-row"><div><strong>Chat history</strong><br><span>Saved locally per user</span></div><button class="btn btn-danger" onclick="clearChatHistory()">Clear</button></div>
+          <div class="privacy-row"><div><strong>Vitals history</strong><br><span>Camera/manual readings in this browser</span></div><button class="btn btn-danger" onclick="clearVitalsHistory()">Clear</button></div>
+          <div class="privacy-row"><div><strong>All local data</strong><br><span>Profile, chats, reminders, trackers, vitals, appointments</span></div><button class="btn btn-danger" onclick="clearAllLocalUserData()">Clear User Data</button></div>
+        </div>
+
+        <div class="glass-card settings-panel" id="emergency-panel">
+          <div class="settings-panel-title">Emergency Contacts</div>
+          <p class="settings-panel-copy">Update the quick-dial contact shown on your dashboard.</p>
+          <div class="grid-2">
+            <input class="tool-input" id="settings-emerg-name" placeholder="Contact name"/>
+            <input class="tool-input" id="settings-emerg-phone" placeholder="Contact phone"/>
+          </div>
+          <div class="settings-actions"><button class="btn btn-primary" onclick="saveEmergencySettings()">Save Contact</button></div>
+          <div class="mini-result" id="emergency-status">Saved contact appears on the dashboard emergency card.</div>
+        </div>
+
+        <div class="glass-card settings-panel" id="notifications-panel">
+          <div class="settings-panel-title">Notifications</div>
+          <p class="settings-panel-copy">Choose which local notification cards appear in the bell dropdown.</p>
+          <div class="privacy-row"><div><strong>Medicine reminders</strong><br><span>Show due medicines</span></div><div class="toggle on" id="medicine-notif-toggle" onclick="toggleSettingFlag('medicine_notifications',this)"></div></div>
+          <div class="privacy-row"><div><strong>Appointments</strong><br><span>Show upcoming visits</span></div><div class="toggle on" id="appointment-notif-toggle" onclick="toggleSettingFlag('appointment_notifications',this)"></div></div>
+          <div class="privacy-row"><div><strong>System tips</strong><br><span>Show local storage/privacy notices</span></div><div class="toggle on" id="system-notif-toggle" onclick="toggleSettingFlag('system_notifications',this)"></div></div>
+        </div>
+
+        <div class="glass-card settings-panel" id="language-panel">
+          <div class="settings-panel-title">Language</div>
+          <p class="settings-panel-copy">Frontend language preference. Full translation can be expanded later.</p>
+          <select class="tool-select" id="language-select"><option>English (US)</option><option>Pidgin English</option><option>Français</option><option>العربية</option></select>
+          <div class="settings-actions"><button class="btn btn-primary" onclick="saveLanguage()">Save Language</button></div>
+        </div>
+
+        <!-- FAQs -->
+        <div class="glass-card" id="faq-section" style="grid-column:1/-1">
+          <div style="padding:1rem 1.25rem;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:2px">// FREQUENTLY ASKED QUESTIONS</div>
+          <div class="faq-item"><div class="faq-q" onclick="toggleFaq(this)"><span>Is MedAI a replacement for a real doctor?</span><span class="faq-chevron">▾</span></div><div class="faq-a"><p>No. MedAI provides AI-powered triage guidance only. It helps you understand the urgency of your symptoms, but is not a substitute for professional medical diagnosis or treatment.</p></div></div>
+          <div class="faq-item"><div class="faq-q" onclick="toggleFaq(this)"><span>Is my health data stored or shared?</span><span class="faq-chevron">▾</span></div><div class="faq-a"><p>Your profile, triage history, vitals, reminders, and chat history are stored locally in this browser for now. Backend storage and account sync can be added later.</p></div></div>
+          <div class="faq-item"><div class="faq-q" onclick="toggleFaq(this)"><span>How accurate is the triage system?</span><span class="faq-chevron">▾</span></div><div class="faq-a"><p>MedAI's AI model achieves approximately 94% accuracy in triage classification based on internal testing. Each result includes a confidence score so you can gauge reliability.</p></div></div>
+          <div class="faq-item"><div class="faq-q" onclick="toggleFaq(this)"><span>What is the Premium plan?</span><span class="faq-chevron">▾</span></div><div class="faq-a"><p>Premium unlocks unlimited triage sessions, advanced AI consultations, detailed health reports, priority support, and early access to new features.</p></div></div>
+          <div class="faq-item"><div class="faq-q" onclick="toggleFaq(this)"><span>How do I add emergency contacts?</span><span class="faq-chevron">▾</span></div><div class="faq-a"><p>Go to Settings → Emergency Contacts. You can add up to 5 contacts with their name and phone number for quick dial access during an emergency.</p></div></div>
+        </div>
+
+        <!-- App Rating -->
+        <div class="glass-card" id="rating-panel" style="padding:1.5rem;text-align:center">
+          <div class="sec-label" style="justify-content:center;margin-bottom:.5rem">// Rate MedAI</div>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:.5rem">How would you rate your experience?</p>
+          <div class="star-row" id="star-row">
+            <span class="star" onclick="rateStar(1)">★</span>
+            <span class="star" onclick="rateStar(2)">★</span>
+            <span class="star" onclick="rateStar(3)">★</span>
+            <span class="star" onclick="rateStar(4)">★</span>
+            <span class="star" onclick="rateStar(5)">★</span>
+          </div>
+          <div id="rating-msg" style="font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:1px;min-height:20px"></div>
+        </div>
+
+        <!-- Language -->
+        <div class="glass-card" style="padding:1.5rem">
+          <div class="sec-label" style="margin-bottom:.75rem">// Language</div>
+          <div style="display:flex;flex-direction:column;gap:.5rem">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:.75rem;background:rgba(0,212,255,0.06);border:1px solid rgba(0,212,255,0.2);border-radius:10px">
+              <span style="font-size:14px">🇺🇸 English (US)</span>
+              <span style="font-family:var(--mono);font-size:10px;color:var(--safe)">ACTIVE</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:.75rem;background:rgba(0,0,0,0.2);border:1px solid var(--border);border-radius:10px;cursor:pointer" onclick="this.style.border='1px solid rgba(0,212,255,0.3)'">
+              <span style="font-size:14px">🇫🇷 Français</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:.75rem;background:rgba(0,0,0,0.2);border:1px solid var(--border);border-radius:10px;cursor:pointer">
+              <span style="font-size:14px">🇳🇬 Pidgin English</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:.75rem;background:rgba(0,0,0,0.2);border:1px solid var(--border);border-radius:10px;cursor:pointer">
+              <span style="font-size:14px">🇸🇦 العربية</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ==================== PREMIUM ==================== -->
+    <div class="tab-panel" id="tab-premium">
+      <div class="sec-label">// Upgrade</div>
+      <h2 class="sec-title">Unlock <span class="grad">Premium</span> 👑</h2>
+
+      <!-- Country + Currency Selector -->
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:1.75rem;flex-wrap:wrap">
+        <div style="font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:1.5px">🌍 YOUR COUNTRY:</div>
+        <select id="country-select" onchange="updatePricing()" style="background:rgba(0,212,255,0.06);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:var(--mono);font-size:12px;padding:8px 14px;outline:none;cursor:pointer;letter-spacing:1px">
+          <option value="NG">🇳🇬 Nigeria (NGN ₦)</option>
+          <option value="US">🇺🇸 United States (USD $)</option>
+          <option value="GB">🇬🇧 United Kingdom (GBP £)</option>
+          <option value="EU">🇪🇺 Europe (EUR €)</option>
+          <option value="GH">🇬🇭 Ghana (GHS ₵)</option>
+          <option value="KE">🇰🇪 Kenya (KES KSh)</option>
+          <option value="ZA">🇿🇦 South Africa (ZAR R)</option>
+          <option value="CA">🇨🇦 Canada (CAD CA$)</option>
+          <option value="AU">🇦🇺 Australia (AUD A$)</option>
+          <option value="IN">🇮🇳 India (INR ₹)</option>
+          <option value="BR">🇧🇷 Brazil (BRL R$)</option>
+          <option value="AE">🇦🇪 UAE (AED د.إ)</option>
+        </select>
+
+        <!-- Monthly / Yearly toggle -->
+        <div style="display:flex;align-items:center;gap:0;background:rgba(0,212,255,0.05);border:1px solid var(--border2);border-radius:8px;overflow:hidden">
+          <div id="toggle-monthly" onclick="setBilling('monthly')" style="font-family:var(--mono);font-size:11px;padding:8px 16px;cursor:pointer;letter-spacing:1px;background:rgba(0,212,255,0.15);color:var(--accent);transition:all .2s">MONTHLY</div>
+          <div id="toggle-yearly" onclick="setBilling('yearly')" style="font-family:var(--mono);font-size:11px;padding:8px 16px;cursor:pointer;letter-spacing:1px;color:var(--muted);transition:all .2s">YEARLY</div>
+        </div>
+        <div id="save-badge" style="display:none;font-family:var(--mono);font-size:10px;color:var(--safe);background:rgba(0,255,136,0.1);border:1px solid rgba(0,255,136,0.25);border-radius:20px;padding:4px 12px;letter-spacing:1px">SAVE 30%</div>
+      </div>
+
+      <!-- Plans Grid -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;max-width:760px">
+
+        <!-- FREE PLAN -->
+        <div class="glass-card" style="padding:2rem;position:relative">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:2px;margin-bottom:.75rem">FREE PLAN</div>
+          <div style="font-family:var(--head);font-size:2rem;font-weight:800;color:var(--text);margin-bottom:.25rem">
+            <span id="free-price">₦0</span>
+            <span style="font-size:.9rem;color:var(--muted);font-weight:400" id="free-period">/month</span>
+          </div>
+          <div style="font-size:13px;color:var(--muted);margin-bottom:1.5rem">Forever free. No card needed.</div>
+          <div style="display:flex;flex-direction:column;gap:.6rem;margin-bottom:1.5rem">
+            <div style="display:flex;align-items:center;gap:8px;font-size:13px"><span style="color:var(--safe)">✓</span> 5 triage sessions/day</div>
+            <div style="display:flex;align-items:center;gap:8px;font-size:13px"><span style="color:var(--safe)">✓</span> Basic AI chatbot</div>
+            <div style="display:flex;align-items:center;gap:8px;font-size:13px"><span style="color:var(--safe)">✓</span> Symptom history (7 days)</div>
+            <div style="display:flex;align-items:center;gap:8px;font-size:13px"><span style="color:var(--muted)">✗</span> <span style="color:var(--muted)">Emotional / Mental / Physical AI</span></div>
+            <div style="display:flex;align-items:center;gap:8px;font-size:13px"><span style="color:var(--muted)">✗</span> <span style="color:var(--muted)">Health reports</span></div>
+            <div style="display:flex;align-items:center;gap:8px;font-size:13px"><span style="color:var(--muted)">✗</span> <span style="color:var(--muted)">Priority support</span></div>
+          </div>
+          <div style="background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;padding:12px;font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:1px;text-align:center">CURRENT PLAN</div>
+        </div>
+
+        <!-- PREMIUM PLAN -->
+        <div style="background:linear-gradient(135deg,rgba(168,85,247,0.12),rgba(236,72,153,0.08));border:1px solid rgba(168,85,247,0.3);border-radius:var(--radius);padding:2rem;position:relative;overflow:hidden">
+          <!-- Glow top line -->
+          <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,#a855f7,#ec4899,transparent)"></div>
+          <div style="position:absolute;top:12px;right:12px;font-family:var(--mono);font-size:9px;color:#000;background:linear-gradient(135deg,#a855f7,#ec4899);border-radius:20px;padding:3px 10px;letter-spacing:1px">RECOMMENDED</div>
+
+          <div style="font-family:var(--mono);font-size:10px;color:#a855f7;letter-spacing:2px;margin-bottom:.75rem">PREMIUM PLAN 👑</div>
+          <div style="font-family:var(--head);font-size:2rem;font-weight:800;margin-bottom:.25rem">
+            <span id="premium-price" style="background:linear-gradient(135deg,#a855f7,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">₦3,500</span>
+            <span style="font-size:.9rem;color:var(--muted);font-weight:400" id="premium-period">/month</span>
+          </div>
+          <div style="font-size:13px;color:var(--muted);margin-bottom:1.5rem" id="premium-subtext">Billed monthly. Cancel anytime.</div>
+          <div style="display:flex;flex-direction:column;gap:.6rem;margin-bottom:1.5rem">
+            <div style="display:flex;align-items:center;gap:8px;font-size:13px"><span style="color:var(--safe)">✓</span> Unlimited triage sessions</div>
+            <div style="display:flex;align-items:center;gap:8px;font-size:13px"><span style="color:var(--safe)">✓</span> All AI support (Emotional, Mental, Physical)</div>
+            <div style="display:flex;align-items:center;gap:8px;font-size:13px"><span style="color:var(--safe)">✓</span> Full symptom history</div>
+            <div style="display:flex;align-items:center;gap:8px;font-size:13px"><span style="color:var(--safe)">✓</span> Detailed health reports</div>
+            <div style="display:flex;align-items:center;gap:8px;font-size:13px"><span style="color:var(--safe)">✓</span> Family health tracking</div>
+            <div style="display:flex;align-items:center;gap:8px;font-size:13px"><span style="color:var(--safe)">✓</span> Priority AI response speed</div>
+            <div style="display:flex;align-items:center;gap:8px;font-size:13px"><span style="color:var(--safe)">✓</span> Early access to new features</div>
+            <div style="display:flex;align-items:center;gap:8px;font-size:13px"><span style="color:var(--safe)">✓</span> 24/7 priority support</div>
+          </div>
+          <button onclick="upgradePremium()" style="width:100%;background:linear-gradient(135deg,#a855f7,#ec4899);border:none;border-radius:10px;color:#fff;font-family:var(--head);font-size:14px;font-weight:700;padding:14px;cursor:pointer;transition:all .3s;position:relative;overflow:hidden" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 10px 30px rgba(168,85,247,0.4)'" onmouseout="this.style.transform='none';this.style.boxShadow='none'">
+            👑 &nbsp;Upgrade to Premium
+          </button>
+          <div style="margin-top:.75rem;font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1px;text-align:center" id="yearly-saving-note"></div>
+        </div>
+
+      </div>
+
+      <!-- Yearly savings callout -->
+      <div id="yearly-callout" style="display:none;max-width:760px;margin-top:1rem;background:rgba(0,255,136,0.06);border:1px solid rgba(0,255,136,0.2);border-radius:var(--radius-sm);padding:1rem 1.25rem;align-items:center;gap:12px">
+        <div style="font-size:24px">💡</div>
+        <div>
+          <div style="font-family:var(--head);font-size:13px;font-weight:700;color:var(--safe);margin-bottom:3px">Save 30% with yearly billing</div>
+          <div style="font-size:13px;color:var(--muted)" id="yearly-savings-text">You save ₦12,600 per year compared to monthly billing.</div>
+        </div>
+      </div>
+
+    </div>
+
+  </div><!-- end content -->
+</div><!-- end main -->
+</div><!-- end shell -->
+
+<!-- MOBILE NAV -->
+<div class="mobile-nav">
+  <div class="mobile-nav-items">
+    <div class="mob-item active" onclick="showTab('dashboard',null);setMobActive(this)"><div class="mob-item-icon">🏠</div><div class="mob-item-label">Home</div></div>
+    <div class="mob-item" onclick="showTab('triage',null);setMobActive(this)"><div class="mob-item-icon">⚡</div><div class="mob-item-label">Triage</div></div>
+    <div class="mob-item" onclick="showTab('chatbot',null);setMobActive(this)"><div class="mob-item-icon">🤖</div><div class="mob-item-label">AI Chat</div></div>
+    <div class="mob-item" onclick="showTab('tools',null);setMobActive(this)"><div class="mob-item-icon">+</div><div class="mob-item-label">Tools</div></div>
+    <div class="mob-item" onclick="showTab('reports',null);setMobActive(this)"><div class="mob-item-icon">Rx</div><div class="mob-item-label">Reports</div></div>
+    <div class="mob-item" onclick="showTab('settings',null);setMobActive(this)"><div class="mob-item-icon">⚙️</div><div class="mob-item-label">Settings</div></div>
+  </div>
+</div>
+
+<!-- =============================================
+     JAVASCRIPT
+     ============================================= -->
+
+<script src="dashboard.js" defer></script>
+
+
+<!-- PANIC MODE OVERLAY -->
+<div id="panic-overlay" style="display:none;position:fixed;inset:0;z-index:9500;background:rgba(3,7,12,0.92);backdrop-filter:blur(24px);align-items:center;justify-content:center;padding:1.5rem;overflow-y:auto">
+  <div style="background:rgba(10,20,35,0.85);border:1px solid rgba(255,77,109,0.3);border-radius:24px;padding:2.5rem 2rem;max-width:540px;width:100%;position:relative;box-shadow:0 30px 90px rgba(0,0,0,0.65),0 0 50px rgba(255,77,109,0.15)">
+    <!-- Glow line -->
+    <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--danger),var(--warning),transparent)"></div>
+    
+    <div style="text-align:center;margin-bottom:1.5rem">
+      <div style="font-size:52px;line-height:1;margin-bottom:0.5rem;animation:danger-pulse 2s ease-in-out infinite">🚨</div>
+      <h2 style="font-family:'Syne',sans-serif;font-size:24px;font-weight:900;color:var(--danger);letter-spacing:-0.5px">SOS — Panic Mode</h2>
+      <p style="font-size:13px;color:var(--muted);margin-top:0.25rem">Take a slow breath. We are here to help you calm down and stay safe.</p>
+    </div>
+
+    <!-- Breathing Coach Section -->
+    <div style="background:rgba(0,0,0,0.25);border:1px solid rgba(255,77,109,0.12);border-radius:16px;padding:1.5rem;text-align:center;margin-bottom:1.5rem">
+      <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--danger);letter-spacing:2px;margin-bottom:1rem;text-transform:uppercase">// GUIDED BREATHING COMPANION</div>
+      <div style="display:flex;justify-content:center;align-items:center;height:120px;margin-bottom:1rem">
+        <div id="breathing-circle" style="width:70px;height:70px;border-radius:50%;background:radial-gradient(circle,rgba(255,77,109,0.3) 0%,rgba(255,77,109,0.1) 70%);border:2px dashed rgba(255,77,109,0.5);display:flex;align-items:center;justify-content:center;transition:all 4s cubic-bezier(0.4, 0, 0.2, 1);box-shadow:0 0 20px rgba(255,77,109,0.2)">
+          <span id="breathing-icon" style="font-size:24px">🧘</span>
+        </div>
+      </div>
+      <div id="breathing-state" style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--text);min-height:26px">Initializing...</div>
+      <div id="breathing-timer" style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--muted);margin-top:4px;letter-spacing:1px">Ready</div>
+    </div>
+
+    <!-- Calming sound simulator -->
+    <div style="background:rgba(0,255,136,0.025);border:1px solid rgba(0,255,136,0.12);border-radius:16px;padding:1.2rem;margin-bottom:1.5rem">
+      <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--safe);letter-spacing:2px;margin-bottom:0.75rem;text-transform:uppercase">// CALMING SOUND WAVE</div>
+      <div class="panic-wave" id="panic-wave">
+        <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;margin-top:0.8rem;flex-wrap:wrap">
+        <button class="btn btn-outline" id="panic-sound-btn" onclick="toggleCalmingSound()" style="font-size:10px">Start Calm Sound</button>
+        <div id="panic-sound-status" style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:1px">Visual wave ready. Audio starts only after you tap.</div>
+      </div>
+    </div>
+
+    <!-- 5-4-3-2-1 Grounding Section -->
+    <div style="background:rgba(0,212,255,0.02);border:1px solid var(--border);border-radius:16px;padding:1.5rem;margin-bottom:1.5rem">
+      <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--accent);letter-spacing:2px;margin-bottom:0.75rem;text-transform:uppercase">// 5-4-3-2-1 Grounding Checklist</div>
+      <p style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:1rem">Ground yourself in the present moment by locating and checking off these items around you:</p>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <label class="tracker-row" style="cursor:pointer;padding:8px 12px;background:rgba(0,0,0,0.15)">
+          <span style="font-size:13px;color:var(--text)">👁️ <strong>5</strong> things you can see</span>
+          <input type="checkbox" onchange="toggleGrounding(this)" style="accent-color:var(--accent)"/>
+        </label>
+        <label class="tracker-row" style="cursor:pointer;padding:8px 12px;background:rgba(0,0,0,0.15)">
+          <span style="font-size:13px;color:var(--text)">🤝 <strong>4</strong> things you can touch</span>
+          <input type="checkbox" onchange="toggleGrounding(this)" style="accent-color:var(--accent)"/>
+        </label>
+        <label class="tracker-row" style="cursor:pointer;padding:8px 12px;background:rgba(0,0,0,0.15)">
+          <span style="font-size:13px;color:var(--text)">👂 <strong>3</strong> things you can hear</span>
+          <input type="checkbox" onchange="toggleGrounding(this)" style="accent-color:var(--accent)"/>
+        </label>
+        <label class="tracker-row" style="cursor:pointer;padding:8px 12px;background:rgba(0,0,0,0.15)">
+          <span style="font-size:13px;color:var(--text)">👃 <strong>2</strong> things you can smell</span>
+          <input type="checkbox" onchange="toggleGrounding(this)" style="accent-color:var(--accent)"/>
+        </label>
+        <label class="tracker-row" style="cursor:pointer;padding:8px 12px;background:rgba(0,0,0,0.15)">
+          <span style="font-size:13px;color:var(--text)">👅 <strong>1</strong> thing you can taste</span>
+          <input type="checkbox" onchange="toggleGrounding(this)" style="accent-color:var(--accent)"/>
+        </label>
+      </div>
+      <div id="grounding-status" style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:1px;margin-top:0.75rem">0 of 5 completed</div>
+    </div>
+
+    <!-- Emergency contacts / hotlines -->
+    <div style="margin-bottom:1.75rem">
+      <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--danger);letter-spacing:2px;margin-bottom:0.75rem;text-transform:uppercase">// CRISIS HELPLINES</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px" id="panic-dials">
+        <a href="tel:112" class="btn btn-danger" style="justify-content:center;padding:12px;font-size:10px">🚑 CALL 112 / 199</a>
+        <a href="tel:988" class="btn btn-outline" style="justify-content:center;padding:12px;font-size:10px;color:var(--warning);border-color:rgba(255,170,51,0.3)">🧠 CALL 988 LIFELINE</a>
+      </div>
+    </div>
+
+    <!-- Action buttons -->
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-outline" onclick="testGroundingReset()" style="flex:1;justify-content:center;font-size:11px">Reset Checklist</button>
+      <button class="btn btn-primary" onclick="closePanicMode()" style="flex:2;background:linear-gradient(135deg,var(--safe),#00aa66);border-color:rgba(0,255,136,0.4);color:#000;justify-content:center;font-size:11px">💚 I'm Feeling Better</button>
+    </div>
+  </div>
+</div>
+
+<!-- DELETE ACCOUNT MODAL -->
+<div id="delete-modal" style="display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,0.75);backdrop-filter:blur(10px);align-items:center;justify-content:center;padding:1rem">
+  <div style="background:#0a1628;border:1px solid rgba(255,77,109,0.3);border-radius:20px;padding:2rem;max-width:420px;width:100%;position:relative;box-shadow:0 40px 80px rgba(0,0,0,0.5)">
+    <div style="font-size:48px;text-align:center;margin-bottom:1rem">⚠️</div>
+    <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;text-align:center;margin-bottom:.5rem;color:#ff4d6d">Delete Account</div>
+    <p style="font-size:13px;color:rgba(150,200,230,0.6);text-align:center;line-height:1.7;margin-bottom:1.25rem">This will permanently delete your account, health profile, and all triage history. This action <strong style="color:#ff4d6d">cannot be undone</strong>.</p>
+    <div style="margin-bottom:.75rem">
+      <label style="font-family:'Share Tech Mono',monospace;font-size:10px;color:rgba(150,200,230,0.5);letter-spacing:2px;display:block;margin-bottom:8px">TYPE "DELETE" TO CONFIRM</label>
+      <input id="delete-confirm-input" type="text" placeholder="DELETE" style="width:100%;background:rgba(255,77,109,0.06);border:1px solid rgba(255,77,109,0.3);border-radius:10px;color:#e2f4ff;font-family:'DM Sans',sans-serif;font-size:15px;padding:12px 16px;outline:none;text-align:center;letter-spacing:3px"/>
+    </div>
+    <div id="delete-error" style="display:none;font-size:12px;color:#ff4d6d;text-align:center;margin-bottom:.75rem;font-family:'Share Tech Mono',monospace;letter-spacing:1px"></div>
+    <div style="display:flex;gap:10px">
+      <button onclick="closeDeleteModal()" style="flex:1;background:transparent;border:1px solid rgba(0,212,255,0.2);border-radius:10px;color:rgba(150,200,230,0.6);font-family:'Syne',sans-serif;font-size:13px;font-weight:700;padding:12px;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='rgba(0,212,255,0.2)'">Cancel</button>
+      <button onclick="executeDelete()" style="flex:1;background:rgba(255,77,109,0.15);border:1px solid rgba(255,77,109,0.4);border-radius:10px;color:#ff4d6d;font-family:'Syne',sans-serif;font-size:13px;font-weight:700;padding:12px;cursor:pointer;transition:all .2s" onmouseover="this.style.background='rgba(255,77,109,0.25)'" onmouseout="this.style.background='rgba(255,77,109,0.15)'">🗑️ Delete Forever</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>

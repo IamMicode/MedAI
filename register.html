@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>MedAI — Create Account</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&family=Share+Tech+Mono&display=swap" rel="stylesheet"/>
+<script src="medai-transition.js" defer></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#020c14;--accent:#00d4ff;--accent2:#006ecc;--safe:#00ff88;--danger:#ff4d6d;--warning:#ffaa33;--text:#e2f4ff;--muted:rgba(180,220,255,0.45);--glass-bg:rgba(6,20,38,0.55);--glass-border:rgba(0,212,255,0.18)}
+html,body{min-height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);overflow-x:hidden}
+.bg-base{position:fixed;inset:0;z-index:0;background:radial-gradient(ellipse 80% 60% at 80% 10%,rgba(0,80,160,0.35) 0%,transparent 60%),radial-gradient(ellipse 60% 80% at 10% 90%,rgba(0,180,120,0.2) 0%,transparent 60%),radial-gradient(ellipse 100% 100% at 50% 50%,rgba(0,30,60,0.9) 0%,#020c14 70%)}
+.orb{position:fixed;border-radius:50%;filter:blur(80px);pointer-events:none;z-index:1}
+.orb-1{width:550px;height:550px;top:-150px;right:-100px;background:radial-gradient(circle,rgba(0,212,255,0.16) 0%,transparent 70%);animation:orb-a 14s ease-in-out infinite}
+.orb-2{width:450px;height:450px;bottom:-100px;left:-80px;background:radial-gradient(circle,rgba(0,255,136,0.12) 0%,transparent 70%);animation:orb-b 18s ease-in-out infinite}
+@keyframes orb-a{0%,100%{transform:translate(0,0)}50%{transform:translate(-60px,50px)}}
+@keyframes orb-b{0%,100%{transform:translate(0,0)}50%{transform:translate(70px,-50px)}}
+canvas{position:fixed;pointer-events:none}
+#particle-canvas{inset:0;z-index:2;opacity:0.18}
+#ecg-bg{bottom:0;left:0;width:100%;height:100px;z-index:2;opacity:0.15}
+.grid-overlay{position:fixed;inset:0;z-index:2;pointer-events:none;background-image:linear-gradient(rgba(0,212,255,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(0,212,255,0.025) 1px,transparent 1px);background-size:44px 44px}
+.scanlines{position:fixed;inset:0;z-index:3;pointer-events:none;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.06) 2px,rgba(0,0,0,0.06) 4px)}
+.deco-icons{position:fixed;inset:0;pointer-events:none;z-index:3}
+.deco-icon{position:absolute;opacity:0;color:rgba(0,212,255,0.5);animation:deco-float linear infinite}
+@keyframes deco-float{0%{transform:translateY(0) rotate(0deg);opacity:0}10%{opacity:.14}90%{opacity:.05}100%{transform:translateY(-100vh) rotate(360deg);opacity:0}}
+#cursor{position:fixed;width:10px;height:10px;border-radius:50%;background:var(--accent);pointer-events:none;z-index:99999;transform:translate(-50%,-50%);mix-blend-mode:screen;transition:width .15s,height .15s}
+#cursor-ring{position:fixed;width:36px;height:36px;border-radius:50%;border:1px solid rgba(0,212,255,0.5);pointer-events:none;z-index:99998;transform:translate(-50%,-50%);transition:width .25s,height .25s,border-color .2s}
+.page{position:relative;z-index:10;min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:2rem 1rem}
+.page-inner{width:100%;max-width:500px;padding-top:1rem}
+
+/* OUTER STEPS */
+.outer-steps{display:flex;align-items:center;justify-content:center;gap:0;margin-bottom:1.5rem}
+.os-step{display:flex;flex-direction:column;align-items:center;gap:5px}
+.os-circle{width:30px;height:30px;border-radius:50%;border:2px solid rgba(0,212,255,0.2);display:flex;align-items:center;justify-content:center;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);transition:all .3s}
+.os-step.done .os-circle{border-color:var(--safe);background:rgba(0,255,136,0.15);color:var(--safe)}
+.os-step.active .os-circle{border-color:var(--accent);background:rgba(0,212,255,0.15);color:var(--accent)}
+.os-label{font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase}
+.os-step.active .os-label{color:var(--accent)}.os-step.done .os-label{color:var(--safe)}
+.os-line{width:50px;height:1px;background:rgba(0,212,255,0.15);margin:0 4px;position:relative;overflow:hidden;align-self:center;margin-bottom:16px}
+.os-line-fill{position:absolute;inset:0;background:var(--safe);transform:scaleX(0);transform-origin:left;transition:transform .5s ease}
+.os-line-fill.filled{transform:scaleX(1)}
+
+/* CARD */
+.register-card{position:relative;width:100%;background:var(--glass-bg);backdrop-filter:blur(28px) saturate(160%);-webkit-backdrop-filter:blur(28px) saturate(160%);border:1px solid var(--glass-border);border-radius:28px;padding:2.5rem;box-shadow:0 0 0 1px rgba(0,212,255,0.05),0 40px 80px rgba(0,0,0,0.5),inset 0 1px 0 rgba(0,212,255,0.12);overflow:hidden;animation:card-in .8s cubic-bezier(.2,.8,.2,1) forwards}
+@keyframes card-in{from{opacity:0;transform:translateY(32px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+.card-shimmer{position:absolute;inset:-1px;border-radius:28px;background:conic-gradient(from var(--angle,0deg),transparent 0deg,rgba(0,212,255,0.08) 60deg,rgba(0,255,136,0.04) 120deg,transparent 180deg);pointer-events:none;z-index:0;animation:shimmer-rotate 8s linear infinite}
+@property --angle{syntax:'<angle>';initial-value:0deg;inherits:false}
+@keyframes shimmer-rotate{to{--angle:360deg}}
+.card-shine{position:absolute;top:0;left:10%;right:10%;height:1px;background:linear-gradient(90deg,transparent,rgba(0,212,255,0.4),rgba(0,255,136,0.3),transparent);pointer-events:none;z-index:1}
+.card-inner{position:relative;z-index:2}
+.card-logo{display:flex;align-items:center;gap:10px;margin-bottom:1.25rem}
+.logo-icon{width:38px;height:38px;border-radius:12px;background:linear-gradient(135deg,#00d4ff,#0044cc);display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 0 24px rgba(0,212,255,0.35);animation:pulse-logo 3s ease-in-out infinite}
+@keyframes pulse-logo{0%,100%{box-shadow:0 0 24px rgba(0,212,255,0.35)}50%{box-shadow:0 0 40px rgba(0,212,255,0.55)}}
+.logo-name{font-family:'Syne',sans-serif;font-size:18px;font-weight:800}.logo-name span{color:var(--accent)}
+.card-title{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;letter-spacing:-0.5px;margin-bottom:4px}
+.card-subtitle{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:1.5rem;display:flex;align-items:center;gap:8px}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--safe);position:relative;flex-shrink:0}
+.live-dot::before{content:'';position:absolute;inset:-4px;border-radius:50%;border:1px solid var(--safe);animation:ping 1.5s ease-out infinite}
+@keyframes ping{0%{transform:scale(1);opacity:.8}100%{transform:scale(2.5);opacity:0}}
+
+/* PANELS */
+.form-panel{display:none}.form-panel.active{display:block;animation:panel-in .4s ease}
+@keyframes panel-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:480px){.form-row{grid-template-columns:1fr}}
+.form-group{margin-bottom:.9rem}
+.field-label{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:7px;display:flex;align-items:center;justify-content:space-between}
+.req{color:var(--danger);font-size:14px;line-height:1}
+.field-wrap{position:relative}
+.field-icon{position:absolute;left:13px;top:50%;transform:translateY(-50%);font-size:14px;pointer-events:none;opacity:.4;transition:opacity .2s}
+.field-wrap:focus-within .field-icon{opacity:1}
+.field-input,.field-select,.field-textarea{width:100%;background:rgba(0,212,255,0.04);border:1px solid rgba(0,212,255,0.15);border-radius:12px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;padding:12px 14px 12px 40px;outline:none;transition:border-color .25s,box-shadow .25s,background .25s;appearance:none}
+.no-icon .field-input,.no-icon .field-select,.no-icon .field-textarea{padding-left:14px}
+.field-select{padding-right:30px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='rgba(0,212,255,0.5)'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;cursor:pointer}
+.field-select option{background:#0a1624;color:#e2f4ff}
+.field-textarea{min-height:72px;resize:none;padding:12px 14px;line-height:1.6}
+.field-input::placeholder,.field-textarea::placeholder{color:rgba(180,220,255,0.22);font-size:13px}
+.field-input:focus,.field-select:focus,.field-textarea:focus{border-color:var(--accent);background:rgba(0,212,255,0.07);box-shadow:0 0 0 3px rgba(0,212,255,0.1)}
+.field-input.valid{border-color:var(--safe)}.field-input.invalid{border-color:var(--danger)}
+.field-hint{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:1px;margin-top:5px;display:none}
+.field-hint.show{display:block}.field-hint.err{color:var(--danger)}.field-hint.ok{color:var(--safe)}
+
+/* STRENGTH */
+.strength-wrap{margin-top:6px;display:none}.strength-wrap.show{display:block}
+.strength-bar{height:3px;border-radius:2px;background:rgba(255,255,255,0.06);overflow:hidden;margin-bottom:4px}
+.strength-fill{height:100%;border-radius:2px;transition:width .4s,background .4s;width:0%}
+.strength-label{font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:1px}
+
+/* TERMS */
+.terms-row{display:flex;align-items:flex-start;gap:10px;margin-bottom:1.25rem}
+.custom-check{width:18px;height:18px;border-radius:5px;border:1px solid rgba(0,212,255,0.3);background:rgba(0,212,255,0.04);cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .2s;margin-top:2px}
+.custom-check.checked{background:rgba(0,255,136,0.15);border-color:var(--safe)}
+.check-mark{color:var(--safe);font-size:11px;opacity:0;transition:opacity .2s}
+.custom-check.checked .check-mark{opacity:1}
+.terms-text{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:1px;line-height:1.7}
+.terms-text a{color:var(--accent);text-decoration:none}
+
+/* BUTTONS */
+.next-btn,.submit-btn{position:relative;overflow:hidden;background:linear-gradient(135deg,rgba(0,212,255,0.85),rgba(0,100,200,0.9));border:1px solid rgba(0,212,255,0.4);border-radius:12px;color:#001a2e;font-family:'Syne',sans-serif;font-size:14px;font-weight:700;padding:13px;cursor:pointer;transition:all .3s;display:flex;align-items:center;justify-content:center;gap:8px;width:100%;box-shadow:0 0 24px rgba(0,212,255,0.2)}
+.next-btn:hover,.submit-btn:hover{transform:translateY(-2px);box-shadow:0 0 40px rgba(0,212,255,0.4)}
+.back-btn{background:transparent;border:1px solid rgba(0,212,255,0.2);border-radius:12px;color:var(--muted);font-family:'Syne',sans-serif;font-size:14px;font-weight:700;padding:13px 18px;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center}
+.back-btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn-shine{position:absolute;top:0;left:-100%;width:60%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.15),transparent);transform:skewX(-20deg);animation:btn-sweep 3s ease-in-out infinite}
+@keyframes btn-sweep{0%{left:-100%}50%{left:150%}100%{left:150%}}
+.btn-row{display:flex;gap:10px;margin-top:1.25rem}
+.error-box{background:rgba(255,77,109,0.08);border:1px solid rgba(255,77,109,0.3);border-radius:10px;padding:12px 16px;font-size:13px;color:#ff8899;display:none;margin-bottom:1rem;line-height:1.5}
+.divider{display:flex;align-items:center;gap:12px;margin:1rem 0}
+.divider-line{flex:1;height:1px;background:linear-gradient(90deg,transparent,rgba(0,212,255,0.15),transparent)}
+.divider-text{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:2px;text-transform:uppercase}
+.bottom-row{text-align:center;margin-top:.75rem}
+.bottom-text{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted);letter-spacing:1px}
+.bottom-link{color:var(--accent);text-decoration:none;opacity:.8}.bottom-link:hover{opacity:1;text-decoration:underline}
+.vitals-bar{display:flex;gap:1rem;flex-wrap:wrap;margin-top:1.25rem;padding-top:1rem;border-top:1px solid rgba(0,212,255,0.08)}
+.vital-chip{display:flex;align-items:center;gap:6px;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:1px}
+.v-dot{width:5px;height:5px;border-radius:50%}
+.v-green{background:var(--safe);box-shadow:0 0 6px var(--safe);animation:dp 2s ease-in-out infinite}
+.v-blue{background:var(--accent);box-shadow:0 0 6px var(--accent);animation:dp 2s ease-in-out infinite .6s}
+.v-warn{background:var(--warning);box-shadow:0 0 6px var(--warning);animation:dp 2s ease-in-out infinite 1.2s}
+@keyframes dp{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* HEALTH PROFILE SPECIFIC */
+.mini-title{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--accent);letter-spacing:2.5px;text-transform:uppercase;margin-bottom:.75rem;display:flex;align-items:center;gap:8px}
+.mini-title::before{content:'';display:block;width:12px;height:1px;background:var(--accent)}
+.mini-title.warn-title{color:var(--warning)}.mini-title.warn-title::before{background:var(--warning)}
+.check-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:.75rem}
+.check-tag{display:flex;align-items:center;gap:8px;padding:8px 12px;background:rgba(0,212,255,0.04);border:1px solid rgba(0,212,255,0.12);border-radius:10px;cursor:pointer;transition:all .2s;font-size:13px;color:var(--muted);user-select:none}
+.check-tag:hover{border-color:rgba(0,212,255,0.3);color:var(--text)}
+.check-tag.selected{background:rgba(0,212,255,0.1);border-color:var(--accent);color:var(--accent)}
+.c-box{width:14px;height:14px;border-radius:4px;border:1px solid rgba(0,212,255,0.3);flex-shrink:0;transition:background .2s;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--accent)}
+.check-tag.selected .c-box{background:rgba(0,212,255,0.2)}
+.allergy-wrap{display:flex;gap:8px;margin-bottom:8px}
+.allergy-inp{flex:1;background:rgba(255,170,51,0.05);border:1px solid rgba(255,170,51,0.2);border-radius:10px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;padding:10px 14px;outline:none;transition:border-color .2s}
+.allergy-inp:focus{border-color:var(--warning)}
+.allergy-add{background:rgba(255,170,51,0.1);border:1px solid rgba(255,170,51,0.3);border-radius:10px;color:var(--warning);font-size:20px;width:42px;cursor:pointer;flex-shrink:0;transition:all .2s}
+.allergy-add:hover{background:rgba(255,170,51,0.2)}
+.allergy-tags-wrap{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:.5rem}
+.allergy-tag{display:inline-flex;align-items:center;gap:6px;background:rgba(255,77,109,0.1);border:1px solid rgba(255,77,109,0.3);border-radius:20px;padding:4px 12px;font-size:12px;color:#ff8899;font-family:'Share Tech Mono',monospace}
+.atag-x{cursor:pointer;opacity:.6;font-size:14px;margin-left:2px}.atag-x:hover{opacity:1}
+.allergy-hint{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:1px;margin-bottom:.75rem}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:rgba(0,212,255,0.03);border:1px solid rgba(0,212,255,0.1);border-radius:10px;margin-bottom:8px}
+.toggle-label{font-size:13px}
+.toggle-sw{width:38px;height:20px;border-radius:10px;background:rgba(255,255,255,0.1);border:1px solid var(--glass-border);position:relative;cursor:pointer;transition:background .3s;flex-shrink:0}
+.toggle-sw.on{background:rgba(0,212,255,0.3);border-color:var(--accent)}
+.toggle-sw::after{content:'';position:absolute;width:14px;height:14px;border-radius:50%;background:#fff;top:2px;left:2px;transition:transform .3s}
+.toggle-sw.on::after{transform:translateX(18px)}
+
+/* SUCCESS */
+.success-screen{text-align:center;padding:1rem 0}
+.success-icon{font-size:64px;margin-bottom:1rem;animation:success-pop .5s cubic-bezier(.2,.8,.2,1)}
+@keyframes success-pop{from{transform:scale(0) rotate(-20deg)}to{transform:scale(1) rotate(0)}}
+.success-title{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;margin-bottom:.5rem}
+.success-sub{font-size:14px;color:var(--muted);line-height:1.7;margin-bottom:1.5rem}
+.grad{background:linear-gradient(135deg,#00d4ff,#00ff88);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+</style>
+</head>
+<body>
+<div class="bg-base"></div>
+<div class="orb orb-1"></div><div class="orb orb-2"></div>
+<div class="grid-overlay"></div><div class="scanlines"></div>
+<div class="deco-icons" id="deco-icons"></div>
+<canvas id="particle-canvas"></canvas>
+<canvas id="ecg-bg"></canvas>
+<div id="cursor"></div><div id="cursor-ring"></div>
+
+<div class="page">
+<div class="page-inner">
+
+  <!-- STEP INDICATORS -->
+  <div class="outer-steps">
+    <div class="os-step active" id="os-1"><div class="os-circle">01</div><div class="os-label">Account</div></div>
+    <div class="os-line"><div class="os-line-fill" id="ol-1"></div></div>
+    <div class="os-step" id="os-2"><div class="os-circle">02</div><div class="os-label">Profile</div></div>
+    <div class="os-line"><div class="os-line-fill" id="ol-2"></div></div>
+    <div class="os-step" id="os-3"><div class="os-circle">03</div><div class="os-label">Health</div></div>
+    <div class="os-line"><div class="os-line-fill" id="ol-3"></div></div>
+    <div class="os-step" id="os-4"><div class="os-circle">04</div><div class="os-label">Done</div></div>
+  </div>
+
+  <div class="register-card">
+    <div class="card-shimmer"></div><div class="card-shine"></div>
+    <div class="card-inner">
+      <div class="card-logo">
+        <div class="logo-icon">🩺</div>
+        <div class="logo-name">Med<span>AI</span></div>
+      </div>
+      <div class="error-box" id="error-box"></div>
+
+      <!-- ===== PANEL 1: ACCOUNT ===== -->
+      <div class="form-panel active" id="panel-1">
+        <h1 class="card-title">Create your account.</h1>
+        <div class="card-subtitle"><div class="live-dot"></div>Step 1 of 3 — Account Details</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="field-label">First Name <span class="req">*</span></label>
+            <div class="field-wrap"><span class="field-icon">👤</span><input class="field-input" type="text" id="firstname" placeholder="John" required autocomplete="given-name"/></div>
+          </div>
+          <div class="form-group">
+            <label class="field-label">Last Name <span class="req">*</span></label>
+            <div class="field-wrap"><span class="field-icon">👤</span><input class="field-input" type="text" id="lastname" placeholder="Doe" required autocomplete="family-name"/></div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="field-label">Username <span class="req">*</span></label>
+          <div class="field-wrap"><span class="field-icon">⚡</span><input class="field-input" type="text" id="username" placeholder="mangu3x3" required autocomplete="username"/></div>
+          <div class="field-hint" id="username-hint"></div>
+        </div>
+        <div class="form-group">
+          <label class="field-label">Email Address <span class="req">*</span></label>
+          <div class="field-wrap"><span class="field-icon">📧</span><input class="field-input" type="email" id="email" placeholder="you@email.com" required autocomplete="email"/></div>
+          <div class="field-hint" id="email-hint"></div>
+        </div>
+        <div class="form-group">
+          <label class="field-label">Password <span class="req">*</span></label>
+          <div class="field-wrap"><span class="field-icon">🔒</span><input class="field-input" type="password" id="password" placeholder="Min 8 characters" required maxlength="30" autocomplete="new-password"/></div>
+          <div class="strength-wrap" id="strength-wrap"><div class="strength-bar"><div class="strength-fill" id="strength-fill"></div></div><div class="strength-label" id="strength-label"></div></div>
+        </div>
+        <div class="form-group">
+          <label class="field-label">Confirm Password <span class="req">*</span></label>
+          <div class="field-wrap"><span class="field-icon">🔐</span><input class="field-input" type="password" id="confirm-password" placeholder="Re-enter password" required maxlength="30" autocomplete="new-password"/></div>
+          <div class="field-hint" id="confirm-hint"></div>
+        </div>
+        <div class="terms-row">
+          <div class="custom-check" id="check-box" onclick="toggleCheck()"><span class="check-mark">✓</span></div>
+          <div class="terms-text">I agree to the <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>. I understand MedAI provides triage guidance only and is not a substitute for professional medical advice.</div>
+        </div>
+        <button class="next-btn" onclick="validateStep1()"><div class="btn-shine"></div><span>Continue to Profile →</span></button>
+        <div class="divider"><div class="divider-line"></div><div class="divider-text">already registered?</div><div class="divider-line"></div></div>
+        <div class="bottom-row"><span class="bottom-text">Sign in here &nbsp;<a href="Login_page.html" class="bottom-link">→ Login</a></span></div>
+        <div class="vitals-bar">
+          <div class="vital-chip"><div class="v-dot v-green"></div>System Online</div>
+          <div class="vital-chip"><div class="v-dot v-blue"></div>256-bit Encrypted</div>
+          <div class="vital-chip"><div class="v-dot v-warn"></div>HIPAA Compliant</div>
+        </div>
+      </div>
+
+      <!-- ===== PANEL 2: PERSONAL PROFILE ===== -->
+      <div class="form-panel" id="panel-2">
+        <h1 class="card-title">Your Profile.</h1>
+        <div class="card-subtitle"><div class="live-dot"></div>Step 2 of 3 — Personal Details</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="field-label">Date of Birth <span class="req">*</span></label>
+            <div class="field-wrap no-icon"><input class="field-input" type="date" id="dob" required/></div>
+          </div>
+          <div class="form-group">
+            <label class="field-label">Gender <span class="req">*</span></label>
+            <div class="field-wrap no-icon"><select class="field-select" id="gender"><option value="">— Select —</option><option>Male</option><option>Female</option><option>Non-binary</option><option>Prefer not to say</option></select></div>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="field-label">Height (cm)</label>
+            <div class="field-wrap"><span class="field-icon">📏</span><input class="field-input" type="number" id="height" placeholder="175" min="50" max="300"/></div>
+          </div>
+          <div class="form-group">
+            <label class="field-label">Weight (kg)</label>
+            <div class="field-wrap"><span class="field-icon">⚖️</span><input class="field-input" type="number" id="weight" placeholder="70" min="10" max="500"/></div>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="field-label">Blood Group</label>
+            <div class="field-wrap no-icon"><select class="field-select" id="blood-group"><option value="">— Select —</option><option>A+</option><option>A-</option><option>B+</option><option>B-</option><option>AB+</option><option>AB-</option><option>O+</option><option>O-</option><option>Unknown</option></select></div>
+          </div>
+          <div class="form-group">
+            <label class="field-label">Country</label>
+            <div class="field-wrap"><span class="field-icon">🌍</span><input class="field-input" type="text" id="country" placeholder="Nigeria"/></div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="field-label">Phone Number</label>
+          <div class="field-wrap"><span class="field-icon">📞</span><input class="field-input" type="tel" id="phone" placeholder="+234 800 000 0000"/></div>
+        </div>
+        <div class="btn-row">
+          <button class="back-btn" onclick="goToStep(1)">←</button>
+          <button class="next-btn" onclick="validateStep2()"><div class="btn-shine"></div><span>Continue to Health Info →</span></button>
+        </div>
+      </div>
+
+      <!-- ===== PANEL 3: HEALTH PROFILE ===== -->
+      <div class="form-panel" id="panel-3">
+        <h1 class="card-title">Health Profile.</h1>
+        <div class="card-subtitle"><div class="live-dot"></div>Step 3 of 3 — Medical Information</div>
+
+        <div class="mini-title">Medical Conditions</div>
+        <div class="check-grid" id="conditions-grid">
+          <div class="check-tag" onclick="toggleCondition(this)"><div class="c-box"></div>Asthma</div>
+          <div class="check-tag" onclick="toggleCondition(this)"><div class="c-box"></div>Diabetes</div>
+          <div class="check-tag" onclick="toggleCondition(this)"><div class="c-box"></div>Hypertension</div>
+          <div class="check-tag" onclick="toggleCondition(this)"><div class="c-box"></div>Heart Disease</div>
+          <div class="check-tag" onclick="toggleCondition(this)"><div class="c-box"></div>Cancer</div>
+          <div class="check-tag" onclick="toggleCondition(this)"><div class="c-box"></div>Epilepsy</div>
+          <div class="check-tag" onclick="toggleCondition(this)"><div class="c-box"></div>Kidney Disease</div>
+          <div class="check-tag" onclick="toggleCondition(this)"><div class="c-box"></div>HIV / AIDS</div>
+          <div class="check-tag" onclick="toggleCondition(this)"><div class="c-box"></div>Sickle Cell</div>
+          <div class="check-tag" onclick="toggleCondition(this)"><div class="c-box"></div>None of these</div>
+        </div>
+        <div class="form-group">
+          <label class="field-label">Other conditions</label>
+          <div class="field-wrap no-icon"><textarea class="field-textarea" id="other-conditions" placeholder="Any other medical conditions..."></textarea></div>
+        </div>
+
+        <div class="mini-title warn-title">⚠️ Allergies <span style="font-size:9px;color:var(--muted);margin-left:4px">(Critical — affects triage)</span></div>
+        <div class="allergy-wrap">
+          <input class="allergy-inp" id="allergy-input" placeholder="e.g. Penicillin, Peanuts, Latex..." onkeydown="if(event.key==='Enter'){event.preventDefault();addAllergy()}"/>
+          <button class="allergy-add" onclick="addAllergy()">+</button>
+        </div>
+        <div class="allergy-tags-wrap" id="allergy-tags"></div>
+        <div class="allergy-hint">Type an allergy and press + or Enter to add it</div>
+
+        <div class="form-group">
+          <label class="field-label">Current Medications</label>
+          <div class="field-wrap no-icon"><textarea class="field-textarea" id="medications" placeholder="e.g. Metformin 500mg twice daily, Lisinopril 10mg..."></textarea></div>
+        </div>
+
+        <div class="mini-title">Lifestyle</div>
+        <div class="toggle-row"><span class="toggle-label">🚬 Do you smoke?</span><div class="toggle-sw" id="toggle-smoke" onclick="this.classList.toggle('on')"></div></div>
+        <div class="toggle-row"><span class="toggle-label">🍺 Do you consume alcohol?</span><div class="toggle-sw" id="toggle-alcohol" onclick="this.classList.toggle('on')"></div></div>
+        <div class="toggle-row" style="margin-bottom:1rem"><span class="toggle-label">🏃 Do you exercise regularly?</span><div class="toggle-sw" id="toggle-exercise" onclick="this.classList.toggle('on')"></div></div>
+
+        <div class="mini-title">Emergency Contact</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="field-label">Contact Name</label>
+            <div class="field-wrap"><span class="field-icon">👥</span><input class="field-input" type="text" id="emerg-name" placeholder="Dr. John Doe"/></div>
+          </div>
+          <div class="form-group">
+            <label class="field-label">Contact Phone</label>
+            <div class="field-wrap"><span class="field-icon">📞</span><input class="field-input" type="tel" id="emerg-phone" placeholder="+234 800 000 0000"/></div>
+          </div>
+        </div>
+
+        <div class="btn-row">
+          <button class="back-btn" onclick="goToStep(2)">←</button>
+          <button class="submit-btn" onclick="completeRegistration()"><div class="btn-shine"></div><span>⚕ Complete Registration</span></button>
+        </div>
+      </div>
+
+      <!-- ===== PANEL 4: SUCCESS ===== -->
+      <div class="form-panel" id="panel-4">
+        <div class="success-screen">
+          <div class="success-icon">✅</div>
+          <h2 class="success-title">Welcome to <span class="grad">MedAI</span>!</h2>
+          <p class="success-sub" id="success-msg">Your account and health profile have been saved. MedAI is now personalized for you.</p>
+          <button class="submit-btn" onclick="goToDashboard()"><div class="btn-shine"></div><span>🚀 Go to Dashboard</span></button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+// ============================================================
+// CURSOR
+// ============================================================
+const cur=document.getElementById('cursor'),ring=document.getElementById('cursor-ring');
+let mx=0,my=0,rx=0,ry=0;
+document.addEventListener('mousemove',e=>{mx=e.clientX;my=e.clientY;cur.style.left=mx+'px';cur.style.top=my+'px'});
+(function ar(){rx+=(mx-rx)*.1;ry+=(my-ry)*.1;ring.style.left=rx+'px';ring.style.top=ry+'px';requestAnimationFrame(ar)})();
+
+// ============================================================
+// PARTICLES + ECG
+// ============================================================
+const pc=document.getElementById('particle-canvas'),px=pc.getContext('2d');
+function rpc(){pc.width=window.innerWidth;pc.height=window.innerHeight}rpc();window.addEventListener('resize',rpc);
+class MP{constructor(){this.reset(true)}reset(i){this.x=Math.random()*pc.width;this.y=i?Math.random()*pc.height:pc.height+20;this.vx=(Math.random()-.5)*.3;this.vy=-(Math.random()*.5+.2);this.sz=Math.random()*10+4;this.t=['c','x','h','r'][Math.floor(Math.random()*4)];this.col=Math.random()>.5?'0,212,255':'0,255,136';this.a=Math.random()*.5+.1;this.rot=Math.random()*Math.PI*2;this.rv=(Math.random()-.5)*.02;this.p=Math.random()*Math.PI*2;this.ps=Math.random()*.02+.01}update(){this.x+=this.vx;this.y+=this.vy;this.rot+=this.rv;this.p+=this.ps;if(this.y<-20)this.reset(false)}draw(){const a=this.a*(0.6+0.4*Math.sin(this.p));px.save();px.translate(this.x,this.y);px.rotate(this.rot);px.strokeStyle=`rgba(${this.col},${a})`;px.lineWidth=.8;px.beginPath();if(this.t==='c')px.arc(0,0,this.sz,0,Math.PI*2);else if(this.t==='r'){px.arc(0,0,this.sz,0,Math.PI*2);px.stroke();px.beginPath();px.arc(0,0,this.sz*.6,0,Math.PI*2)}else if(this.t==='x'){const s=this.sz;px.moveTo(-s,0);px.lineTo(s,0);px.moveTo(0,-s);px.lineTo(0,s)}else{for(let i=0;i<6;i++){const a2=(Math.PI/3)*i;i===0?px.moveTo(this.sz*Math.cos(a2),this.sz*Math.sin(a2)):px.lineTo(this.sz*Math.cos(a2),this.sz*Math.sin(a2))}px.closePath()}px.stroke();px.restore()}}
+const parts=Array.from({length:60},()=>new MP());
+(function ap(){px.clearRect(0,0,pc.width,pc.height);parts.forEach(p=>{p.update();p.draw()});requestAnimationFrame(ap)})();
+const ec=document.getElementById('ecg-bg'),ex=ec.getContext('2d');
+function rec(){ec.width=window.innerWidth;ec.height=100}rec();window.addEventListener('resize',rec);
+function ev(x){const c=200,p=x%c;if(p<20)return 0;if(p<35)return-8;if(p<45)return 70;if(p<55)return-8;if(p<62)return-25;if(p<67)return 100;if(p<75)return-35;if(p<85)return-12;if(p<110)return 22;if(p<130)return 6;return 0}
+let ef=0;
+(function ae(){ex.clearRect(0,0,ec.width,ec.height);ex.beginPath();ex.strokeStyle='rgba(0,255,136,1)';ex.lineWidth=1.5;ex.shadowColor='rgba(0,255,136,0.8)';ex.shadowBlur=8;for(let x=0;x<ec.width;x++){const v=ev(x+ef*2.5);const y=60-v*0.3;x===0?ex.moveTo(x,y):ex.lineTo(x,y)}ex.stroke();ex.shadowBlur=0;const er=(ef*2.5)%ec.width;const g=ex.createLinearGradient(er-150,0,er,0);g.addColorStop(0,'rgba(2,12,20,0.9)');g.addColorStop(1,'rgba(2,12,20,0)');ex.fillStyle=g;ex.fillRect(Math.max(0,er-150),0,150,ec.height);ef++;requestAnimationFrame(ae)})();
+const dw=document.getElementById('deco-icons'),ds=['✚','⚕','🧬','💊','🔬','🩻','❤','⚡','🧪','🩺'];
+function spawnD(){const el=document.createElement('div');el.className='deco-icon';el.textContent=ds[Math.floor(Math.random()*ds.length)];const dur=12+Math.random()*10;el.style.cssText=`left:${Math.random()*100}vw;bottom:-40px;font-size:${10+Math.random()*14}px;animation-duration:${dur}s;animation-delay:${Math.random()*3}s;`;dw.appendChild(el);setTimeout(()=>el.remove(),(dur+3)*1000)}
+for(let i=0;i<14;i++)spawnD();setInterval(spawnD,2500);
+
+// ============================================================
+// STEPS
+// ============================================================
+function goToStep(n){
+  document.querySelectorAll('.form-panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById('panel-'+n).classList.add('active');
+  for(let i=1;i<=4;i++){
+    const s=document.getElementById('os-'+i);if(!s)continue;
+    s.className='os-step'+(i<n?' done':i===n?' active':'');
+    s.querySelector('.os-circle').textContent=i<n?'✓':String(i).padStart(2,'0');
+  }
+  for(let i=1;i<=3;i++){const f=document.getElementById('ol-'+i);if(f)f.classList.toggle('filled',i<n)}
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+// ============================================================
+// TERMS
+// ============================================================
+let termsChecked=false;
+function toggleCheck(){termsChecked=!termsChecked;document.getElementById('check-box').classList.toggle('checked',termsChecked)}
+
+// ============================================================
+// VALIDATION LIVE
+// ============================================================
+function showError(m){const b=document.getElementById('error-box');b.textContent=m;b.style.display='block';setTimeout(()=>b.style.display='none',4500)}
+function hideError(){document.getElementById('error-box').style.display='none'}
+
+document.getElementById('username').addEventListener('input',()=>{
+  const v=document.getElementById('username').value;const h=document.getElementById('username-hint');
+  if(!v.length){h.className='field-hint';return}
+  if(v.length<3||/\s/.test(v)){h.textContent='// min 3 chars, no spaces';h.className='field-hint show err';document.getElementById('username').className='field-input invalid'}
+  else{h.textContent='// username looks good';h.className='field-hint show ok';document.getElementById('username').className='field-input valid'}
+});
+document.getElementById('email').addEventListener('input',()=>{
+  const v=document.getElementById('email').value;const h=document.getElementById('email-hint');
+  if(!v.length){h.className='field-hint';return}
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)){h.textContent='// invalid email';h.className='field-hint show err';document.getElementById('email').className='field-input invalid'}
+  else{h.textContent='// valid email ✓';h.className='field-hint show ok';document.getElementById('email').className='field-input valid'}
+});
+document.getElementById('password').addEventListener('input',()=>{
+  const v=document.getElementById('password').value;const w=document.getElementById('strength-wrap');const f=document.getElementById('strength-fill');const l=document.getElementById('strength-label');
+  if(!v.length){w.classList.remove('show');return}w.classList.add('show');
+  let s=0;if(v.length>=8)s++;if(/[A-Z]/.test(v))s++;if(/[0-9]/.test(v))s++;if(/[^A-Za-z0-9]/.test(v))s++;
+  const c=[{w:'25%',b:'#ff4d6d',t:'// WEAK',c:'#ff4d6d'},{w:'50%',b:'#ffaa33',t:'// FAIR',c:'#ffaa33'},{w:'75%',b:'#00d4ff',t:'// GOOD',c:'#00d4ff'},{w:'100%',b:'#00ff88',t:'// STRONG ✓',c:'#00ff88'}];
+  const cfg=c[s-1]||c[0];f.style.width=cfg.w;f.style.background=cfg.b;l.textContent=cfg.t;l.style.color=cfg.c;
+});
+document.getElementById('confirm-password').addEventListener('input',()=>{
+  const h=document.getElementById('confirm-hint');const p=document.getElementById('password').value;const cp=document.getElementById('confirm-password').value;
+  if(!cp.length){h.className='field-hint';return}
+  if(cp!==p){h.textContent='// passwords do not match';h.className='field-hint show err';document.getElementById('confirm-password').className='field-input invalid'}
+  else{h.textContent='// passwords match ✓';h.className='field-hint show ok';document.getElementById('confirm-password').className='field-input valid'}
+});
+
+// ============================================================
+// STEP 1 VALIDATE
+// ============================================================
+const API_BASE_URL = localStorage.getItem('medai_api_base_url') || 'http://localhost:5000';
+
+function validateStep1(){
+  hideError();
+  const fn=document.getElementById('firstname').value.trim();
+  const ln=document.getElementById('lastname').value.trim();
+  const un=document.getElementById('username').value.trim();
+  const em=document.getElementById('email').value.trim();
+  const pw=document.getElementById('password').value;
+  const cp=document.getElementById('confirm-password').value;
+  if(!fn||!ln){showError('Please enter your first and last name.');return}
+  if(un.length<3||/\s/.test(un)){showError('Username must be at least 3 characters with no spaces.');return}
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)){showError('Please enter a valid email address.');return}
+  if(pw.length<8){showError('Password must be at least 8 characters.');return}
+  if(pw!==cp){showError('Passwords do not match.');return}
+  if(!termsChecked){showError('Please agree to the Terms of Service to continue.');return}
+  const users=JSON.parse(localStorage.getItem('medai_users')||'[]');
+  if(users.find(u=>u.username.toLowerCase()===un.toLowerCase())){showError('That username is already taken.');return}
+  if(users.find(u=>u.email.toLowerCase()===em.toLowerCase())){showError('An account with that email already exists.');return}
+  goToStep(2);
+}
+
+// ============================================================
+// STEP 2 VALIDATE
+// ============================================================
+function validateStep2(){
+  hideError();
+  if(!document.getElementById('dob').value){showError('Please enter your date of birth.');return}
+  if(!document.getElementById('gender').value){showError('Please select your gender.');return}
+  goToStep(3);
+}
+
+// ============================================================
+// CONDITIONS TOGGLE
+// ============================================================
+function toggleCondition(el){
+  el.classList.toggle('selected');
+  el.querySelector('.c-box').textContent=el.classList.contains('selected')?'✓':'';
+}
+
+// ============================================================
+// ALLERGIES
+// ============================================================
+const allergies=[];
+function addAllergy(){
+  const input=document.getElementById('allergy-input');
+  const val=input.value.trim();
+  if(!val||allergies.map(a=>a.toLowerCase()).includes(val.toLowerCase()))return;
+  allergies.push(val);
+  const tag=document.createElement('div');tag.className='allergy-tag';
+  tag.innerHTML=`⚠️ ${val} <span class="atag-x" onclick="removeAllergy('${val}',this.parentElement)">×</span>`;
+  document.getElementById('allergy-tags').appendChild(tag);
+  input.value='';input.focus();
+}
+function removeAllergy(val,el){const i=allergies.findIndex(a=>a===val);if(i>-1)allergies.splice(i,1);el.remove()}
+
+// ============================================================
+// COMPLETE REGISTRATION - SAVE TO BACKEND
+// ============================================================
+async function completeRegistration(){
+  hideError();
+  const conditions=[];
+  document.querySelectorAll('#conditions-grid .check-tag.selected').forEach(el=>{
+    conditions.push(el.textContent.replace('✓','').trim());
+  });
+  const userData={
+    firstname:   document.getElementById('firstname').value.trim(),
+    lastname:    document.getElementById('lastname').value.trim(),
+    username:    document.getElementById('username').value.trim(),
+    email:       document.getElementById('email').value.trim(),
+    password:    document.getElementById('password').value,
+    dob:         document.getElementById('dob').value,
+    gender:      document.getElementById('gender').value,
+    height:      document.getElementById('height').value,
+    weight:      document.getElementById('weight').value,
+    bloodGroup:  document.getElementById('blood-group').value,
+    country:     document.getElementById('country').value.trim(),
+    phone:       document.getElementById('phone').value.trim(),
+    conditions:  conditions,
+    otherConditions: document.getElementById('other-conditions').value.trim(),
+    allergies:   [...allergies],
+    medications: document.getElementById('medications').value.trim(),
+    smokes:      document.getElementById('toggle-smoke').classList.contains('on'),
+    alcohol:     document.getElementById('toggle-alcohol').classList.contains('on'),
+    exercises:   document.getElementById('toggle-exercise').classList.contains('on'),
+    emergName:   document.getElementById('emerg-name').value.trim(),
+    emergPhone:  document.getElementById('emerg-phone').value.trim(),
+    plan:        'Free',
+    joinDate:    new Date().toISOString(),
+  };
+  try{
+    const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(userData)
+    });
+    const data = await response.json().catch(()=>({}));
+    if(!response.ok){
+      throw new Error(data.message || 'Registration failed. Please try again.');
+    }
+    localStorage.setItem('medai_token', data.token);
+    localStorage.setItem('medai_current_user', JSON.stringify(data.user || userData));
+    document.getElementById('success-msg').textContent=`Welcome, ${userData.firstname}! Your health profile is saved. MedAI is now personalized for you.`;
+    goToStep(4);
+  }catch(apiError){
+    console.error('Registration error:', apiError);
+    showError(apiError.message || 'Registration failed. Please check backend connection.');
+  }
+}
+function goToDashboard(){
+  if(window.medaiShowLoader) window.medaiShowLoader('Opening dashboard');
+  setTimeout(()=>{window.location.href='dashboard.html'},420);
+}
+</script>
+</body>
+</html>

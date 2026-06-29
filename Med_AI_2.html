@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MedAI Triage</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <script src="medai-transition.js" defer></script>
+  <style>
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #060b14;
+      --surface:   #0d1724;
+      --surface2:  #111e30;
+      --border:    rgba(255,255,255,0.07);
+      --border2:   rgba(255,255,255,0.13);
+      --accent:    #00d4ff;
+      --text:      #e8f4f8;
+      --muted:     #7a9ab5;
+      --danger:    #ff4d6d;
+      --warning:   #ffaa33;
+      --safe:      #22d3a0;
+      --radius:    16px;
+      --radius-sm: 10px;
+    }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    body::after {
+      content: '';
+      position: fixed;
+      top: -200px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 700px;
+      height: 400px;
+      background: radial-gradient(ellipse at center, rgba(0,212,255,0.08) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .app {
+      position: relative;
+      z-index: 1;
+      max-width: 780px;
+      margin: 0 auto;
+      padding: 40px 24px 80px;
+    }
+
+    .back-dashboard {
+      display:inline-flex;align-items:center;gap:8px;margin-bottom:18px;
+      color:var(--accent);text-decoration:none;font-size:13px;font-weight:700;
+      border:1px solid rgba(0,212,255,.18);border-radius:10px;padding:9px 12px;
+      background:rgba(0,212,255,.05);
+    }
+
+    .header { text-align: center; margin-bottom: 48px; }
+
+    .logo-mark { display: inline-flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+
+    .logo-icon {
+      width: 42px; height: 42px; border-radius: 12px;
+      background: linear-gradient(135deg, #00d4ff, #0055ff);
+      display: flex; align-items: center; justify-content: center; font-size: 20px;
+    }
+
+    .logo-text { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+    .logo-text span { color: var(--accent); }
+
+    h1 {
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(32px, 6vw, 52px);
+      font-weight: 800; line-height: 1.1; letter-spacing: -1.5px; margin-bottom: 14px;
+    }
+
+    h1 em {
+      font-style: normal;
+      background: linear-gradient(90deg, #00d4ff, #22d3a0);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+
+    .subtitle { font-size: 16px; color: var(--muted); font-weight: 300; line-height: 1.6; max-width: 480px; margin: 0 auto; }
+
+    .disclaimer {
+      display: flex; gap: 12px; align-items: flex-start;
+      background: rgba(255,170,51,0.08); border: 1px solid rgba(255,170,51,0.2);
+      border-radius: var(--radius-sm); padding: 14px 16px;
+      margin-bottom: 32px; font-size: 13px; color: #ffcc77; line-height: 1.5;
+    }
+
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 28px; margin-bottom: 20px;
+      transition: border-color 0.2s;
+    }
+    .card:hover { border-color: var(--border2); }
+
+    .section-label {
+      font-family: 'Syne', sans-serif; font-size: 11px; font-weight: 700;
+      letter-spacing: 2.5px; text-transform: uppercase; color: var(--accent);
+      margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+    }
+    .section-label::before { content: ''; display: block; width: 18px; height: 1px; background: var(--accent); }
+
+    .card h2 { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 700; margin-bottom: 8px; }
+    .card > p { font-size: 14px; color: var(--muted); margin-bottom: 20px; line-height: 1.6; }
+
+    textarea {
+      width: 100%; background: var(--surface2); border: 1px solid var(--border2);
+      border-radius: var(--radius-sm); color: var(--text);
+      font-family: 'DM Sans', sans-serif; font-size: 15px;
+      padding: 16px; resize: none; outline: none; line-height: 1.6;
+      transition: border-color 0.2s, box-shadow 0.2s; min-height: 110px;
+    }
+    textarea::placeholder { color: var(--muted); opacity: 0.6; }
+    textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,212,255,0.08); }
+
+    .quick-label { font-size: 12px; color: var(--muted); margin-top: 12px; margin-bottom: 8px; }
+
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip {
+      background: var(--surface2); border: 1px solid var(--border2);
+      border-radius: 50px; padding: 6px 14px; font-size: 13px;
+      color: var(--muted); cursor: pointer; transition: all 0.15s; user-select: none;
+    }
+    .chip:hover { border-color: var(--accent); color: var(--accent); background: rgba(0,212,255,0.06); }
+
+    .info-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+    @media (max-width: 520px) { .info-row { grid-template-columns: 1fr; } }
+
+    .info-group label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 8px; font-weight: 500; }
+
+    select, input[type="number"] {
+      width: 100%; background: var(--surface2); border: 1px solid var(--border2);
+      border-radius: var(--radius-sm); color: var(--text);
+      font-family: 'DM Sans', sans-serif; font-size: 14px;
+      padding: 10px 14px; outline: none; appearance: none; transition: border-color 0.2s;
+    }
+    select:focus, input[type="number"]:focus { border-color: var(--accent); }
+    select option { background: #0d1724; }
+
+    .duration-row { margin-bottom: 24px; }
+    .duration-row label { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); margin-bottom: 10px; }
+    .duration-row label span { color: var(--text); font-weight: 500; }
+    input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+
+    .severity-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 24px; }
+    @media (max-width: 480px) { .severity-grid { grid-template-columns: repeat(2, 1fr); } }
+
+    .sev-btn {
+      background: var(--surface2); border: 1px solid var(--border2);
+      border-radius: var(--radius-sm); padding: 12px 8px;
+      cursor: pointer; transition: all 0.15s;
+      display: flex; flex-direction: column; gap: 6px; align-items: center; user-select: none;
+    }
+    .sev-btn .sev-icon  { font-size: 22px; }
+    .sev-btn .sev-label { font-size: 12px; color: var(--muted); font-weight: 500; }
+
+    .sev-btn.active-1 { border-color: var(--safe);    background: rgba(34,211,160,0.08); }
+    .sev-btn.active-1 .sev-label { color: var(--safe); }
+    .sev-btn.active-2 { border-color: #88dd44;         background: rgba(136,221,68,0.08); }
+    .sev-btn.active-2 .sev-label { color: #88dd44; }
+    .sev-btn.active-3 { border-color: var(--warning);  background: rgba(255,170,51,0.08); }
+    .sev-btn.active-3 .sev-label { color: var(--warning); }
+    .sev-btn.active-4 { border-color: var(--danger);   background: rgba(255,77,109,0.08); }
+    .sev-btn.active-4 .sev-label { color: var(--danger); }
+
+    .analyze-btn {
+      width: 100%; background: linear-gradient(135deg, #00d4ff, #0077dd);
+      border: none; border-radius: var(--radius-sm); color: #000;
+      font-family: 'Syne', sans-serif; font-size: 16px; font-weight: 700;
+      padding: 16px; cursor: pointer; transition: all 0.2s;
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+    }
+    .analyze-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,212,255,0.25); }
+    .analyze-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    .loading-section { display: none; text-align: center; padding: 48px 24px; }
+
+    .pulse-ring {
+      width: 72px; height: 72px; border-radius: 50%;
+      border: 2px solid var(--accent); margin: 0 auto 24px;
+      display: flex; align-items: center; justify-content: center;
+      position: relative; animation: pulse-scale 1.5s ease-in-out infinite;
+    }
+    .pulse-ring::before { content: ''; position: absolute; inset: -8px; border-radius: 50%; border: 1px solid rgba(0,212,255,0.3); animation: pulse-expand 1.5s ease-in-out infinite; }
+    .pulse-ring::after  { content: ''; position: absolute; inset: -16px; border-radius: 50%; border: 1px solid rgba(0,212,255,0.12); animation: pulse-expand 1.5s ease-in-out infinite 0.3s; }
+    .pulse-inner { font-size: 28px; }
+
+    @keyframes pulse-scale { 0%,100%{transform:scale(1)} 50%{transform:scale(1.05)} }
+    @keyframes pulse-expand { 0%{opacity:1;transform:scale(1)} 100%{opacity:0;transform:scale(1.5)} }
+
+    .loading-text { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+    .loading-sub  { font-size: 14px; color: var(--muted); }
+
+    .result-section { display: none; }
+
+    .triage-banner {
+      border-radius: var(--radius); padding: 24px 28px; margin-bottom: 20px;
+      display: flex; align-items: flex-start; gap: 20px;
+    }
+    .triage-banner.home      { background: rgba(34,211,160,0.1);  border: 1px solid rgba(34,211,160,0.3); }
+    .triage-banner.soon      { background: rgba(255,170,51,0.1);   border: 1px solid rgba(255,170,51,0.3); }
+    .triage-banner.emergency { background: rgba(255,77,109,0.1);   border: 1px solid rgba(255,77,109,0.3); animation: danger-pulse 2s ease-in-out infinite; }
+
+    @keyframes danger-pulse { 0%,100%{border-color:rgba(255,77,109,0.3)} 50%{border-color:rgba(255,77,109,0.7)} }
+
+    .triage-icon  { font-size: 40px; flex-shrink: 0; }
+    .triage-label { font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px; opacity: 0.7; }
+    .triage-title { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; }
+    .triage-banner.home      .triage-title { color: var(--safe); }
+    .triage-banner.soon      .triage-title { color: var(--warning); }
+    .triage-banner.emergency .triage-title { color: var(--danger); }
+
+    .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+    @media (max-width: 560px) { .result-grid { grid-template-columns: 1fr; } }
+
+    .result-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+    .result-card h3 { font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--accent); margin-bottom: 14px; }
+    .result-card ul { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+    .result-card ul li { font-size: 14px; color: var(--muted); padding-left: 16px; position: relative; line-height: 1.5; }
+    .result-card ul li::before { content: '›'; position: absolute; left: 0; color: var(--accent); font-weight: 700; }
+    .full-card { grid-column: 1 / -1; }
+
+    .action-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px 28px; margin-bottom: 20px; }
+    .action-card h3 { font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--accent); margin-bottom: 16px; }
+    .action-steps { display: flex; flex-direction: column; gap: 12px; }
+    .action-step  { display: flex; gap: 14px; align-items: flex-start; }
+    .step-num {
+      width: 28px; height: 28px; border-radius: 50%;
+      background: rgba(0,212,255,0.12); border: 1px solid rgba(0,212,255,0.25);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700; color: var(--accent); flex-shrink: 0;
+    }
+    .step-text { font-size: 14px; color: var(--muted); line-height: 1.6; }
+
+    .redflags { background: rgba(255,77,109,0.06); border: 1px solid rgba(255,77,109,0.2); border-radius: var(--radius); padding: 20px 24px; margin-bottom: 20px; }
+    .redflags h3 { font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--danger); margin-bottom: 12px; }
+    .redflags ul { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+    .redflags ul li { font-size: 14px; color: #ff8899; padding-left: 20px; position: relative; line-height: 1.5; }
+    .redflags ul li::before { content: '!'; position: absolute; left: 0; width: 16px; height: 16px; background: rgba(255,77,109,0.2); border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: var(--danger); top: 1px; }
+
+    .confidence-bar { height: 4px; background: var(--surface2); border-radius: 2px; margin-top: 10px; overflow: hidden; }
+    .confidence-fill { height: 100%; border-radius: 2px; background: linear-gradient(90deg, var(--accent), var(--safe)); transition: width 1s ease; }
+
+    .reset-btn { display: block; width: 100%; background: transparent; border: 1px solid var(--border2); border-radius: var(--radius-sm); color: var(--muted); font-family: 'DM Sans', sans-serif; font-size: 14px; padding: 13px; cursor: pointer; transition: all 0.15s; margin-top: 8px; }
+    .reset-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    .error-box { background: rgba(255,77,109,0.08); border: 1px solid rgba(255,77,109,0.3); border-radius: var(--radius-sm); padding: 14px 18px; font-size: 14px; color: #ff8899; display: none; margin-top: 12px; line-height: 1.6; }
+
+    .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(0,0,0,0.3); border-top-color: #000; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .fade-in { animation: fadeIn 0.4s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+
+  </style>
+</head>
+
+
+<body>
+<div class="app">
+
+  <a href="dashboard.html" class="back-dashboard">Back to Dashboard</a>
+
+  <div class="header">
+    <div class="logo-mark">
+      <div class="logo-icon">🩺</div>
+      <div class="logo-text">Med<span>AI</span></div>
+    </div>
+    <h1>Know when to act.<br><em>Before it's too late.</em></h1>
+    <p class="subtitle">Describe your symptoms and get instant AI-powered triage guidance — know whether to rest, see a doctor, or go to the ER.</p>
+  </div>
+
+  <div class="disclaimer">
+    <span style="font-size:16px;flex-shrink:0;">⚠</span>
+    <span>This tool is for informational guidance only and is not a substitute for professional medical advice. In a life-threatening emergency, call your local emergency number immediately.</span>
+  </div>
+
+  <div id="inputSection">
+
+    <div class="card">
+      <div class="section-label">Step 1</div>
+      <h2>Describe your symptoms</h2>
+      <p>Be as specific as possible — where you feel pain, how it feels, when it started.</p>
+      <textarea id="symptomsInput" placeholder="e.g. Severe headache on my left side, started 3 hours ago, feeling nauseous and sensitive to light…" rows="4"></textarea>
+      <div class="quick-label">Tap to add common symptoms:</div>
+      <div class="chips">
+        <div class="chip" onclick="addChip('Headache')">Headache</div>
+        <div class="chip" onclick="addChip('Fever')">Fever</div>
+        <div class="chip" onclick="addChip('Chest pain')">Chest pain</div>
+        <div class="chip" onclick="addChip('Shortness of breath')">Shortness of breath</div>
+        <div class="chip" onclick="addChip('Nausea and vomiting')">Nausea</div>
+        <div class="chip" onclick="addChip('Stomach pain')">Stomach pain</div>
+        <div class="chip" onclick="addChip('Dizziness')">Dizziness</div>
+        <div class="chip" onclick="addChip('Rash')">Rash</div>
+        <div class="chip" onclick="addChip('Fatigue')">Fatigue</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-label">Step 2</div>
+      <h2>Tell us more</h2>
+
+      <div class="severity-grid">
+        <div class="sev-btn" onclick="selectSeverity(1)" data-sev="1"><span class="sev-icon">😊</span><span class="sev-label">Mild</span></div>
+        <div class="sev-btn" onclick="selectSeverity(2)" data-sev="2"><span class="sev-icon">😐</span><span class="sev-label">Moderate</span></div>
+        <div class="sev-btn" onclick="selectSeverity(3)" data-sev="3"><span class="sev-icon">😟</span><span class="sev-label">Severe</span></div>
+        <div class="sev-btn" onclick="selectSeverity(4)" data-sev="4"><span class="sev-icon">😱</span><span class="sev-label">Critical</span></div>
+      </div>
+
+      <div class="info-row">
+        <div class="info-group">
+          <label>Your Age</label>
+          <input type="number" id="ageInput" placeholder="e.g. 35" min="0" max="120" />
+        </div>
+        <div class="info-group">
+          <label>Sex at Birth</label>
+          <select id="sexInput">
+            <option value="">— Select —</option>
+            <option>Male</option>
+            <option>Female</option>
+            <option>Prefer not to say</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="duration-row">
+        <label>Duration of symptoms <span id="durationLabel">A few hours</span></label>
+        <input type="range" id="durationSlider" min="0" max="6" value="1" step="1" oninput="updateDuration(this.value)" />
+      </div>
+
+      <div class="info-group" style="margin-bottom:20px;">
+        <label>Any relevant medical history? (optional)</label>
+        <textarea id="historyInput" placeholder="e.g. diabetic, hypertensive, on blood thinners…" style="min-height:70px;"></textarea>
+      </div>
+
+      <button class="analyze-btn" id="analyzeBtn" onclick="analyze()">
+        <span id="btnText">Analyze My Symptoms</span>
+        <span id="btnIcon">→</span>
+      </button>
+
+      <div class="error-box" id="errorBox"></div>
+    </div>
+
+  </div>
+
+  <div class="loading-section" id="loadingSection">
+    <div class="pulse-ring"><div class="pulse-inner">🧠</div></div>
+    <div class="loading-text">Analyzing your symptoms…</div>
+    <div class="loading-sub">Consulting Gemini medical knowledge base</div>
+  </div>
+
+  <div class="result-section" id="resultSection"></div>
+
+</div>
+
+
+<script>
+
+  const API_KEY = 'AIzaSyBSUN1oZsBIteZNnIZlO4oAWXu6HLqNu10';
+
+  const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`;
+
+
+  const durations = [
+    'Just started (minutes)', 'A few hours', 'About a day',
+    '2–3 days', 'About a week', '1–2 weeks', 'More than 2 weeks'
+  ];
+
+  let selectedSeverity = 0;
+
+
+
+  function updateDuration(v) {
+    document.getElementById('durationLabel').textContent = durations[parseInt(v)];
+  }
+
+  function addChip(text) {
+    const ta = document.getElementById('symptomsInput');
+    ta.value = ta.value.trim() ? ta.value.trim() + ', ' + text.toLowerCase() : text;
+    ta.focus();
+  }
+
+  function selectSeverity(n) {
+    selectedSeverity = n;
+    document.querySelectorAll('.sev-btn').forEach(b => {
+      b.className = 'sev-btn';
+      if (parseInt(b.dataset.sev) === n) b.classList.add('active-' + n);
+    });
+  }
+
+  function setLoading(on) {
+    document.getElementById('btnText').textContent = on ? 'Analyzing…' : 'Analyze My Symptoms';
+    document.getElementById('btnIcon').innerHTML   = on ? '<span class="spinner"></span>' : '→';
+    document.getElementById('analyzeBtn').disabled = on;
+  }
+
+
+
+  async function analyze() {
+    const symptoms = document.getElementById('symptomsInput').value.trim();
+    const age      = document.getElementById('ageInput').value;
+    const sex      = document.getElementById('sexInput').value;
+    const duration = durations[parseInt(document.getElementById('durationSlider').value)];
+    const history  = document.getElementById('historyInput').value.trim();
+    const errorBox = document.getElementById('errorBox');
+
+    errorBox.style.display = 'none';
+
+    if (!symptoms) {
+      errorBox.textContent = 'Please describe your symptoms before analyzing.';
+      errorBox.style.display = 'block';
+      return;
+    }
+    if (!selectedSeverity) {
+      errorBox.textContent = 'Please select how severe your symptoms feel.';
+      errorBox.style.display = 'block';
+      return;
+    }
+    if (!API_KEY || API_KEY === 'YOUR_GEMINI_API_KEY_HERE') {
+      errorBox.textContent = '⚠️ No API key set. Open this file in VS Code and paste your Gemini API key into the API_KEY variable at the top of the script section.';
+      errorBox.style.display = 'block';
+      return;
+    }
+
+    const sevMap = { 1: 'Mild', 2: 'Moderate', 3: 'Severe', 4: 'Critical' };
+
+    setLoading(true);
+    document.getElementById('inputSection').style.display   = 'none';
+    document.getElementById('loadingSection').style.display = 'block';
+
+    const prompt = `You are a medical triage assistant. Analyze the patient's symptoms and provide structured triage guidance.
+
+Patient details:
+- Age: ${age || 'Not provided'}
+- Sex: ${sex || 'Not provided'}
+- Symptoms: ${symptoms}
+- Severity (self-rated): ${sevMap[selectedSeverity]}
+- Duration: ${duration}
+- Medical history: ${history || 'None'}
+
+Reply ONLY with a raw JSON object. No markdown, no backticks, no explanation, no extra text — just the JSON.
+
+Use this exact structure:
+{
+  "triage_level": "home",
+  "triage_title": "short action phrase",
+  "summary": "2-3 sentence plain-language assessment",
+  "possible_conditions": ["condition 1", "condition 2", "condition 3"],
+  "immediate_actions": ["action 1", "action 2", "action 3", "action 4"],
+  "red_flags": ["warning 1", "warning 2", "warning 3"],
+  "home_remedies": ["remedy 1", "remedy 2", "remedy 3"],
+  "confidence": 75,
+  "when_to_escalate": "clear guidance on when to seek higher level care"
+}
+
+triage_level must be exactly one of: "home", "doctor_soon", or "emergency".`;
+
+    try {
+      const response = await fetch(GEMINI_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{ text: prompt }]
+          }],
+          generationConfig: {
+            temperature: 0.3,
+            maxOutputTokens: 8192
+          }
+        })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error?.message || `API error ${response.status}`);
+      }
+
+      const data    = await response.json();
+      console.log('FULL GEMINI RESPONSE:', JSON.stringify(data, null, 2));
+      const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      console.log('RAW TEXT:', rawText);
+
+      const cleaned = rawText.replace(/```json|```/g, '').trim();
+      const match = cleaned.match(/\{[\s\S]*\}/);
+      if (!match) throw new Error('Could not parse AI response. Please Try Again.');
+      const result = JSON.parse(match[0]);
+
+      document.getElementById('loadingSection').style.display = 'none';
+      renderResult(result);
+
+    } catch (err) {
+      document.getElementById('loadingSection').style.display = 'none';
+      document.getElementById('inputSection').style.display   = 'block';
+      setLoading(false);
+      errorBox.textContent   = 'Analysis failed: ' + (err.message || 'Unknown error. Please try again.');
+      errorBox.style.display = 'block';
+    }
+  }
+
+
+
+  function renderResult(r) {
+    const cfgs = {
+      home:        { cls: 'home',      icon: '🏠', label: 'Triage Result'  },
+      doctor_soon: { cls: 'soon',      icon: '🏥', label: 'Triage Result'  },
+      emergency:   { cls: 'emergency', icon: '🚨', label: 'Emergency Alert' }
+    };
+    const cfg = cfgs[r.triage_level] || cfgs.doctor_soon;
+
+    const conditions = (r.possible_conditions || []).map(c => `<li>${c}</li>`).join('');
+    const remedies   = (r.home_remedies       || []).map(c => `<li>${c}</li>`).join('');
+    const actions    = (r.immediate_actions   || []).map((a, i) => `
+      <div class="action-step">
+        <div class="step-num">${i + 1}</div>
+        <div class="step-text">${a}</div>
+      </div>`).join('');
+    const flags = (r.red_flags || []).map(f => `<li>${f}</li>`).join('');
+
+    document.getElementById('resultSection').innerHTML = `
+      <div class="triage-banner ${cfg.cls} fade-in">
+        <div class="triage-icon">${cfg.icon}</div>
+        <div>
+          <div class="triage-label">${cfg.label}</div>
+          <div class="triage-title">${r.triage_title || 'Assessment Complete'}</div>
+          <div style="font-size:13px;margin-top:6px;opacity:0.75;line-height:1.5;">${r.summary || ''}</div>
+        </div>
+      </div>
+
+      <div class="result-grid fade-in">
+        <div class="result-card">
+          <h3>Possible Conditions</h3>
+          <ul>${conditions}</ul>
+        </div>
+        <div class="result-card">
+          <h3>Home Care</h3>
+          <ul>${remedies}</ul>
+        </div>
+        <div class="result-card full-card">
+          <h3>Confidence Assessment</h3>
+          <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--muted);margin-bottom:4px;">
+            <span>AI confidence in this assessment</span>
+            <span style="color:var(--text);font-weight:500;">${r.confidence || 70}%</span>
+          </div>
+          <div class="confidence-bar">
+            <div class="confidence-fill" style="width:0%" id="confFill"></div>
+          </div>
+          <p style="font-size:13px;color:var(--muted);margin-top:12px;line-height:1.5;">${r.when_to_escalate || ''}</p>
+        </div>
+      </div>
+
+      <div class="action-card fade-in">
+        <h3>Immediate Action Steps</h3>
+        <div class="action-steps">${actions}</div>
+      </div>
+
+      <div class="redflags fade-in">
+        <h3>🚩 Red Flags — Seek Emergency Care If:</h3>
+        <ul>${flags}</ul>
+      </div>
+
+      <button class="reset-btn" onclick="resetApp()">← Analyze different symptoms</button>
+    `;
+
+    document.getElementById('resultSection').style.display = 'block';
+
+    setTimeout(() => {
+      const fill = document.getElementById('confFill');
+      if (fill) fill.style.width = (r.confidence || 70) + '%';
+    }, 200);
+  }
+
+
+
+  function resetApp() {
+    const rs = document.getElementById('resultSection');
+    rs.style.display = 'none';
+    rs.innerHTML     = '';
+
+    document.getElementById('inputSection').style.display   = 'block';
+    document.getElementById('symptomsInput').value          = '';
+    document.getElementById('ageInput').value               = '';
+    document.getElementById('sexInput').value               = '';
+    document.getElementById('durationSlider').value         = 1;
+    document.getElementById('durationLabel').textContent    = 'A few hours';
+    document.getElementById('historyInput').value           = '';
+    document.getElementById('errorBox').style.display       = 'none';
+
+    selectedSeverity = 0;
+    document.querySelectorAll('.sev-btn').forEach(b => b.className = 'sev-btn');
+    setLoading(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+</script>
+
+</body>
+</html>

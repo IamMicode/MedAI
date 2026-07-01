@@ -7,7 +7,6 @@ datasource db {
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
-
 enum Role {
   USER
   ADMIN
@@ -37,9 +36,9 @@ model User {
   otherConditions String?
   allergies       String[]            @default([])
   medications     String?
-  smokes          String?
-  alcohol         String?
-  exercises       String?
+  smokes          Boolean?
+  alcohol         Boolean?
+  exercises       Boolean?
   emergName       String?
   emergPhone      String?
   createdAt       DateTime            @default(now())
@@ -47,6 +46,8 @@ model User {
   triageRecords   TriageRecord[]
   achievements    Achievement[]
   resetCodes      PasswordResetCode[]
+  panicEvents     PanicEvent[]
+  aiUsage         AIUsage[]
 }
 
 model TriageRecord {
@@ -71,6 +72,34 @@ model Achievement {
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, achievementId])
+}
+
+model PanicEvent {
+  id                String   @id @default(cuid())
+  userId            String
+  startedAt         DateTime
+  endedAt           DateTime @default(now())
+  durationSeconds   Int?
+  groundingComplete Boolean  @default(false)
+  usedCalmingSound  Boolean  @default(false)
+  note              String?
+  createdAt         DateTime @default(now())
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+model AIUsage {
+  id        String   @id @default(cuid())
+  userId    String
+  date      String   // YYYY-MM-DD
+  count     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([userId, date])
 }
 
 model WaitlistEmail {

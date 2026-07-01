@@ -5,6 +5,17 @@ const optionalString = z.preprocess(
   z.string().optional()
 );
 
+const optionalBool = z.preprocess(
+  (value) => {
+    if(value === undefined || value === null || value === '') return undefined;
+    if(typeof value === 'boolean') return value;
+    if(value === 'true') return true;
+    if(value === 'false') return false;
+    return undefined;
+  },
+  z.boolean().optional()
+);
+
 const registerSchema = z.object({
   firstname: optionalString,
   lastname: optionalString,
@@ -22,9 +33,9 @@ const registerSchema = z.object({
   otherConditions: optionalString,
   allergies: z.array(z.string()).optional().default([]),
   medications: optionalString,
-  smokes: optionalString,
-  alcohol: optionalString,
-  exercises: optionalString,
+  smokes: optionalBool,
+  alcohol: optionalBool,
+  exercises: optionalBool,
   emergName: optionalString,
   emergPhone: optionalString
 });

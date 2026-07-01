@@ -963,6 +963,7 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
         <div class="chat-messages" id="chat-chatbot">
           <div class="chat-bubble ai"><div class="ai-label">🤖 MEDAI CHATBOT</div>Hello! I'm your MedAI assistant. I can answer general health questions, explain medical terms, or help you understand your triage results. How can I help you today?</div>
         </div>
+        <div class="ai-usage-indicator" style="display:none;font-size:12px;text-align:center;padding:4px 0;font-family:var(--mono);letter-spacing:1px"></div>
         <div class="chat-input-row">
           <input class="chat-input" id="input-chatbot" placeholder="Ask me anything about your health..." onkeydown="if(event.key==='Enter')sendChat('chatbot','general')"/>
           <button class="chat-send-btn" onclick="sendChat('chatbot','general')">→</button>
@@ -979,6 +980,7 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
         <div class="chat-messages" id="chat-medical-ai">
           <div class="chat-bubble ai"><div class="ai-label">🏥 MEDICAL HEALTH AI</div>Hi, I'm your Medical Health AI. Ask me about symptoms, conditions, medications, or how a procedure works — I'll explain things clearly. I don't diagnose or prescribe, and for anything urgent I'll point you to the right next step. What would you like to understand?</div>
         </div>
+        <div class="ai-usage-indicator" style="display:none;font-size:12px;text-align:center;padding:4px 0;font-family:var(--mono);letter-spacing:1px"></div>
         <div class="chat-input-row">
           <input class="chat-input" id="input-medical-ai" placeholder="Ask about a condition, symptom, or medication..." onkeydown="if(event.key==='Enter')sendChat('medical-ai','medical')"/>
           <button class="chat-send-btn" onclick="sendChat('medical-ai','medical')">→</button>
@@ -994,6 +996,7 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
         <div class="chat-messages" id="chat-emotional-ai">
           <div class="chat-bubble ai"><div class="ai-label">💭 EMOTIONAL AI</div>Hi, I'm here for you. This is a safe, judgment-free space to talk about how you're feeling emotionally. Whether you're stressed, anxious, overwhelmed, or just need someone to listen — I'm here. How are you feeling right now?</div>
         </div>
+        <div class="ai-usage-indicator" style="display:none;font-size:12px;text-align:center;padding:4px 0;font-family:var(--mono);letter-spacing:1px"></div>
         <div class="chat-input-row">
           <input class="chat-input" id="input-emotional-ai" placeholder="Share how you're feeling..." onkeydown="if(event.key==='Enter')sendChat('emotional-ai','emotional')"/>
           <button class="chat-send-btn" onclick="sendChat('emotional-ai','emotional')">→</button>
@@ -1009,6 +1012,7 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
         <div class="chat-messages" id="chat-mental-ai">
           <div class="chat-bubble ai"><div class="ai-label">🧠 MENTAL HEALTH AI</div>Welcome. I'm your Mental Health AI companion. I can support you through anxiety, depression, stress management, sleep issues, and general wellbeing. I'm not a therapist, but I'm here to help. What's on your mind?</div>
         </div>
+        <div class="ai-usage-indicator" style="display:none;font-size:12px;text-align:center;padding:4px 0;font-family:var(--mono);letter-spacing:1px"></div>
         <div class="chat-input-row">
           <input class="chat-input" id="input-mental-ai" placeholder="Talk to me about your mental wellbeing..." onkeydown="if(event.key==='Enter')sendChat('mental-ai','mental')"/>
           <button class="chat-send-btn" onclick="sendChat('mental-ai','mental')">→</button>
@@ -1024,6 +1028,7 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
         <div class="chat-messages" id="chat-physical-ai">
           <div class="chat-bubble ai"><div class="ai-label">💪 PHYSICAL AI</div>I'm your Physical Health AI. I can guide you on exercise, nutrition, recovery, fitness goals, injury prevention, and body performance. Let's work on your physical wellbeing together. What's your goal?</div>
         </div>
+        <div class="ai-usage-indicator" style="display:none;font-size:12px;text-align:center;padding:4px 0;font-family:var(--mono);letter-spacing:1px"></div>
         <div class="chat-input-row">
           <input class="chat-input" id="input-physical-ai" placeholder="Ask about fitness, nutrition, recovery..." onkeydown="if(event.key==='Enter')sendChat('physical-ai','physical')"/>
           <button class="chat-send-btn" onclick="sendChat('physical-ai','physical')">→</button>

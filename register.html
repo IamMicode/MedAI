@@ -434,7 +434,10 @@ document.getElementById('confirm-password').addEventListener('input',()=>{
 // ============================================================
 // STEP 1 VALIDATE
 // ============================================================
-const API_BASE_URL = localStorage.getItem('medai_api_base_url') || 'http://localhost:5000';
+const API_BASE_URL = localStorage.getItem('medai_api_base_url')
+  || (['localhost','127.0.0.1'].includes(window.location.hostname)
+        ? 'http://localhost:5500'
+        : 'https://YOUR-BACKEND.onrender.com');
 
 function validateStep1(){
   hideError();

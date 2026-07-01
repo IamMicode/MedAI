@@ -103,6 +103,21 @@ function showTab(id,el){
 
 function setMobActive(el){document.querySelectorAll('.mob-item').forEach(i=>i.classList.remove('active'));el.classList.add('active')}
 
+function openMobileMore(){
+  const sheet = document.getElementById('mobile-more-sheet');
+  if(sheet){
+    sheet.style.display = 'block';
+    document.body.style.overflow = 'hidden';
+  }
+}
+function closeMobileMore(){
+  const sheet = document.getElementById('mobile-more-sheet');
+  if(sheet){
+    sheet.style.display = 'none';
+    document.body.style.overflow = '';
+  }
+}
+
 // ============================================================
 // AI CONFIG
 // Chatbot + Quick Triage → Gemini
@@ -121,6 +136,7 @@ const DEFAULT_OPENROUTER_MODEL = 'openai/gpt-4o-mini';
 // Which AI uses which backend
 const aiBackend = {
   chatbot:   'gemini',
+  medical:   'gemini',
   emotional: 'openrouter',
   mental:    'openrouter',
   physical:  'openrouter'
@@ -129,6 +145,8 @@ const aiBackend = {
 window.systemPrompts = {
   general: `You are MedAI General Chatbot — a warm, knowledgeable health assistant. Answer general health questions clearly and concisely in 2-4 sentences. Explain medical terms in plain language. Always recommend consulting a licensed doctor for diagnosis or treatment. Be friendly but professional.`,
 
+  medical: `You are MedAI Medical Health AI — a clinically-grounded health information assistant. Help users understand medical conditions, symptoms, medications (uses, common side effects, general interactions), procedures, and lab/clinical terminology in plain language. Be precise and evidence-based, citing well-established medical consensus rather than speculation. You do NOT diagnose, prescribe, or replace a licensed clinician — always frame information as educational. If the user describes symptoms that could be urgent or severe (e.g. chest pain, difficulty breathing, severe bleeding, signs of stroke, suicidal ideation), clearly and calmly tell them to seek immediate in-person or emergency care, and mention they can use MedAI's Quick Triage or Book Appointment features for next steps. Keep responses focused and clear — 3-6 sentences, using simple structure (short sentences, not walls of text). Never use the user's message as confirmation of a diagnosis.`,
+
   emotional: `You are MedAI Emotional Support AI — a compassionate, non-judgmental emotional companion. Your ONLY role is emotional support. Listen actively, validate feelings without minimizing them, reflect back what the user shares, and offer gentle comfort. NEVER give medical advice. NEVER push solutions. Ask open-ended questions to understand the user better. Respond with warmth, empathy and full presence. If the user expresses suicidal thoughts or extreme distress, gently encourage them to contact a professional or crisis line. Keep responses warm and human — 3-5 sentences.`,
 
   mental: `You are MedAI Mental Health AI — a supportive mental wellness guide. Help users with anxiety, depression, stress, sleep problems, burnout, low self-esteem, trauma, and general mental wellbeing. Use evidence-based techniques: CBT thought reframing, mindfulness exercises, breathing techniques, behavioural activation, journaling prompts, and grounding exercises. Give practical, actionable tools the user can try right now. Always clarify you are not a therapist and encourage professional help for serious conditions. Be compassionate but structured. Respond in 3-6 sentences with one practical tip.`,
@@ -136,10 +154,11 @@ window.systemPrompts = {
   physical: `You are MedAI Physical Health AI — a knowledgeable fitness and nutrition coach. Help users with exercise planning, workout routines, nutrition advice, weight management, injury prevention, recovery, flexibility, sleep optimisation, and body performance. Tailor advice to the user's goals, fitness level, and any conditions they mention. Give specific, safe, practical recommendations. Never encourage dangerous practices. Be motivating and encouraging. Respond in 3-6 sentences with actionable advice.`
 };
 
-const chatHistories = { chatbot:[], emotional:[], mental:[], physical:[] };
-const chatKeys = { 'chatbot':'chatbot', 'emotional-ai':'emotional', 'mental-ai':'mental', 'physical-ai':'physical' };
+const chatHistories = { chatbot:[], medical:[], emotional:[], mental:[], physical:[] };
+const chatKeys = { 'chatbot':'chatbot', 'medical-ai':'medical', 'emotional-ai':'emotional', 'mental-ai':'mental', 'physical-ai':'physical' };
 const aiMeta = {
   chatbot:   { icon:'🤖', label:'MEDAI CHATBOT',      badge:'Gemini' },
+  medical:   { icon:'🏥', label:'MEDICAL HEALTH AI',  badge:'Gemini' },
   emotional: { icon:'💭', label:'EMOTIONAL AI',        badge:'OpenRouter' },
   mental:    { icon:'🧠', label:'MENTAL HEALTH AI',    badge:'OpenRouter' },
   physical:  { icon:'💪', label:'PHYSICAL HEALTH AI',  badge:'OpenRouter' }
@@ -459,7 +478,10 @@ setTimeout(()=>{
 // ============================================================
 // LOAD USER (BACKEND FIRST, LOCALSTORAGE FALLBACK)
 // ============================================================
-const API_BASE_URL = localStorage.getItem('medai_api_base_url') || 'http://127.0.0.1:5500';
+const API_BASE_URL = localStorage.getItem('medai_api_base_url')
+  || (['localhost','127.0.0.1'].includes(window.location.hostname)
+        ? 'http://127.0.0.1:5500'
+        : 'https://YOUR-BACKEND.onrender.com');
 
 async function syncUserFromBackend(){
   const token = localStorage.getItem('medai_token');
@@ -1587,6 +1609,33 @@ function setToggleFromFlag(flag,id,defaultOn=false){
   el.classList.toggle('on', on);
 }
 
+function toggleTheme(el){
+  const isDark = el.classList.toggle('on');
+  const theme = isDark ? 'dark' : 'light';
+  applyTheme(theme);
+  localStorage.setItem('medai_theme', theme);
+}
+
+function applyTheme(theme){
+  if(theme === 'light'){
+    document.documentElement.setAttribute('data-theme','light');
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+  }
+  const desc = document.getElementById('theme-desc');
+  if(desc) desc.textContent = theme === 'light' ? 'Off' : 'On';
+}
+
+(function initTheme(){
+  const saved = localStorage.getItem('medai_theme') || 'dark';
+  applyTheme(saved);
+  const toggle = document.getElementById('theme-toggle');
+  if(toggle){
+    if(saved === 'light') toggle.classList.remove('on');
+    else toggle.classList.add('on');
+  }
+})();
+
 function toggleSettingFlag(flag,el){
   el.classList.toggle('on');
   localStorage.setItem(flag, el.classList.contains('on'));
@@ -1628,12 +1677,142 @@ function saveEmergencySettings(){
   if(status) status.innerHTML='<strong style="color:var(--safe)">Saved.</strong> Dashboard quick-dial updated.';
 }
 
-function saveLanguage(){
-  const lang=document.getElementById('language-select')?.value || 'English (US)';
-  localStorage.setItem('medai_language', lang);
-  const desc=document.getElementById('language-desc');
-  if(desc) desc.textContent=lang;
+// ============================================================
+// I18N — LANGUAGE SYSTEM
+// ============================================================
+const PIDGIN = {
+  'Overview':'Home Base','AI Support':'AI Helep','Quick Triage':'Check Yourself',
+  'My Health':'My Body','Reports':'Reports','Care Access':'Get Care',
+  'Mental Wellness':'Mind Wellness','Account':'My Account','Upgrade':'Go Premium',
+  '// Overview':'// Home Base','// AI Support':'// AI Helep',
+  '// Quick Triage':'// Check Yourself','// My Health':'// My Body',
+  '// Care Access':'// Get Care','// Mental Wellness':'// Mind Wellness',
+  '// Account':'// My Account','// Daily Health Tip':'// Tip For Today',
+  '// Health Identity':'// Your Body Info','// BMI Calculator':'// BMI Calculator',
+  '// Quick Actions':'// Do Am Quick','// Live Vitals':'// Body Readings',
+  '// Manual Vitals Log':'// Add Body Reading','// Food & Calories':'// Food & Calorie',
+  '// Water & Sleep':'// Water & Sleep','// Medicine Reminder':'// Medicine Reminder',
+  '// Health Score':'// Health Score','// Daily Health Score':'// Today Score',
+  '// Weekly Summary':'// Week Summary','// Stress Check':'// Stress Check',
+  '// Recent Triage':'// Last Check','// Book Visit':'// Book Doctor',
+  '// Referral Letter':'// Referral Letter','// Emergency Contacts':'// Emergency Contacts',
+  '// Camera Heart Rate':'// Camera Heart Rate','// Live ECG':'// Live ECG',
+  '// AI Explanation':'// AI Explanation','// OCR Intake':'// Scan Medicine',
+  '// Health History Dashboard':'// Health History','// Upcoming':'// Coming Up',
+  '// Preview':'// Preview','// Language':'// Language','// Rate MedAI':'// Rate MedAI',
+  'Language':'Language','Notifications':'Notification','Dark Mode':'Dark Mode',
+  'Change Password':'Change Password','Two-Factor Auth':'2-Factor Auth',
+  'Emergency Contacts':'Emergency Contacts','FAQs':'FAQs','Rate the App':'Rate the App',
+  'Data & Privacy':'Data & Privacy','Export Health Data':'Export Health Data',
+  'Gemini API':'Gemini API','OpenRouter API':'OpenRouter API','Clear History':'Clear History',
+  'Save Language':'Save Language','Save Profile':'Save Profile','Save Vitals':'Save Vitals',
+  'Save Contact':'Save Contact','Save Gemini Key':'Save Gemini Key',
+  'Save OpenRouter':'Save OpenRouter','Update Password':'Update Password',
+  'Generate Referral':'Generate Referral','Start Calm Sound':'Start Calm Sound',
+  'Reset Checklist':'Reset Checklist','Test Connection':'Test Connection',
+  'Clear User Data':'Clear User Data','Clear':'Clear','Cancel':'Cancel',
+  'Edit':'Edit','Remove':'Remove','Copy':'Copy','Search':'Search',
+  'Show Tour':'Show Tour','SOS \u2014 Panic Mode':'SOS \u2014 Emergency',
+  '\uD83D\uDC9A I\'m Feeling Better':'\uD83D\uDC9A I Don Better',
+  '\uD83D\uDDD1\uFE0F Delete Forever':'\uD83D\uDDD1\uFE0F Delete Am',
+  'How are you feeling today?':'How your body dey today?',
+  'Health Score':'Health Score','Log Food':'Add Food','Log Water':'Add Water',
+  'Log Sleep':'Add Sleep','Add Vitals':'Add Body Reading',
+  'Book Appointment':'Book Doctor','Panic Mode':'Emergency Mode',
+  'Breathe with me':'Breathe with me','Inhale':'Breathe In',
+  'Hold':'Hold Am','Exhale':'Breathe Out',
+  'Grounding Checklist':'Grounding Checklist','Emergency Helplines':'Emergency Numbers',
+};
+
+function applyPidgin(){
+  const targets = document.querySelectorAll(
+    '.nav-label,.sec-label,.settings-label,.tab-label,.settings-panel-title,button,.card-title'
+  );
+  targets.forEach(el => {
+    if(el.children.length === 0){
+      const t = el.textContent.trim();
+      if(PIDGIN[t]) el.textContent = PIDGIN[t];
+    } else {
+      el.childNodes.forEach(node => {
+        if(node.nodeType === 3){
+          const t = node.textContent.trim();
+          if(PIDGIN[t]) node.textContent = node.textContent.replace(t, PIDGIN[t]);
+        }
+      });
+    }
+  });
+  document.documentElement.lang = 'pcm';
 }
+
+function applyGoogleTranslate(langCode){
+  if(!document.getElementById('gt-script')){
+    const div = document.createElement('div');
+    div.id = 'google_translate_element';
+    div.style.cssText = 'position:fixed;bottom:10px;right:10px;z-index:-1;opacity:0;pointer-events:none';
+    document.body.appendChild(div);
+    window.googleTranslateElementInit = function(){
+      new google.translate.TranslateElement(
+        {pageLanguage:'en', autoDisplay:false},
+        'google_translate_element'
+      );
+    };
+    const s = document.createElement('script');
+    s.id = 'gt-script';
+    s.src = '//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit';
+    document.body.appendChild(s);
+  }
+  function triggerLang(){
+    const sel = document.querySelector('.goog-te-combo');
+    if(sel){ sel.value = langCode; sel.dispatchEvent(new Event('change')); }
+    else { setTimeout(triggerLang, 300); }
+  }
+  setTimeout(triggerLang, 900);
+}
+
+function removePreviousLangStyles(){
+  const e = document.getElementById('medai-lang-style');
+  if(e) e.remove();
+}
+
+function saveLanguage(){
+  const lang = document.getElementById('language-select')?.value || 'English (US)';
+  localStorage.setItem('medai_language', lang);
+  const desc = document.getElementById('language-desc');
+  if(desc) desc.textContent = lang;
+  applyLanguage(lang);
+}
+
+function applyLanguage(lang){
+  removePreviousLangStyles();
+  if(lang === 'Pidgin English'){
+    const c = document.querySelector('.goog-te-combo');
+    if(c){ c.value='en'; c.dispatchEvent(new Event('change')); }
+    applyPidgin();
+  } else if(lang === 'Français'){
+    applyGoogleTranslate('fr');
+  } else if(lang === 'العربية'){
+    applyGoogleTranslate('ar');
+    const s = document.createElement('style');
+    s.id = 'medai-lang-style';
+    s.textContent = 'body{direction:rtl;text-align:right}.sidebar{right:0;left:auto}.main-content{margin-right:240px;margin-left:0}';
+    document.head.appendChild(s);
+  } else {
+    const c = document.querySelector('.goog-te-combo');
+    if(c){ c.value='en'; c.dispatchEvent(new Event('change')); }
+    document.documentElement.lang = 'en';
+  }
+}
+
+(function initLanguage(){
+  const saved = localStorage.getItem('medai_language');
+  if(saved && saved !== 'English (US)'){
+    const sel = document.getElementById('language-select');
+    if(sel) sel.value = saved;
+    const desc = document.getElementById('language-desc');
+    if(desc) desc.textContent = saved;
+    setTimeout(() => applyLanguage(saved), 600);
+  }
+})();
 
 function clearChatHistory(){
   if(!confirm('Clear saved chat history for this user?')) return;

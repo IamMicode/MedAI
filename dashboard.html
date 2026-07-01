@@ -52,7 +52,35 @@
   --radius-sm: 10px;
 }
 
-html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--text);overflow:hidden}
+[data-theme="light"]{
+  --bg:        #f4f8fc;
+  --bg2:       #eaf1f8;
+  --surface:   #ffffff;
+  --surface2:  #f0f5fa;
+  --surface3:  #e6edf5;
+  --border:    rgba(0,102,204,0.12);
+  --border2:   rgba(0,102,204,0.22);
+  --accent:    #0091cc;
+  --accent2:   #0066cc;
+  --safe:      #1aa873;
+  --danger:    #e0294a;
+  --warning:   #cc7a00;
+  --purple:    #8b3fe0;
+  --pink:      #d63384;
+  --text:      #0e1f2e;
+  --muted:     rgba(30,55,75,0.55);
+}
+
+[data-theme="light"] .grid-bg,
+[data-theme="light"] .scanlines{ opacity:.25 }
+
+[data-theme="light"] .glass-card,
+[data-theme="light"] .sidebar,
+[data-theme="light"] .topbar{
+  box-shadow:0 4px 20px rgba(15,45,75,0.06);
+}
+
+html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--text);overflow:hidden;transition:background .3s ease,color .3s ease}
 
 /* =============================================
    BACKGROUND EFFECTS
@@ -946,13 +974,15 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
     <div class="tab-panel" id="tab-medical-ai">
       <div class="sec-label">// AI Support</div>
       <h2 class="sec-title">Medical <span class="grad">Health AI</span></h2>
-      <p class="sec-sub" style="margin-bottom:1.5rem">Your dedicated Medical Health AI — powered by advanced AI to answer clinical questions, explain conditions, and guide your understanding of symptoms and treatments.</p>
-      <div class="glass-card" style="padding:2rem;text-align:center;max-width:500px">
-        <div style="font-size:56px;margin-bottom:1rem">🏥</div>
-        <div style="font-family:var(--head);font-size:18px;font-weight:700;margin-bottom:.5rem">Medical Health AI</div>
-        <p style="font-size:14px;color:var(--muted);line-height:1.7;margin-bottom:1.5rem">Click below to launch the full Medical Health AI interface — your dedicated AI for symptoms, medications, conditions, and medical procedures.</p>
-        <a href="Med_AI_2.html" target="_blank" class="btn btn-primary" style="display:inline-flex;margin:0 auto;text-decoration:none">🏥 &nbsp;Launch Medical Health AI →</a>
-        <div style="margin-top:1rem;font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1px">Opens in a new tab &nbsp;·&nbsp; Powered by Gemini AI</div>
+      <p class="sec-sub" style="margin-bottom:1.5rem">Ask about conditions, symptoms, medications, or procedures — explained in plain language. Not a diagnosis. For urgent symptoms, use Quick Triage or contact emergency services.</p>
+      <div class="glass-card chat-wrap">
+        <div class="chat-messages" id="chat-medical-ai">
+          <div class="chat-bubble ai"><div class="ai-label">🏥 MEDICAL HEALTH AI</div>Hi, I'm your Medical Health AI. Ask me about symptoms, conditions, medications, or how a procedure works — I'll explain things clearly. I don't diagnose or prescribe, and for anything urgent I'll point you to the right next step. What would you like to understand?</div>
+        </div>
+        <div class="chat-input-row">
+          <input class="chat-input" id="input-medical-ai" placeholder="Ask about a condition, symptom, or medication..." onkeydown="if(event.key==='Enter')sendChat('medical-ai','medical')"/>
+          <button class="chat-send-btn" onclick="sendChat('medical-ai','medical')">→</button>
+        </div>
       </div>
     </div>
 
@@ -1367,7 +1397,7 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
           <div class="settings-item" onclick="showSettingsPanel('language-panel')"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(0,212,255,0.1)">🌐</div><div><div class="settings-label">Language</div><div class="settings-desc" id="language-desc">English (US)</div></div></div><span class="settings-arrow">›</span></div>
           <div class="settings-item" onclick="showSettingsPanel('emergency-panel')"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(255,77,109,0.1)">📞</div><div><div class="settings-label">Emergency Contacts</div><div class="settings-desc">Quick dial numbers</div></div></div><span class="settings-arrow">›</span></div>
           <div class="settings-item" onclick="showSettingsPanel('notifications-panel')"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(0,212,255,0.1)">🔔</div><div><div class="settings-label">Notifications</div><div class="settings-desc">Push & email alerts</div></div></div><div class="toggle on" id="settings-notif-toggle" onclick="event.stopPropagation();toggleSettingFlag('notifications_enabled',this)"></div></div>
-          <div class="settings-item"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(0,212,255,0.1)">🌙</div><div><div class="settings-label">Dark Mode</div><div class="settings-desc">Always on</div></div></div><div class="toggle on"></div></div>
+          <div class="settings-item"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(0,212,255,0.1)">🌙</div><div><div class="settings-label">Dark Mode</div><div class="settings-desc" id="theme-desc">On</div></div></div><div class="toggle on" id="theme-toggle" onclick="toggleTheme(this)"></div></div>
           <div class="settings-item" onclick="showSettingsPanel('openrouter-panel')"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(168,85,247,0.1)">AI</div><div><div class="settings-label">OpenRouter API</div><div class="settings-desc">Support AI provider</div></div></div><span class="settings-arrow">›</span></div>
           <div class="settings-item" onclick="showSettingsPanel('gemini-panel')"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(0,212,255,0.1)">AI</div><div><div class="settings-label">Gemini API</div><div class="settings-desc">Triage & general chatbot provider</div></div></div><span class="settings-arrow">›</span></div>
         </div>
@@ -1610,8 +1640,38 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
     <div class="mob-item" onclick="showTab('triage',null);setMobActive(this)"><div class="mob-item-icon">⚡</div><div class="mob-item-label">Triage</div></div>
     <div class="mob-item" onclick="showTab('chatbot',null);setMobActive(this)"><div class="mob-item-icon">🤖</div><div class="mob-item-label">AI Chat</div></div>
     <div class="mob-item" onclick="showTab('tools',null);setMobActive(this)"><div class="mob-item-icon">+</div><div class="mob-item-label">Tools</div></div>
-    <div class="mob-item" onclick="showTab('reports',null);setMobActive(this)"><div class="mob-item-icon">Rx</div><div class="mob-item-label">Reports</div></div>
-    <div class="mob-item" onclick="showTab('settings',null);setMobActive(this)"><div class="mob-item-icon">⚙️</div><div class="mob-item-label">Settings</div></div>
+    <div class="mob-item" onclick="openMobileMore()"><div class="mob-item-icon">☰</div><div class="mob-item-label">More</div></div>
+  </div>
+</div>
+
+<!-- MOBILE "MORE" SHEET -->
+<div id="mobile-more-sheet" style="display:none;position:fixed;inset:0;z-index:9400;background:rgba(3,7,12,0.7);backdrop-filter:blur(8px)" onclick="if(event.target===this)closeMobileMore()">
+  <div style="position:absolute;left:0;right:0;bottom:0;max-height:82vh;overflow-y:auto;background:rgba(10,18,32,0.98);border-top:1px solid rgba(0,212,255,0.18);border-radius:20px 20px 0 0;padding:1rem 1rem calc(1rem + 70px)">
+    <div style="width:40px;height:4px;background:rgba(150,200,230,0.25);border-radius:99px;margin:0 auto 1rem"></div>
+
+    <div class="sb-item" onclick="openPanicMode();closeMobileMore()" style="background:rgba(255,77,109,0.08);border-left:3px solid rgba(255,77,109,0.4);border-radius:10px;margin-bottom:1rem">
+      <div class="sb-item-icon" style="background:rgba(255,77,109,0.14);color:var(--danger)">🚨</div>
+      <span class="sb-item-label" style="color:var(--danger);font-weight:700">PANIC MODE</span>
+    </div>
+
+    <div class="sb-section-label">AI Support</div>
+    <div class="sb-item" onclick="showTab('medical-ai',null);closeMobileMore()"><div class="sb-item-icon">🏥</div><span class="sb-item-label">Medical Health AI</span></div>
+    <div class="sb-item" onclick="showTab('emotional-ai',null);closeMobileMore()"><div class="sb-item-icon">💭</div><span class="sb-item-label">Emotional AI</span></div>
+    <div class="sb-item" onclick="showTab('mental-ai',null);closeMobileMore()"><div class="sb-item-icon">🧠</div><span class="sb-item-label">Mental Health AI</span></div>
+    <div class="sb-item" onclick="showTab('physical-ai',null);closeMobileMore()"><div class="sb-item-icon">💪</div><span class="sb-item-label">Physical Health AI</span></div>
+
+    <div class="sb-section-label">My Health</div>
+    <div class="sb-item" onclick="showTab('history',null);closeMobileMore()"><div class="sb-item-icon">📋</div><span class="sb-item-label">Symptom History</span></div>
+    <div class="sb-item" onclick="showTab('vitals',null);closeMobileMore()"><div class="sb-item-icon">❤️</div><span class="sb-item-label">Vitals Monitor</span></div>
+    <div class="sb-item" onclick="showTab('reports',null);closeMobileMore()"><div class="sb-item-icon">Rx</div><span class="sb-item-label">Reports & OCR</span></div>
+    <div class="sb-item" onclick="showTab('appointments',null);closeMobileMore()"><div class="sb-item-icon">📅</div><span class="sb-item-label">Appointments</span></div>
+    <div class="sb-item" onclick="showTab('therapy',null);closeMobileMore()"><div class="sb-item-icon">🧘</div><span class="sb-item-label">Therapy Finder</span></div>
+    <div class="sb-item" onclick="showTab('achievements',null);closeMobileMore()"><div class="sb-item-icon">🏆</div><span class="sb-item-label">Achievements</span></div>
+
+    <div class="sb-section-label">Account</div>
+    <div class="sb-item" onclick="showTab('profile',null);closeMobileMore()"><div class="sb-item-icon">ID</div><span class="sb-item-label">My Profile</span></div>
+    <div class="sb-item" onclick="showTab('settings',null);closeMobileMore()"><div class="sb-item-icon">⚙️</div><span class="sb-item-label">Settings</span></div>
+    <div class="sb-item" onclick="showTab('premium',null);closeMobileMore()"><div class="sb-item-icon">👑</div><span class="sb-item-label">Unlock Premium</span></div>
   </div>
 </div>
 
@@ -1623,7 +1683,7 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
 
 
 <!-- PANIC MODE OVERLAY -->
-<div id="panic-overlay" style="display:none;position:fixed;inset:0;z-index:9500;background:rgba(3,7,12,0.92);backdrop-filter:blur(24px);align-items:center;justify-content:center;padding:1.5rem;overflow-y:auto">
+<div id="panic-overlay" style="display:none;position:fixed;inset:0;z-index:9500;background:rgba(3,7,12,0.92);backdrop-filter:blur(24px);align-items:flex-start;justify-content:center;padding:2.5rem 1.5rem;overflow-y:auto">
   <div style="background:rgba(10,20,35,0.85);border:1px solid rgba(255,77,109,0.3);border-radius:24px;padding:2.5rem 2rem;max-width:540px;width:100%;position:relative;box-shadow:0 30px 90px rgba(0,0,0,0.65),0 0 50px rgba(255,77,109,0.15)">
     <!-- Glow line -->
     <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--danger),var(--warning),transparent)"></div>

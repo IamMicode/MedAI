@@ -1,21 +1,12 @@
-# Dependencies
-node_modules/
+﻿node_modules/
 .pnpm-store/
-
-# Environment variables
 .env
 .env.*
-
-# Keys
 Med_AI_Key.txt
-
-# Junk files
 MED_AI_2_og.html
 Plans_for_MED_AI.txt
 medai-backend-codex-prompt-revised.md
 settings.json
 package-lock.json
-
-# OS
 .DS_Store
 Thumbs.db

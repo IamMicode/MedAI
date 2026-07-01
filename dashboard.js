@@ -481,7 +481,7 @@ setTimeout(()=>{
 const API_BASE_URL = localStorage.getItem('medai_api_base_url')
   || (['localhost','127.0.0.1'].includes(window.location.hostname)
         ? 'http://127.0.0.1:5500'
-        : 'https://YOUR-BACKEND.onrender.com');
+        : 'https://medai-backend-5r9o.onrender.com');
 
 async function syncUserFromBackend(){
   const token = localStorage.getItem('medai_token');

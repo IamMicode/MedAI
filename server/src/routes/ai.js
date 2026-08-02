@@ -6,7 +6,6 @@ const aiLimit = require('../middleware/aiLimit');
 router.use(requireAuth);
 router.use(aiLimit);
 
-// helper: call Gemini
 async function geminiCall(messages, systemPrompt) {
   const GEMINI_KEY = process.env.GEMINI_API_KEY;
   if (!GEMINI_KEY) throw new Error('no_gemini_key');
@@ -17,20 +16,18 @@ async function geminiCall(messages, systemPrompt) {
   const body = { contents, generationConfig: { maxOutputTokens: 1024, temperature: 0.7 } };
   if (systemPrompt) body.systemInstruction = { parts: [{ text: systemPrompt }] };
   const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' + GEMINI_KEY;
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
+  const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const data = await response.json();
   if (!response.ok) {
-    const isQuota = data?.error?.status === 'RESOURCE_EXHAUSTED';
-    throw new Error(isQuota ? 'quota' : 'gemini_error');
+    const status = data?.error?.status || '';
+    if (status === 'RESOURCE_EXHAUSTED' || response.status === 429) throw new Error('quota');
+    throw new Error('gemini_' + response.status);
   }
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  if (!text) throw new Error('empty_response');
+  return text;
 }
 
-// helper: call OpenRouter
 async function openrouterCall(messages, systemPrompt, model) {
   const OR_KEY = process.env.OPENROUTER_API_KEY;
   if (!OR_KEY) throw new Error('no_or_key');
@@ -45,18 +42,16 @@ async function openrouterCall(messages, systemPrompt, model) {
       'HTTP-Referer': process.env.FRONTEND_ORIGIN || 'https://medai.app',
       'X-Title': 'MedAI'
     },
-    body: JSON.stringify({
-      model: model || 'meta-llama/llama-3.3-70b-instruct:free',
-      messages: allMessages,
-      max_tokens: 1024
-    })
+    body: JSON.stringify({ model: model, messages: allMessages, max_tokens: 1024 })
   });
   const data = await response.json();
-  if (!response.ok) throw new Error('or_error: ' + (data?.error?.message || response.status));
-  return data.choices?.[0]?.message?.content || '';
+  if (!response.ok) throw new Error('or_' + response.status + ': ' + (data?.error?.message || ''));
+  const text = data.choices?.[0]?.message?.content || '';
+  if (!text) throw new Error('empty_response');
+  return text;
 }
 
-// Gemini route — falls back to OpenRouter if Gemini is rate limited
+// Gemini route — falls back to OpenRouter auto if Gemini fails
 router.post('/gemini', async (req, res, next) => {
   try {
     const { messages, systemPrompt } = req.body;
@@ -67,20 +62,24 @@ router.post('/gemini', async (req, res, next) => {
     try {
       text = await geminiCall(messages, systemPrompt);
     } catch (e) {
-      if (e.message === 'quota' || e.message === 'gemini_error' || e.message === 'no_gemini_key') {
-        // fallback to OpenRouter
-        text = await openrouterCall(messages, systemPrompt, 'meta-llama/llama-3.3-70b-instruct:free');
-      } else {
-        throw e;
+      console.log('Gemini failed:', e.message, '— falling back to OpenRouter');
+      try {
+        text = await openrouterCall(messages, systemPrompt, 'openrouter/auto');
+      } catch (e2) {
+        console.log('OpenRouter auto also failed:', e2.message);
+        throw new Error('all_providers_failed');
       }
     }
     return res.json({ text, usage: res.locals.aiUsage });
   } catch (error) {
+    if (error.message === 'all_providers_failed') {
+      return res.status(503).json({ message: 'AI temporarily unavailable. Please try again in a moment.' });
+    }
     return next(error);
   }
 });
 
-// OpenRouter route — tries primary model, falls back to openrouter/auto
+// OpenRouter route — tries auto model which picks best available free model
 router.post('/openrouter', async (req, res, next) => {
   try {
     const { messages, systemPrompt } = req.body;
@@ -89,18 +88,26 @@ router.post('/openrouter', async (req, res, next) => {
     }
     let text = '';
     try {
-      text = await openrouterCall(messages, systemPrompt, 'meta-llama/llama-3.3-70b-instruct:free');
-    } catch (e) {
-      // try the auto-free-model router as fallback
+      // try auto first (picks best available free model)
       text = await openrouterCall(messages, systemPrompt, 'openrouter/auto');
+    } catch (e) {
+      console.log('OpenRouter auto failed:', e.message, '— falling back to Gemini');
+      try {
+        text = await geminiCall(messages, systemPrompt);
+      } catch (e2) {
+        console.log('Gemini fallback also failed:', e2.message);
+        throw new Error('all_providers_failed');
+      }
     }
     return res.json({ text, usage: res.locals.aiUsage });
   } catch (error) {
+    if (error.message === 'all_providers_failed') {
+      return res.status(503).json({ message: 'AI temporarily unavailable. Please try again in a moment.' });
+    }
     return next(error);
   }
 });
 
-// Get today's usage
 router.get('/usage', async (req, res, next) => {
   try {
     const prisma = require('../db');
@@ -113,11 +120,7 @@ router.get('/usage', async (req, res, next) => {
       select: { plan: true }
     });
     const isPremium = user && user.plan && user.plan !== 'FREE';
-    return res.json({
-      used: usage ? usage.count : 0,
-      limit: isPremium ? null : 10,
-      isPremium
-    });
+    return res.json({ used: usage ? usage.count : 0, limit: isPremium ? null : 10, isPremium });
   } catch (error) {
     return next(error);
   }

@@ -15,7 +15,7 @@ router.post('/gemini', async (req, res, next) => {
     const contents = messages.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }));
     const body = { contents, generationConfig: { maxOutputTokens: 1024, temperature: 0.7 } };
     if (systemPrompt) body.systemInstruction = { parts: [{ text: systemPrompt }] };
-    const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + GEMINI_KEY;
+    const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' + GEMINI_KEY;
     const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const data = await response.json();
     if (!response.ok) return res.status(502).json({ message: 'AI request failed.', detail: data });

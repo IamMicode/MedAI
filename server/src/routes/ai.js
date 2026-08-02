@@ -33,7 +33,7 @@ router.post('/openrouter', async (req, res, next) => {
     const allMessages = [];
     if (systemPrompt) allMessages.push({ role: 'system', content: systemPrompt });
     allMessages.push(...messages);
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + OR_KEY, 'HTTP-Referer': process.env.FRONTEND_ORIGIN || 'https://medai.app', 'X-Title': 'MedAI' }, body: JSON.stringify({ model: 'meta-llama/llama-3.1-8b-instruct:free', messages: allMessages, max_tokens: 1024 }) });
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + OR_KEY, 'HTTP-Referer': process.env.FRONTEND_ORIGIN || 'https://medai.app', 'X-Title': 'MedAI' }, body: JSON.stringify({ model: 'meta-llama/llama-3.1-8b-instruct', messages: allMessages, max_tokens: 1024 }) });
     const data = await response.json();
     if (!response.ok) return res.status(502).json({ message: 'AI request failed.', detail: data });
     const text = data.choices?.[0]?.message?.content || '';

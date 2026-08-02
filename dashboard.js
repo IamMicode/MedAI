@@ -197,35 +197,30 @@ function restoreChatHistories(){
 
 // ---- GEMINI with retry on quota/overload ----
 async function callGemini(prompt, retries=3) {
-  const activeKey = getGeminiKey();
-  if (!activeKey || activeKey === 'YOUR_GEMINI_API_KEY_HERE') throw new Error('no_key');
+  const token = localStorage.getItem('medai_token');
+  const messages = [{ role: 'user', content: prompt }];
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
-      const res = await fetch(getGeminiUrl(), {
+      const res = await fetch(API_BASE_URL + '/api/ai/gemini', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.7, maxOutputTokens: 512 }
-        })
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': 'Bearer ' + token } : {})
+        },
+        body: JSON.stringify({ messages })
       });
-      if (res.status === 429 || res.status === 503) {
-        const waitMs = (attempt + 1) * 3000;
-        await new Promise(r => setTimeout(r, waitMs));
+      if (res.status === 429) {
+        const data = await res.json().catch(() => ({}));
+        if (data.upgradeRequired) throw new Error('daily_limit');
+        await new Promise(r => setTimeout(r, (attempt + 1) * 3000));
         continue;
       }
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        const msg = errData.error?.message || 'API error ' + res.status;
-        if (msg.includes('quota') || msg.includes('RESOURCE_EXHAUSTED')) {
-          throw new Error('quota_exceeded');
-        }
-        throw new Error(msg);
-      }
+      if (!res.ok) throw new Error('api_error_' + res.status);
       const data = await res.json();
-      return data.candidates?.[0]?.content?.parts?.[0]?.text || null;
+      if (data.usage) updateUsageIndicator(data.usage);
+      return data.text || null;
     } catch(e) {
-      if (e.message === 'no_key' || e.message === 'quota_exceeded') throw e;
+      if (e.message === 'daily_limit') throw e;
       if (attempt === retries - 1) throw e;
       await new Promise(r => setTimeout(r, 2000));
     }
@@ -233,41 +228,27 @@ async function callGemini(prompt, retries=3) {
   throw new Error('high_demand');
 }
 
-// ---- OPENROUTER ----
-function getOpenRouterSettings(){
-  return {
-    key: localStorage.getItem('medai_openrouter_key') || '',
-    model: localStorage.getItem('medai_openrouter_model') || DEFAULT_OPENROUTER_MODEL
-  };
-}
-
+// ---- OPENROUTER (backend proxy) ----
 async function callOpenRouter(systemPrompt, userMessage) {
-  const settings = getOpenRouterSettings();
-  if(!settings.key) throw new Error('openrouter_no_key');
-  const res = await fetch(OPENROUTER_URL, {
+  const token = localStorage.getItem('medai_token');
+  const messages = [{ role: 'user', content: userMessage }];
+  const res = await fetch(API_BASE_URL + '/api/ai/openrouter', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${settings.key}`,
-      'HTTP-Referer': window.location.origin || 'http://localhost',
-      'X-Title': 'MedAI Dashboard'
+      ...(token ? { 'Authorization': 'Bearer ' + token } : {})
     },
-    body: JSON.stringify({
-      model: settings.model,
-      messages: [
-        { role:'system', content: systemPrompt },
-        { role:'user', content: userMessage }
-      ],
-      temperature: 0.7,
-      max_tokens: 650
-    })
+    body: JSON.stringify({ messages, systemPrompt })
   });
-  if (!res.ok) {
-    const err = await res.json().catch(()=>({}));
-    throw new Error(err.error?.message || `OpenRouter error ${res.status}`);
+  if (res.status === 429) {
+    const data = await res.json().catch(() => ({}));
+    if (data.upgradeRequired) throw new Error('daily_limit');
+    throw new Error('rate_limited');
   }
+  if (!res.ok) throw new Error('openrouter_error_' + res.status);
   const data = await res.json();
-  return data.choices?.[0]?.message?.content || null;
+  if (data.usage) updateUsageIndicator(data.usage);
+  return data.text || null;
 }
 
 // ---- MAIN sendChat ----
@@ -319,14 +300,10 @@ async function sendChat(panelId, type) {
     const errBubble = document.createElement('div');
     errBubble.className = 'chat-bubble ai';
 
-    if (e.message === 'no_key') {
-      errBubble.innerHTML = `<div class="ai-label">⚙️ SETUP</div>Open <strong>dashboard.html</strong> and set your <code>GEMINI_KEY</code>.`;
-    } else if (e.message === 'quota_exceeded') {
-      errBubble.innerHTML = `<div class="ai-label">⚠️ QUOTA</div>Your Gemini free quota is exhausted for today. It resets at midnight. Try again tomorrow or upgrade your Gemini plan at <strong>aistudio.google.com</strong>.`;
+    if (e.message === 'daily_limit') {
+      errBubble.innerHTML = `<div class="ai-label">⚡ DAILY LIMIT</div>You've used all <strong>10 free AI messages</strong> for today. Your limit resets at midnight. <a href="#" onclick="showTab('premium',null);return false;" style="color:var(--accent)">Upgrade to Premium</a> for unlimited access.`;
     } else if (e.message === 'high_demand' || (e.message && e.message.includes('429'))) {
-      errBubble.innerHTML = `<div class="ai-label">⏳ HIGH DEMAND</div>Gemini is under high load right now. Please wait 30 seconds and try again — your message is not lost.`;
-    } else if (e.message === 'openrouter_no_key') {
-      errBubble.innerHTML = `<div class="ai-label">🔑 OPENROUTER SETUP</div>Go to <strong>Settings → OpenRouter API</strong>, paste your OpenRouter key, save it, then try again.`;
+      errBubble.innerHTML = `<div class="ai-label">⏳ HIGH DEMAND</div>The AI is under high load. Please wait 30 seconds and try again.`;
     } else {
       errBubble.innerHTML = `<div class="ai-label">⚠️ ERROR</div>${e.message || 'Something went wrong. Please try again.'}`;
     }
@@ -1772,6 +1749,20 @@ function applyGoogleTranslate(langCode){
 function removePreviousLangStyles(){
   const e = document.getElementById('medai-lang-style');
   if(e) e.remove();
+}
+
+function updateUsageIndicator(usage){
+  if(!usage) return;
+  const remaining = (usage.limit || 10) - (usage.used || 0);
+  document.querySelectorAll('.ai-usage-indicator').forEach(el => {
+    if(remaining <= 3){
+      el.textContent = '⚡ ' + remaining + ' message' + (remaining===1?'':'s') + ' left today';
+      el.style.color = remaining === 0 ? 'var(--danger)' : 'var(--warning)';
+      el.style.display = 'block';
+    } else {
+      el.style.display = 'none';
+    }
+  });
 }
 
 function saveLanguage(){

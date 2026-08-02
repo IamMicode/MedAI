@@ -45,7 +45,9 @@ async function openrouterCall(messages, systemPrompt, model) {
     body: JSON.stringify({ model: model, messages: allMessages, max_tokens: 1024 })
   });
   const data = await response.json();
-  if (!response.ok) throw new Error('or_' + response.status + ': ' + (data?.error?.message || ''));
+  if (!response.ok || response.status === 503) throw new Error('or_' + response.status + ': ' + (data?.error?.message || ''));
+  // also check for error inside a 200 response (some providers do this)
+  if (data?.error) throw new Error('or_error: ' + (data.error.message || ''));
   const text = data.choices?.[0]?.message?.content || '';
   if (!text) throw new Error('empty_response');
   return text;

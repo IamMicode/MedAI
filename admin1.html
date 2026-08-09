@@ -5,9 +5,29 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>MedAI Admin</title>
 <script>
-if(sessionStorage.getItem('medai_admin_session') !== 'active'){
-  window.location.replace('Login_page.html');
-}
+(function(){
+  const token = localStorage.getItem('medai_token');
+  const session = sessionStorage.getItem('medai_admin_session');
+  if(!session || session !== 'active'){
+    // try to validate from JWT
+    if(token){
+      try{
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        if(payload.role === 'ADMIN'){
+          sessionStorage.setItem('medai_admin_session','active');
+          sessionStorage.setItem('medai_admin_name', payload.username || '');
+          // good, continue loading
+        } else {
+          window.location.replace('Login_page.html');
+        }
+      }catch(e){
+        window.location.replace('Login_page.html');
+      }
+    } else {
+      window.location.replace('Login_page.html');
+    }
+  }
+})();
 </script>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&family=Share+Tech+Mono&display=swap" rel="stylesheet"/>
 <script src="medai-transition.js" defer></script>
@@ -114,6 +134,11 @@ pre{white-space:pre-wrap;word-break:break-word;background:rgba(0,0,0,.26);border
 </div>
 
 <script>
+const API_BASE_URL = localStorage.getItem('medai_api_base_url')
+  || (['localhost','127.0.0.1'].includes(window.location.hostname)
+        ? 'http://127.0.0.1:5500'
+        : 'https://medai-backend-5r9o.onrender.com');
+
 let adminState = { users: [], current: null, selected: null, tab: 'profile' };
 
 function adminLogout(){
@@ -146,8 +171,20 @@ function snapshotStorage(){
   return data;
 }
 
-function refreshAdmin(){
-  adminState.users = readJson('medai_users', []);
+async function refreshAdmin(){
+  const token = localStorage.getItem('medai_token');
+  const headers = token ? { 'Authorization': 'Bearer ' + token } : {};
+  try {
+    const res = await fetch(API_BASE_URL + '/api/admin/users', { headers });
+    if(res.ok){
+      const data = await res.json();
+      adminState.users = data.users || [];
+    } else {
+      adminState.users = readJson('medai_users', []);
+    }
+  } catch(e) {
+    adminState.users = readJson('medai_users', []);
+  }
   adminState.current = readJson('medai_current_user', null);
   document.getElementById('stat-users').textContent = adminState.users.length;
   document.getElementById('stat-current').textContent = adminState.current ? '1' : '0';

@@ -99,6 +99,7 @@ function showTab(id,el){
   document.getElementById('topbar-bc').textContent='// '+(tabBc[id]||id.toUpperCase());
   if(id === 'premium') renderPrices();
   if(id === 'therapy') renderTherapyFinder();
+  if(id === 'achievements') renderAchievements();
 }
 
 function setMobActive(el){document.querySelectorAll('.mob-item').forEach(i=>i.classList.remove('active'));el.classList.add('active')}
@@ -197,30 +198,35 @@ function restoreChatHistories(){
 
 // ---- GEMINI with retry on quota/overload ----
 async function callGemini(prompt, retries=3) {
-  const token = localStorage.getItem('medai_token');
-  const messages = [{ role: 'user', content: prompt }];
+  const activeKey = getGeminiKey();
+  if (!activeKey || activeKey === 'YOUR_GEMINI_API_KEY_HERE') throw new Error('no_key');
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
-      const res = await fetch(API_BASE_URL + '/api/ai/gemini', {
+      const res = await fetch(getGeminiUrl(), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': 'Bearer ' + token } : {})
-        },
-        body: JSON.stringify({ messages })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.7, maxOutputTokens: 512 }
+        })
       });
-      if (res.status === 429) {
-        const data = await res.json().catch(() => ({}));
-        if (data.upgradeRequired) throw new Error('daily_limit');
-        await new Promise(r => setTimeout(r, (attempt + 1) * 3000));
+      if (res.status === 429 || res.status === 503) {
+        const waitMs = (attempt + 1) * 3000;
+        await new Promise(r => setTimeout(r, waitMs));
         continue;
       }
-      if (!res.ok) throw new Error('api_error_' + res.status);
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        const msg = errData.error?.message || 'API error ' + res.status;
+        if (msg.includes('quota') || msg.includes('RESOURCE_EXHAUSTED')) {
+          throw new Error('quota_exceeded');
+        }
+        throw new Error(msg);
+      }
       const data = await res.json();
-      if (data.usage) updateUsageIndicator(data.usage);
-      return data.text || null;
+      return data.candidates?.[0]?.content?.parts?.[0]?.text || null;
     } catch(e) {
-      if (e.message === 'daily_limit') throw e;
+      if (e.message === 'no_key' || e.message === 'quota_exceeded') throw e;
       if (attempt === retries - 1) throw e;
       await new Promise(r => setTimeout(r, 2000));
     }
@@ -228,27 +234,41 @@ async function callGemini(prompt, retries=3) {
   throw new Error('high_demand');
 }
 
-// ---- OPENROUTER (backend proxy) ----
+// ---- OPENROUTER ----
+function getOpenRouterSettings(){
+  return {
+    key: localStorage.getItem('medai_openrouter_key') || '',
+    model: localStorage.getItem('medai_openrouter_model') || DEFAULT_OPENROUTER_MODEL
+  };
+}
+
 async function callOpenRouter(systemPrompt, userMessage) {
-  const token = localStorage.getItem('medai_token');
-  const messages = [{ role: 'user', content: userMessage }];
-  const res = await fetch(API_BASE_URL + '/api/ai/openrouter', {
+  const settings = getOpenRouterSettings();
+  if(!settings.key) throw new Error('openrouter_no_key');
+  const res = await fetch(OPENROUTER_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      ...(token ? { 'Authorization': 'Bearer ' + token } : {})
+      'Authorization': `Bearer ${settings.key}`,
+      'HTTP-Referer': window.location.origin || 'http://localhost',
+      'X-Title': 'MedAI Dashboard'
     },
-    body: JSON.stringify({ messages, systemPrompt })
+    body: JSON.stringify({
+      model: settings.model,
+      messages: [
+        { role:'system', content: systemPrompt },
+        { role:'user', content: userMessage }
+      ],
+      temperature: 0.7,
+      max_tokens: 650
+    })
   });
-  if (res.status === 429) {
-    const data = await res.json().catch(() => ({}));
-    if (data.upgradeRequired) throw new Error('daily_limit');
-    throw new Error('rate_limited');
+  if (!res.ok) {
+    const err = await res.json().catch(()=>({}));
+    throw new Error(err.error?.message || `OpenRouter error ${res.status}`);
   }
-  if (!res.ok) throw new Error('openrouter_error_' + res.status);
   const data = await res.json();
-  if (data.usage) updateUsageIndicator(data.usage);
-  return data.text || null;
+  return data.choices?.[0]?.message?.content || null;
 }
 
 // ---- MAIN sendChat ----
@@ -300,10 +320,14 @@ async function sendChat(panelId, type) {
     const errBubble = document.createElement('div');
     errBubble.className = 'chat-bubble ai';
 
-    if (e.message === 'daily_limit') {
-      errBubble.innerHTML = `<div class="ai-label">⚡ DAILY LIMIT</div>You've used all <strong>10 free AI messages</strong> for today. Your limit resets at midnight. <a href="#" onclick="showTab('premium',null);return false;" style="color:var(--accent)">Upgrade to Premium</a> for unlimited access.`;
+    if (e.message === 'no_key') {
+      errBubble.innerHTML = `<div class="ai-label">⚙️ SETUP</div>Open <strong>dashboard.html</strong> and set your <code>GEMINI_KEY</code>.`;
+    } else if (e.message === 'quota_exceeded') {
+      errBubble.innerHTML = `<div class="ai-label">⚠️ QUOTA</div>Your Gemini free quota is exhausted for today. It resets at midnight. Try again tomorrow or upgrade your Gemini plan at <strong>aistudio.google.com</strong>.`;
     } else if (e.message === 'high_demand' || (e.message && e.message.includes('429'))) {
-      errBubble.innerHTML = `<div class="ai-label">⏳ HIGH DEMAND</div>The AI is under high load. Please wait 30 seconds and try again.`;
+      errBubble.innerHTML = `<div class="ai-label">⏳ HIGH DEMAND</div>Gemini is under high load right now. Please wait 30 seconds and try again — your message is not lost.`;
+    } else if (e.message === 'openrouter_no_key') {
+      errBubble.innerHTML = `<div class="ai-label">🔑 OPENROUTER SETUP</div>Go to <strong>Settings → OpenRouter API</strong>, paste your OpenRouter key, save it, then try again.`;
     } else {
       errBubble.innerHTML = `<div class="ai-label">⚠️ ERROR</div>${e.message || 'Something went wrong. Please try again.'}`;
     }
@@ -1751,18 +1775,101 @@ function removePreviousLangStyles(){
   if(e) e.remove();
 }
 
-function updateUsageIndicator(usage){
-  if(!usage) return;
-  const remaining = (usage.limit || 10) - (usage.used || 0);
-  document.querySelectorAll('.ai-usage-indicator').forEach(el => {
-    if(remaining <= 3){
-      el.textContent = '⚡ ' + remaining + ' message' + (remaining===1?'':'s') + ' left today';
-      el.style.color = remaining === 0 ? 'var(--danger)' : 'var(--warning)';
-      el.style.display = 'block';
-    } else {
-      el.style.display = 'none';
-    }
+
+// ============================================================
+// ACHIEVEMENTS — REAL-TIME TRACKING
+// ============================================================
+let _achievementsCache = null;
+let _achievementsLoading = false;
+
+async function renderAchievements(){
+  const container = document.getElementById('achievements-grid');
+  const statsEl = document.getElementById('achievements-stats');
+  if(!container) return;
+  if(_achievementsLoading) return;
+  _achievementsLoading = true;
+
+  container.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--muted);font-family:var(--mono);font-size:12px;letter-spacing:1px">LOADING ACHIEVEMENTS...</div>';
+
+  const token = localStorage.getItem('medai_token');
+  try{
+    const res = await fetch(API_BASE_URL + '/api/achievements', {
+      headers: token ? { Authorization: 'Bearer ' + token } : {}
+    });
+    if(!res.ok) throw new Error('fetch_failed');
+    const data = await res.json();
+    _achievementsCache = data;
+    renderAchievementsUI(data);
+  }catch(e){
+    console.warn('Achievements fetch failed, using local fallback:', e);
+    renderAchievementsLocal();
+  }finally{
+    _achievementsLoading = false;
+  }
+}
+
+function renderAchievementsUI(data){
+  const container = document.getElementById('achievements-grid');
+  const statsEl = document.getElementById('achievements-stats');
+  if(!container) return;
+
+  if(statsEl){
+    const pct = Math.round((data.stats.unlocked / data.stats.total) * 100);
+    statsEl.innerHTML = `
+      <div style="display:flex;gap:24px;align-items:center;flex-wrap:wrap;margin-bottom:24px">
+        <div style="flex:1;min-width:200px">
+          <div style="font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:1px;margin-bottom:6px">PROGRESS</div>
+          <div style="font-family:var(--head);font-size:28px;font-weight:800;color:var(--accent)">${data.stats.unlocked}<span style="font-size:16px;color:var(--muted)">/${data.stats.total}</span></div>
+          <div style="height:6px;background:rgba(0,212,255,0.1);border-radius:99px;margin-top:8px;overflow:hidden">
+            <div style="height:100%;width:${pct}%;background:var(--accent);border-radius:99px;transition:width 1s ease"></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:16px;flex-wrap:wrap">
+          <div style="text-align:center"><div style="font-family:var(--head);font-size:20px;font-weight:700;color:var(--safe)">${data.stats.triageCount}</div><div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px">TRIAGES</div></div>
+          <div style="text-align:center"><div style="font-family:var(--head);font-size:20px;font-weight:700;color:var(--danger)">${data.stats.panicCount}</div><div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px">PANIC EVENTS</div></div>
+          <div style="text-align:center"><div style="font-family:var(--head);font-size:20px;font-weight:700;color:var(--accent)">${data.stats.accountAgeDays}</div><div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px">DAYS</div></div>
+          <div style="text-align:center"><div style="font-family:var(--head);font-size:20px;font-weight:700;color:var(--purple)">${data.stats.totalAIMessages}</div><div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px">AI MSGS</div></div>
+        </div>
+      </div>`;
+  }
+
+  // sort: unlocked first, then by progress
+  const sorted = [...data.achievements].sort((a,b) => {
+    if(a.unlocked && !b.unlocked) return -1;
+    if(!a.unlocked && b.unlocked) return 1;
+    return (b.progress/b.total) - (a.progress/a.total);
   });
+
+  container.innerHTML = sorted.map(ach => {
+    const pct = Math.round((ach.progress / ach.total) * 100);
+    const isPercent = ach.total > 1;
+    const badgeHtml = ach.unlocked
+      ? '<span class="badge badge-green" style="margin-top:6px">✓ Unlocked</span>'
+      : isPercent
+        ? `<span style="display:inline-block;margin-top:6px;font-family:var(--mono);font-size:10px;color:var(--muted)">${ach.progress}/${ach.total}</span>`
+        : '<span style="display:inline-block;margin-top:6px;font-family:var(--mono);font-size:10px;color:var(--muted)">Locked</span>';
+
+    const progressBar = (!ach.unlocked && isPercent) ? `
+      <div style="height:4px;background:rgba(255,255,255,0.06);border-radius:99px;margin-top:8px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:var(--accent);border-radius:99px;transition:width 1s ease"></div>
+      </div>` : '';
+
+    return `<div class="glass-card ach-card" style="opacity:${ach.unlocked?'1':'0.65'};transition:all .2s" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='${ach.unlocked?'1':'0.65'}'">
+      <div class="ach-icon ${ach.unlocked?'unlocked':'locked'}" style="background:${ach.color};border:1px solid ${ach.border}">${ach.icon}</div>
+      <div>
+        <div class="ach-name">${ach.name}</div>
+        <div class="ach-desc">${ach.desc}</div>
+        ${badgeHtml}
+        ${progressBar}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderAchievementsLocal(){
+  // fallback — just show locked state for all
+  const container = document.getElementById('achievements-grid');
+  if(container) container.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--muted);font-size:14px">Could not load achievements. Please check your connection and try again.</div>';
 }
 
 function saveLanguage(){

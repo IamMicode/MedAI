@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Register as a Doctor — MedAI</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&family=Share+Tech+Mono&display=swap" rel="stylesheet"/>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#04090f;--bg2:#060d18;--surface:#0a1628;--surface2:#0e1e35;
+  --border:rgba(0,212,255,0.08);--border2:rgba(0,212,255,0.18);
+  --accent:#00d4ff;--accent2:#0077dd;--safe:#00ff88;
+  --warning:#ffaa33;--danger:#ff4d6d;--text:#e2f0ff;--muted:#5a7a99;
+  --radius:18px;--radius-sm:10px;
+  --head:'Syne',sans-serif;--body:'DM Sans',sans-serif;--mono:'Share Tech Mono',monospace;
+}
+body{background:var(--bg);color:var(--text);font-family:var(--body);min-height:100vh;line-height:1.6}
+.bg-glow{position:fixed;top:-200px;right:-100px;width:600px;height:600px;background:radial-gradient(circle,rgba(0,212,255,0.06) 0%,transparent 70%);pointer-events:none}
+.bg-glow2{position:fixed;bottom:-150px;left:-100px;width:500px;height:500px;background:radial-gradient(circle,rgba(0,255,136,0.04) 0%,transparent 70%);pointer-events:none}
+
+nav{padding:20px 5%;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border)}
+.nav-logo{font-family:var(--head);font-size:20px;font-weight:800;color:var(--text);text-decoration:none}
+.nav-logo span{color:var(--accent)}
+.nav-back{color:var(--muted);text-decoration:none;font-size:14px;display:flex;align-items:center;gap:6px}
+.nav-back:hover{color:var(--text)}
+
+.wrap{max-width:640px;margin:0 auto;padding:48px 5% 80px;position:relative}
+.badge{display:inline-flex;align-items:center;gap:8px;background:rgba(0,212,255,0.08);border:1px solid rgba(0,212,255,0.2);border-radius:99px;padding:6px 14px;margin-bottom:20px;font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:1px}
+h1{font-family:var(--head);font-size:clamp(28px,4vw,38px);font-weight:800;letter-spacing:-1px;margin-bottom:10px}
+.sub{color:var(--muted);font-size:15px;margin-bottom:36px;max-width:480px}
+
+.progress-bar{display:flex;gap:6px;margin-bottom:32px}
+.progress-seg{flex:1;height:4px;border-radius:99px;background:var(--border2)}
+.progress-seg.active{background:var(--accent)}
+
+.form-card{background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:32px}
+.step{display:none}
+.step.active{display:block;animation:step-in .3s ease}
+@keyframes step-in{from{opacity:0;transform:translateX(12px)}to{opacity:1;transform:translateX(0)}}
+
+.field-group{margin-bottom:20px}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+label{display:block;font-family:var(--mono);font-size:11px;letter-spacing:1px;color:var(--muted);margin-bottom:8px;text-transform:uppercase}
+input,select,textarea{width:100%;background:rgba(255,255,255,0.03);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:12px 14px;color:var(--text);font-family:var(--body);font-size:14px;outline:none;transition:border-color .2s}
+input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+input::placeholder,textarea::placeholder{color:rgba(90,122,153,0.6)}
+textarea{resize:vertical;min-height:80px}
+select{cursor:pointer}
+select option{background:var(--surface2)}
+
+.file-drop{border:2px dashed var(--border2);border-radius:var(--radius-sm);padding:24px;text-align:center;cursor:pointer;transition:all .2s}
+.file-drop:hover{border-color:var(--accent);background:rgba(0,212,255,0.03)}
+.file-drop.has-file{border-color:var(--safe);background:rgba(0,255,136,0.04)}
+.file-drop-icon{font-size:28px;margin-bottom:8px}
+.file-drop-text{font-size:13px;color:var(--muted)}
+.file-drop-name{font-size:13px;color:var(--safe);font-weight:600;margin-top:6px}
+
+.step-actions{display:flex;gap:12px;margin-top:28px}
+.btn{font-family:var(--head);font-size:14px;font-weight:700;padding:13px 24px;border-radius:10px;border:none;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:1}
+.btn-primary{background:var(--accent);color:#04090f}
+.btn-primary:hover{background:#33ddff}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed}
+.btn-ghost{background:transparent;border:1px solid var(--border2);color:var(--text)}
+.btn-ghost:hover{border-color:var(--accent);color:var(--accent)}
+
+.error-msg{display:none;background:rgba(255,77,109,0.08);border:1px solid rgba(255,77,109,0.25);border-radius:var(--radius-sm);padding:12px 14px;color:#ff9bad;font-size:13px;margin-bottom:16px}
+.error-msg.show{display:block}
+
+.checkbox-row{display:flex;align-items:flex-start;gap:10px;margin-top:18px}
+.checkbox-row input{width:16px;height:16px;margin-top:2px;flex-shrink:0}
+.checkbox-row label{font-size:13px;color:var(--muted);text-transform:none;letter-spacing:0;font-family:var(--body)}
+.checkbox-row a{color:var(--accent);text-decoration:none}
+
+.success-panel{display:none;text-align:center;padding:20px 0}
+.success-panel.show{display:block}
+.success-icon{font-size:56px;margin-bottom:20px}
+.success-panel h2{font-family:var(--head);font-size:24px;margin-bottom:12px}
+.success-panel p{color:var(--muted);font-size:14px;line-height:1.7;max-width:420px;margin:0 auto 24px}
+.status-chip{display:inline-flex;align-items:center;gap:8px;background:rgba(255,170,51,0.1);border:1px solid rgba(255,170,51,0.3);border-radius:99px;padding:8px 16px;font-family:var(--mono);font-size:12px;color:var(--warning);letter-spacing:1px;margin-bottom:24px}
+
+.login-link{text-align:center;margin-top:24px;font-size:14px;color:var(--muted)}
+.login-link a{color:var(--accent);text-decoration:none;font-weight:600}
+
+@media(max-width:600px){
+  .field-row{grid-template-columns:1fr}
+  .form-card{padding:22px}
+}
+</style>
+</head>
+<body>
+<div class="bg-glow"></div>
+<div class="bg-glow2"></div>
+
+<nav>
+  <a href="MED_AI_LAND.html" class="nav-logo">Med<span>AI</span></a>
+  <a href="MED_AI_LAND.html" class="nav-back">← Back to home</a>
+</nav>
+
+<div class="wrap">
+  <div id="form-view">
+    <div class="badge">🩺 DOCTOR REGISTRATION</div>
+    <h1>Join MedAI's verified network</h1>
+    <p class="sub">Get matched with patients based on real triage severity. Registration takes about 5 minutes — your credentials are then manually reviewed within 24-48 hours.</p>
+
+    <div class="progress-bar">
+      <div class="progress-seg active" id="seg-1"></div>
+      <div class="progress-seg" id="seg-2"></div>
+      <div class="progress-seg" id="seg-3"></div>
+    </div>
+
+    <div class="error-msg" id="form-error"></div>
+
+    <form id="doctor-form" class="form-card">
+      <!-- STEP 1: Account -->
+      <div class="step active" id="step-1">
+        <div class="field-group">
+          <label>Full Name</label>
+          <input type="text" id="fullName" placeholder="Dr. Jane Okafor" required/>
+        </div>
+        <div class="field-group">
+          <label>Email Address</label>
+          <input type="email" id="email" placeholder="you@hospital.com" required/>
+        </div>
+        <div class="field-row">
+          <div class="field-group">
+            <label>Password</label>
+            <input type="password" id="password" placeholder="Min. 8 characters" required minlength="8"/>
+          </div>
+          <div class="field-group">
+            <label>Confirm Password</label>
+            <input type="password" id="confirmPassword" placeholder="Repeat password" required/>
+          </div>
+        </div>
+        <div class="field-group">
+          <label>Phone Number</label>
+          <input type="tel" id="phone" placeholder="+234 801 234 5678" required/>
+        </div>
+        <div class="step-actions">
+          <button type="button" class="btn btn-primary" onclick="goToStep(2)">Continue →</button>
+        </div>
+      </div>
+
+      <!-- STEP 2: Credentials -->
+      <div class="step" id="step-2">
+        <div class="field-group">
+          <label>Medical License Number</label>
+          <input type="text" id="licenseNumber" placeholder="e.g. MDCN/R.12345" required/>
+        </div>
+        <div class="field-group">
+          <label>Issuing Authority / Country</label>
+          <input type="text" id="issuingAuthority" placeholder="e.g. Medical and Dental Council of Nigeria" required/>
+        </div>
+        <div class="field-row">
+          <div class="field-group">
+            <label>Specialty</label>
+            <select id="specialty" required>
+              <option value="">Select specialty</option>
+              <option>General Practice</option>
+              <option>Pediatrics</option>
+              <option>Psychiatry</option>
+              <option>Cardiology</option>
+              <option>Dermatology</option>
+              <option>Internal Medicine</option>
+              <option>Emergency Medicine</option>
+              <option>Gynecology</option>
+              <option>Neurology</option>
+              <option>Orthopedics</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div class="field-group">
+            <label>Years of Experience</label>
+            <input type="number" id="yearsExperience" min="0" max="70" placeholder="e.g. 6" required/>
+          </div>
+        </div>
+        <div class="field-group">
+          <label>Hospital / Clinic Affiliation <span style="opacity:.6">(optional)</span></label>
+          <input type="text" id="hospital" placeholder="e.g. Lagos University Teaching Hospital"/>
+        </div>
+        <div class="step-actions">
+          <button type="button" class="btn btn-ghost" onclick="goToStep(1)">← Back</button>
+          <button type="button" class="btn btn-primary" onclick="goToStep(3)">Continue →</button>
+        </div>
+      </div>
+
+      <!-- STEP 3: Verification -->
+      <div class="step" id="step-3">
+        <div class="field-group">
+          <label>Short Professional Bio <span style="opacity:.6">(optional)</span></label>
+          <textarea id="bio" placeholder="A brief intro patients will see — your focus areas, approach to care, etc."></textarea>
+        </div>
+        <div class="field-group">
+          <label>License / ID Document</label>
+          <div class="file-drop" id="file-drop" onclick="document.getElementById('licenseFile').click()">
+            <div class="file-drop-icon">📄</div>
+            <div class="file-drop-text">Click to upload your medical license or ID (PDF or image, max 4MB)</div>
+            <div class="file-drop-name" id="file-name"></div>
+          </div>
+          <input type="file" id="licenseFile" accept="image/*,.pdf" style="display:none" onchange="handleFile(this)"/>
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="terms" required/>
+          <label for="terms">I confirm the information provided is accurate and I consent to MedAI verifying my credentials. I agree to the <a href="#">Terms of Service</a> and <a href="#">Doctor Conduct Policy</a>.</label>
+        </div>
+        <div class="step-actions">
+          <button type="button" class="btn btn-ghost" onclick="goToStep(2)">← Back</button>
+          <button type="submit" class="btn btn-primary" id="submit-btn">Submit for Review</button>
+        </div>
+      </div>
+    </form>
+
+    <p class="login-link">Already registered? <a href="doctor-login.html">Sign in →</a></p>
+  </div>
+
+  <!-- SUCCESS STATE -->
+  <div class="success-panel" id="success-panel">
+    <div class="success-icon">✅</div>
+    <div class="status-chip">⏳ PENDING VERIFICATION</div>
+    <h2>Registration received</h2>
+    <p id="success-message">Your credentials are under manual review — this usually takes 24-48 hours. We'll notify you by email once your account is approved.</p>
+    <a href="doctor-login.html" class="btn btn-primary" style="text-decoration:none;display:inline-flex;max-width:220px;margin:0 auto">Go to Sign In</a>
+  </div>
+</div>
+
+<script>
+const API_BASE_URL = localStorage.getItem('medai_api_base_url')
+  || (['localhost','127.0.0.1'].includes(window.location.hostname)
+        ? 'http://127.0.0.1:5500'
+        : 'https://medai-backend-5r9o.onrender.com');
+
+let currentStep = 1;
+let licenseDocumentBase64 = null;
+
+function goToStep(step){
+  if(step > currentStep && !validateStep(currentStep)) return;
+  document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+  document.getElementById('step-' + step).classList.add('active');
+  for(let i=1;i<=3;i++){
+    document.getElementById('seg-'+i).classList.toggle('active', i<=step);
+  }
+  currentStep = step;
+  hideError();
+}
+
+function validateStep(step){
+  if(step === 1){
+    const fullName = document.getElementById('fullName').value.trim();
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const confirmPassword = document.getElementById('confirmPassword').value;
+    const phone = document.getElementById('phone').value.trim();
+    if(!fullName || !email || !password || !phone){
+      showError('Please fill in all fields.');
+      return false;
+    }
+    if(password.length < 8){
+      showError('Password must be at least 8 characters.');
+      return false;
+    }
+    if(password !== confirmPassword){
+      showError('Passwords do not match.');
+      return false;
+    }
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
+      showError('Please enter a valid email address.');
+      return false;
+    }
+  }
+  if(step === 2){
+    const licenseNumber = document.getElementById('licenseNumber').value.trim();
+    const issuingAuthority = document.getElementById('issuingAuthority').value.trim();
+    const specialty = document.getElementById('specialty').value;
+    const yearsExperience = document.getElementById('yearsExperience').value;
+    if(!licenseNumber || !issuingAuthority || !specialty || yearsExperience === ''){
+      showError('Please fill in all required credential fields.');
+      return false;
+    }
+  }
+  return true;
+}
+
+function showError(msg){
+  const el = document.getElementById('form-error');
+  el.textContent = msg;
+  el.classList.add('show');
+}
+function hideError(){
+  document.getElementById('form-error').classList.remove('show');
+}
+
+function handleFile(input){
+  const file = input.files[0];
+  if(!file) return;
+  if(file.size > 4 * 1024 * 1024){
+    showError('File is too large. Please upload a file under 4MB.');
+    input.value = '';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    licenseDocumentBase64 = e.target.result;
+    document.getElementById('file-drop').classList.add('has-file');
+    document.getElementById('file-name').textContent = '✓ ' + file.name;
+  };
+  reader.readAsDataURL(file);
+}
+
+document.getElementById('doctor-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  hideError();
+
+  if(!validateStep(1) || !validateStep(2)) return;
+  if(!document.getElementById('terms').checked){
+    showError('Please agree to the terms to continue.');
+    return;
+  }
+
+  const submitBtn = document.getElementById('submit-btn');
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Submitting...';
+
+  const payload = {
+    fullName: document.getElementById('fullName').value.trim(),
+    email: document.getElementById('email').value.trim(),
+    password: document.getElementById('password').value,
+    phone: document.getElementById('phone').value.trim(),
+    licenseNumber: document.getElementById('licenseNumber').value.trim(),
+    issuingAuthority: document.getElementById('issuingAuthority').value.trim(),
+    specialty: document.getElementById('specialty').value,
+    yearsExperience: parseInt(document.getElementById('yearsExperience').value, 10),
+    hospital: document.getElementById('hospital').value.trim() || undefined,
+    bio: document.getElementById('bio').value.trim() || undefined,
+    licenseDocument: licenseDocumentBase64 || undefined
+  };
+
+  try{
+    const res = await fetch(API_BASE_URL + '/api/doctors/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+
+    if(!res.ok){
+      showError(data.message || 'Registration failed. Please check your details and try again.');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Submit for Review';
+      return;
+    }
+
+    document.getElementById('success-message').textContent = data.message || 'Your credentials are under manual review.';
+    document.getElementById('form-view').style.display = 'none';
+    document.getElementById('success-panel').classList.add('show');
+  }catch(err){
+    showError('Could not connect to the server. Please check your connection and try again.');
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Submit for Review';
+  }
+});
+</script>
+</body>
+</html>

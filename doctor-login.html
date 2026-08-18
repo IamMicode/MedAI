@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Doctor Sign In — MedAI</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&family=Share+Tech+Mono&display=swap" rel="stylesheet"/>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#04090f;--bg2:#060d18;--surface:#0a1628;--surface2:#0e1e35;
+  --border:rgba(0,212,255,0.08);--border2:rgba(0,212,255,0.18);
+  --accent:#00d4ff;--accent2:#0077dd;--safe:#00ff88;
+  --warning:#ffaa33;--danger:#ff4d6d;--text:#e2f0ff;--muted:#5a7a99;
+  --radius:18px;--radius-sm:10px;
+  --head:'Syne',sans-serif;--body:'DM Sans',sans-serif;--mono:'Share Tech Mono',monospace;
+}
+body{background:var(--bg);color:var(--text);font-family:var(--body);min-height:100vh;display:flex;flex-direction:column}
+.bg-glow{position:fixed;top:-200px;right:-100px;width:600px;height:600px;background:radial-gradient(circle,rgba(0,212,255,0.06) 0%,transparent 70%);pointer-events:none}
+.bg-glow2{position:fixed;bottom:-150px;left:-100px;width:500px;height:500px;background:radial-gradient(circle,rgba(0,255,136,0.04) 0%,transparent 70%);pointer-events:none}
+
+nav{padding:20px 5%;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border)}
+.nav-logo{font-family:var(--head);font-size:20px;font-weight:800;color:var(--text);text-decoration:none}
+.nav-logo span{color:var(--accent)}
+.nav-back{color:var(--muted);text-decoration:none;font-size:14px}
+.nav-back:hover{color:var(--text)}
+
+.center{flex:1;display:flex;align-items:center;justify-content:center;padding:40px 5%;position:relative}
+.login-box{width:100%;max-width:420px;position:relative;z-index:1}
+.icon-badge{width:56px;height:56px;border-radius:16px;background:linear-gradient(135deg,var(--accent),var(--safe));display:flex;align-items:center;justify-content:center;font-size:26px;margin-bottom:20px}
+h1{font-family:var(--head);font-size:28px;font-weight:800;margin-bottom:8px}
+.sub{color:var(--muted);font-size:14px;margin-bottom:32px}
+
+.form-card{background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:32px}
+.field-group{margin-bottom:18px}
+label{display:block;font-family:var(--mono);font-size:11px;letter-spacing:1px;color:var(--muted);margin-bottom:8px;text-transform:uppercase}
+input{width:100%;background:rgba(255,255,255,0.03);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:12px 14px;color:var(--text);font-family:var(--body);font-size:14px;outline:none;transition:border-color .2s}
+input:focus{border-color:var(--accent)}
+input::placeholder{color:rgba(90,122,153,0.6)}
+
+.btn{width:100%;font-family:var(--head);font-size:14px;font-weight:700;padding:14px;border-radius:10px;border:none;cursor:pointer;transition:all .2s;background:var(--accent);color:#04090f;margin-top:6px}
+.btn:hover{background:#33ddff}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+
+.error-msg{display:none;background:rgba(255,77,109,0.08);border:1px solid rgba(255,77,109,0.25);border-radius:var(--radius-sm);padding:12px 14px;color:#ff9bad;font-size:13px;margin-bottom:16px}
+.error-msg.show{display:block}
+
+.status-banner{display:none;border-radius:var(--radius-sm);padding:14px;margin-bottom:18px;font-size:13px;line-height:1.6}
+.status-banner.show{display:block}
+.status-banner.pending{background:rgba(255,170,51,0.08);border:1px solid rgba(255,170,51,0.25);color:#ffcb80}
+.status-banner.rejected{background:rgba(255,77,109,0.08);border:1px solid rgba(255,77,109,0.25);color:#ff9bad}
+
+.register-link{text-align:center;margin-top:24px;font-size:14px;color:var(--muted)}
+.register-link a{color:var(--accent);text-decoration:none;font-weight:600}
+
+.trust-note{display:flex;align-items:center;gap:8px;margin-top:20px;font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.5px;justify-content:center}
+</style>
+</head>
+<body>
+<div class="bg-glow"></div>
+<div class="bg-glow2"></div>
+
+<nav>
+  <a href="MED_AI_LAND.html" class="nav-logo">Med<span>AI</span></a>
+  <a href="MED_AI_LAND.html" class="nav-back">← Back to home</a>
+</nav>
+
+<div class="center">
+  <div class="login-box">
+    <div class="icon-badge">🩺</div>
+    <h1>Doctor Sign In</h1>
+    <p class="sub">Access your MedAI provider dashboard.</p>
+
+    <div class="status-banner" id="status-banner"></div>
+    <div class="error-msg" id="form-error"></div>
+
+    <form class="form-card" id="login-form">
+      <div class="field-group">
+        <label>Email Address</label>
+        <input type="email" id="email" placeholder="you@hospital.com" required/>
+      </div>
+      <div class="field-group">
+        <label>Password</label>
+        <input type="password" id="password" placeholder="Your password" required/>
+      </div>
+      <button type="submit" class="btn" id="submit-btn">Sign In</button>
+    </form>
+
+    <p class="register-link">Not registered yet? <a href="doctor-register.html">Apply as a doctor →</a></p>
+    <div class="trust-note">🔒 Secure sign-in for verified healthcare providers</div>
+  </div>
+</div>
+
+<script>
+const API_BASE_URL = localStorage.getItem('medai_api_base_url')
+  || (['localhost','127.0.0.1'].includes(window.location.hostname)
+        ? 'http://127.0.0.1:5500'
+        : 'https://medai-backend-5r9o.onrender.com');
+
+function showError(msg){
+  const el = document.getElementById('form-error');
+  el.textContent = msg;
+  el.classList.add('show');
+}
+function hideError(){
+  document.getElementById('form-error').classList.remove('show');
+}
+function showStatus(type, msg){
+  const el = document.getElementById('status-banner');
+  el.className = 'status-banner show ' + type;
+  el.textContent = msg;
+}
+
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  hideError();
+  document.getElementById('status-banner').classList.remove('show');
+
+  const email = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value;
+  const submitBtn = document.getElementById('submit-btn');
+
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Signing in...';
+
+  try{
+    const res = await fetch(API_BASE_URL + '/api/doctors/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
+
+    if(!res.ok){
+      showError(data.message || 'Sign in failed. Please check your credentials.');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Sign In';
+      return;
+    }
+
+    if(data.status === 'PENDING'){
+      showStatus('pending', '⏳ Your account is still under manual review. This usually takes 24-48 hours — we\'ll email you once approved.');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Sign In';
+      return;
+    }
+
+    if(data.status === 'REJECTED'){
+      showStatus('rejected', '⚠️ Your application was not approved.' + (data.doctor?.rejectionReason ? ' Reason: ' + data.doctor.rejectionReason : ' Please contact support for details.'));
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Sign In';
+      return;
+    }
+
+    // APPROVED
+    localStorage.setItem('medai_token', data.token);
+    localStorage.setItem('medai_doctor_name', data.doctor?.fullName || '');
+    window.location.href = 'doctor-dashboard.html';
+
+  }catch(err){
+    showError('Could not connect to the server. Please check your connection and try again.');
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Sign In';
+  }
+});
+</script>
+</body>
+</html>

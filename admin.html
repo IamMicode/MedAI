@@ -185,6 +185,7 @@ body::after{content:'';position:fixed;top:-200px;right:-100px;width:600px;height
       <div class="as-section">Users</div>
       <div class="as-item" onclick="showAdminTab('users',this)"><div class="as-item-icon">👥</div>All Users</div>
       <div class="as-item" onclick="showAdminTab('health-profiles',this)"><div class="as-item-icon">🩺</div>Health Profiles</div>
+      <div class="as-item" onclick="showAdminTab('doctors',this)"><div class="as-item-icon">👨‍⚕️</div>Doctor Applications <span id="doctor-pending-badge" style="display:none;margin-left:auto;background:rgba(255,170,51,0.15);color:var(--warning);border-radius:99px;padding:1px 7px;font-size:10px;font-family:var(--mono)"></span></div>
       <div class="as-item" onclick="showAdminTab('triage-logs',this)"><div class="as-item-icon">📋</div>Triage Logs</div>
 
       <div class="as-section">System</div>
@@ -321,6 +322,27 @@ body::after{content:'';position:fixed;top:-200px;right:-100px;width:600px;height
             <tbody id="all-users-table"></tbody>
           </table>
         </div>
+      </div>
+
+      <!-- ========== DOCTOR APPLICATIONS ========== -->
+      <div class="a-panel" id="panel-doctors">
+        <div class="a-section-label">// Verification</div>
+        <h2 class="a-title">Doctor <span>Applications</span></h2>
+        <div style="display:flex;gap:1rem;align-items:center;margin-bottom:1rem;flex-wrap:wrap">
+          <select id="doctor-filter" onchange="renderDoctorApplications()" style="background:rgba(255,80,0,0.04);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:var(--mono);font-size:11px;padding:8px 14px;outline:none;cursor:pointer">
+            <option value="PENDING">Pending Review</option>
+            <option value="APPROVED">Approved</option>
+            <option value="REJECTED">Rejected</option>
+            <option value="ALL">All Applications</option>
+          </select>
+          <div style="margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--muted)" id="doctor-count"></div>
+        </div>
+        <div id="doctor-applications-list"></div>
+      </div>
+
+      <!-- DOCTOR DETAIL MODAL -->
+      <div id="doctor-modal-overlay" style="display:none;position:fixed;inset:0;z-index:9600;background:rgba(0,0,0,0.6);backdrop-filter:blur(6px);align-items:flex-start;justify-content:center;padding:5vh 1.5rem;overflow-y:auto" onclick="if(event.target===this)closeDoctorModal()">
+        <div class="a-card" style="max-width:560px;width:100%;padding:1.75rem" id="doctor-modal-content"></div>
       </div>
 
       <!-- ========== HEALTH PROFILES ========== -->
@@ -490,11 +512,55 @@ setInterval(() => {
 // ============================================================
 // DATA HELPERS
 // ============================================================
+const API_BASE_URL = localStorage.getItem('medai_api_base_url')
+  || (['localhost','127.0.0.1'].includes(window.location.hostname)
+        ? 'http://127.0.0.1:5500'
+        : 'https://medai-backend-5r9o.onrender.com');
+
+let _cachedUsers = null;
+
+async function fetchBackendUsers(){
+  const token = localStorage.getItem('medai_token');
+  if(!token) return null;
+  try{
+    const res = await fetch(API_BASE_URL + '/api/admin/users', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if(res.ok){
+      const data = await res.json();
+      _cachedUsers = data.users || [];
+      return _cachedUsers;
+    }
+  }catch(e){}
+  return null;
+}
+
 function getAllUsers(){
+  if(_cachedUsers !== null) return _cachedUsers;
   return JSON.parse(localStorage.getItem('medai_users') || '[]');
 }
 
+let _cachedTriage = null;
+
+async function fetchBackendTriage(){
+  const token = localStorage.getItem('medai_token');
+  if(!token) return null;
+  try{
+    const res = await fetch(API_BASE_URL + '/api/admin/triage', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if(res.ok){
+      const data = await res.json();
+      _cachedTriage = data.records || [];
+      return _cachedTriage;
+    }
+  }catch(e){}
+  return null;
+}
+
 function getAllTriage(){
+  if(_cachedTriage !== null) return _cachedTriage;
+  // fallback — local per-user storage (legacy)
   const users = getAllUsers();
   const logs  = [];
   users.forEach(u => {
@@ -547,6 +613,7 @@ const adminTabTitles = {
   users:           'All Users',
   'health-profiles':'Health Profiles',
   'triage-logs':   'Triage Logs',
+  doctors:         'Doctor Applications',
   alerts:          'Emergency Alerts',
   'settings-admin':'Admin Settings'
 };
@@ -565,14 +632,37 @@ function showAdminTab(id, el){
   if(id === 'triage-logs')      renderTriageLogs(getAllTriage());
   if(id === 'analytics')        renderAnalytics();
   if(id === 'alerts')           renderEmergencyAlerts();
+  if(id === 'doctors')          renderDoctorApplications();
 }
 
 // ============================================================
 // INIT
 // ============================================================
-function initAdmin(){
+async function initAdmin(){
+  await Promise.all([fetchBackendUsers(), fetchBackendTriage()]);
   renderOverview();
   renderUsersTable(getAllUsers());
+  // preload pending doctor count for sidebar badge without switching tabs
+  preloadDoctorBadge();
+}
+
+async function preloadDoctorBadge(){
+  const token = localStorage.getItem('medai_token');
+  if(!token) return;
+  try{
+    const res = await fetch(API_BASE_URL + '/api/admin/doctors?status=PENDING', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if(res.ok){
+      const data = await res.json();
+      const badge = document.getElementById('doctor-pending-badge');
+      const count = (data.doctors || []).length;
+      if(badge){
+        if(count > 0){ badge.textContent = count; badge.style.display = 'inline-block'; }
+        else { badge.style.display = 'none'; }
+      }
+    }
+  }catch(e){}
 }
 
 // ============================================================
@@ -754,6 +844,163 @@ function filterTriage(){
 // ============================================================
 // EMERGENCY ALERTS
 // ============================================================
+
+// ============================================================
+// DOCTOR APPLICATIONS
+// ============================================================
+let _doctorAppsCache = [];
+
+function escapeHtmlDoc(value){
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch]));
+}
+
+function fmtDateDoc(dateStr){
+  if(!dateStr) return '-';
+  try{ return new Date(dateStr).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }); }
+  catch(e){ return dateStr; }
+}
+
+async function renderDoctorApplications(){
+  const listEl = document.getElementById('doctor-applications-list');
+  const countEl = document.getElementById('doctor-count');
+  const filter = document.getElementById('doctor-filter')?.value || 'PENDING';
+  if(!listEl) return;
+
+  listEl.innerHTML = '<div class="a-card" style="text-align:center;padding:2rem;color:var(--muted);font-family:var(--mono);font-size:12px">LOADING APPLICATIONS...</div>';
+
+  const token = localStorage.getItem('medai_token');
+  try{
+    const query = filter === 'ALL' ? '' : ('?status=' + filter);
+    const res = await fetch(API_BASE_URL + '/api/admin/doctors' + query, {
+      headers: token ? { 'Authorization': 'Bearer ' + token } : {}
+    });
+    if(!res.ok) throw new Error('fetch_failed');
+    const data = await res.json();
+    _doctorAppsCache = data.doctors || [];
+  }catch(e){
+    listEl.innerHTML = '<div class="a-card" style="text-align:center;padding:2rem;color:var(--muted)">Could not load doctor applications. Check your connection and try again.</div>';
+    return;
+  }
+
+  // update pending badge in sidebar
+  updateDoctorPendingBadge();
+
+  if(!_doctorAppsCache.length){
+    listEl.innerHTML = '<div class="a-card" style="text-align:center;padding:2.5rem;color:var(--muted)">No ' + filter.toLowerCase() + ' applications right now.</div>';
+    countEl.textContent = '';
+    return;
+  }
+
+  countEl.textContent = _doctorAppsCache.length + ' application' + (_doctorAppsCache.length===1?'':'s');
+
+  listEl.innerHTML = _doctorAppsCache.map(doc => {
+    const statusColor = doc.verificationStatus === 'PENDING' ? 'var(--warning)' : doc.verificationStatus === 'APPROVED' ? 'var(--safe)' : 'var(--danger)';
+    const statusBg = doc.verificationStatus === 'PENDING' ? 'rgba(255,170,51,0.1)' : doc.verificationStatus === 'APPROVED' ? 'rgba(0,255,136,0.1)' : 'rgba(255,77,109,0.1)';
+    return `<div class="a-card" style="margin-bottom:12px;cursor:pointer" onclick="openDoctorModal('${doc.id}')">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap">
+        <div>
+          <div style="font-family:var(--head);font-weight:700;font-size:15px">${escapeHtmlDoc(doc.fullName)}</div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:4px">${escapeHtmlDoc(doc.specialty)} · ${doc.yearsExperience} yrs exp · ${escapeHtmlDoc(doc.user?.email || '')}</div>
+        </div>
+        <span style="background:${statusBg};color:${statusColor};border-radius:99px;padding:4px 12px;font-family:var(--mono);font-size:10px;letter-spacing:1px;white-space:nowrap">${doc.verificationStatus}</span>
+      </div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:10px">Applied ${fmtDateDoc(doc.createdAt)} · License: ${escapeHtmlDoc(doc.licenseNumber)}</div>
+    </div>`;
+  }).join('');
+}
+
+function updateDoctorPendingBadge(){
+  const badge = document.getElementById('doctor-pending-badge');
+  if(!badge) return;
+  const pendingCount = _doctorAppsCache.filter(d => d.verificationStatus === 'PENDING').length;
+  if(document.getElementById('doctor-filter')?.value !== 'PENDING'){
+    // if not currently viewing pending, we still want a badge count — fetch separately in background
+    return;
+  }
+  if(pendingCount > 0){
+    badge.textContent = pendingCount;
+    badge.style.display = 'inline-block';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+function openDoctorModal(id){
+  const doc = _doctorAppsCache.find(d => d.id === id);
+  if(!doc) return;
+
+  const isPending = doc.verificationStatus === 'PENDING';
+  const docPreview = doc.licenseDocument
+    ? (doc.licenseDocument.startsWith('data:image')
+        ? `<img src="${doc.licenseDocument}" style="max-width:100%;border-radius:10px;border:1px solid var(--border2);margin-top:10px"/>`
+        : `<a href="${doc.licenseDocument}" target="_blank" style="color:var(--accent);font-size:13px;display:inline-block;margin-top:10px">📄 View uploaded document</a>`)
+    : '<div style="color:var(--muted);font-size:13px;margin-top:10px">No document uploaded</div>';
+
+  document.getElementById('doctor-modal-content').innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1.25rem">
+      <h3 style="font-family:var(--head);font-size:20px;font-weight:800">${escapeHtmlDoc(doc.fullName)}</h3>
+      <button class="btn-ghost" style="padding:4px 10px" onclick="closeDoctorModal()">✕</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:1rem">
+      <div><div style="font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1px">EMAIL</div><div style="font-size:13px">${escapeHtmlDoc(doc.user?.email || '-')}</div></div>
+      <div><div style="font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1px">PHONE</div><div style="font-size:13px">${escapeHtmlDoc(doc.phone)}</div></div>
+      <div><div style="font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1px">SPECIALTY</div><div style="font-size:13px">${escapeHtmlDoc(doc.specialty)}</div></div>
+      <div><div style="font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1px">EXPERIENCE</div><div style="font-size:13px">${doc.yearsExperience} years</div></div>
+      <div><div style="font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1px">LICENSE NO.</div><div style="font-size:13px">${escapeHtmlDoc(doc.licenseNumber)}</div></div>
+      <div><div style="font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1px">ISSUING AUTHORITY</div><div style="font-size:13px">${escapeHtmlDoc(doc.issuingAuthority)}</div></div>
+      <div style="grid-column:1/-1"><div style="font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1px">HOSPITAL / CLINIC</div><div style="font-size:13px">${escapeHtmlDoc(doc.hospital || 'Not provided')}</div></div>
+      ${doc.bio ? `<div style="grid-column:1/-1"><div style="font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1px">BIO</div><div style="font-size:13px;line-height:1.6">${escapeHtmlDoc(doc.bio)}</div></div>` : ''}
+    </div>
+    <div style="font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1px">LICENSE DOCUMENT</div>
+    ${docPreview}
+    ${doc.verificationStatus === 'REJECTED' && doc.rejectionReason ? `<div style="margin-top:1rem;background:rgba(255,77,109,0.08);border:1px solid rgba(255,77,109,0.25);border-radius:10px;padding:10px 14px;font-size:13px;color:#ff9bad">Rejection reason: ${escapeHtmlDoc(doc.rejectionReason)}</div>` : ''}
+    ${isPending ? `
+      <div style="display:flex;gap:10px;margin-top:1.5rem">
+        <button class="btn" style="flex:1;background:rgba(0,255,136,0.1);border-color:rgba(0,255,136,0.3);color:var(--safe)" onclick="approveDoctorApp('${doc.id}')">✓ Approve</button>
+        <button class="btn danger" style="flex:1" onclick="rejectDoctorApp('${doc.id}')">✕ Reject</button>
+      </div>` : ''}
+  `;
+  document.getElementById('doctor-modal-overlay').style.display = 'flex';
+}
+
+function closeDoctorModal(){
+  document.getElementById('doctor-modal-overlay').style.display = 'none';
+}
+
+async function approveDoctorApp(id){
+  await patchDoctorApp(id, 'approve');
+}
+
+async function rejectDoctorApp(id){
+  const reason = prompt('Reason for rejection (shown to the doctor):');
+  if(reason === null) return; // cancelled
+  await patchDoctorApp(id, 'reject', reason);
+}
+
+async function patchDoctorApp(id, action, rejectionReason){
+  const token = localStorage.getItem('medai_token');
+  try{
+    const res = await fetch(API_BASE_URL + '/api/admin/doctors/' + id, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': 'Bearer ' + token } : {})
+      },
+      body: JSON.stringify({ action, rejectionReason })
+    });
+    if(!res.ok){
+      const data = await res.json().catch(()=>({}));
+      alert(data.message || 'Action failed. Please try again.');
+      return;
+    }
+    closeDoctorModal();
+    renderDoctorApplications();
+  }catch(e){
+    alert('Could not connect to the server. Please try again.');
+  }
+}
+
+
 function renderEmergencyAlerts(){
   const logs = getAllTriage().filter(t => t.triage_level === 'emergency');
   const el   = document.getElementById('emergency-alerts-card');

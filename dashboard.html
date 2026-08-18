@@ -12,15 +12,6 @@
     const token = params.get('token');
     if(token){
       localStorage.setItem('medai_token', token);
-      // check if admin
-      try{
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        if(payload.role === 'ADMIN'){
-          sessionStorage.setItem('medai_admin_session','active');
-          sessionStorage.setItem('medai_admin_name', payload.username || '');
-          window.location.replace('admin.html');
-        }
-      }catch(e){}
       params.delete('token');
       const cleanUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}${window.location.hash}`;
       window.history.replaceState({}, document.title, cleanUrl);
@@ -1540,16 +1531,14 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
     <div class="tab-panel" id="tab-achievements">
       <div class="sec-label">// My Health</div>
       <h2 class="sec-title"><span class="grad">Achievements</span> & Milestones</h2>
-      <div class="grid-3">
-        <div class="glass-card ach-card"><div class="ach-icon unlocked" style="background:rgba(255,215,0,0.1);border:1px solid rgba(255,215,0,0.3)">🏆</div><div><div class="ach-name">First Triage</div><div class="ach-desc">Completed your first triage session</div><span class="badge badge-green" style="margin-top:6px">Unlocked</span></div></div>
-        <div class="glass-card ach-card"><div class="ach-icon unlocked" style="background:rgba(0,212,255,0.1);border:1px solid rgba(0,212,255,0.2)">⚡</div><div><div class="ach-name">Speed Healer</div><div class="ach-desc">Completed 5 triages in one week</div><span class="badge badge-green" style="margin-top:6px">Unlocked</span></div></div>
-        <div class="glass-card ach-card"><div class="ach-icon unlocked" style="background:rgba(0,255,136,0.1);border:1px solid rgba(0,255,136,0.2)">💚</div><div><div class="ach-name">Health Conscious</div><div class="ach-desc">Logged vitals 7 days in a row</div><span class="badge badge-green" style="margin-top:6px">Unlocked</span></div></div>
-        <div class="glass-card ach-card"><div class="ach-icon locked" style="background:rgba(168,85,247,0.1);border:1px solid rgba(168,85,247,0.2)">🧠</div><div><div class="ach-name">Mind Master</div><div class="ach-desc">Use Mental AI 10 times</div><span class="badge" style="color:var(--muted);border-color:var(--border);margin-top:6px">3/10</span></div></div>
-        <div class="glass-card ach-card"><div class="ach-icon locked" style="background:rgba(236,72,153,0.1);border:1px solid rgba(236,72,153,0.2)">💪</div><div><div class="ach-name">Iron Body</div><div class="ach-desc">Complete Physical AI workout plan</div><span class="badge" style="color:var(--muted);border-color:var(--border);margin-top:6px">Locked</span></div></div>
-        <div class="glass-card ach-card"><div class="ach-icon locked" style="background:rgba(255,170,51,0.1);border:1px solid rgba(255,170,51,0.2)">👑</div><div><div class="ach-name">Premium Member</div><div class="ach-desc">Upgrade to MedAI Premium</div><span class="badge badge-warn" style="margin-top:6px">Locked</span></div></div>
-        <div class="glass-card ach-card"><div class="ach-icon locked" style="background:rgba(0,212,255,0.1);border:1px solid rgba(0,212,255,0.2)">🔬</div><div><div class="ach-name">Lab Rat</div><div class="ach-desc">Run 50 triage sessions</div><span class="badge" style="color:var(--muted);border-color:var(--border);margin-top:6px">12/50</span></div></div>
-        <div class="glass-card ach-card"><div class="ach-icon locked" style="background:rgba(255,77,109,0.1);border:1px solid rgba(255,77,109,0.2)">🚨</div><div><div class="ach-name">Life Saver</div><div class="ach-desc">Emergency triage caught in time</div><span class="badge badge-danger" style="margin-top:6px">1/1 ✓</span></div></div>
-        <div class="glass-card ach-card"><div class="ach-icon locked" style="background:rgba(0,255,136,0.1);border:1px solid rgba(0,255,136,0.2)">📅</div><div><div class="ach-name">Committed</div><div class="ach-desc">30-day streak on MedAI</div><span class="badge" style="color:var(--muted);border-color:var(--border);margin-top:6px">12/30 days</span></div></div>
+      <p class="sec-sub" style="margin-bottom:1.5rem">Earned based on your real activity — triages, AI usage, streaks, and more.</p>
+      <div class="glass-card" style="padding:1.5rem;margin-bottom:1.5rem">
+        <div id="achievements-stats">
+          <div style="font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:1px">Loading your progress...</div>
+        </div>
+      </div>
+      <div class="grid-3" id="achievements-grid">
+        <div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--muted);font-family:var(--mono);font-size:12px;letter-spacing:1px">Open this tab to load achievements</div>
       </div>
     </div>
 

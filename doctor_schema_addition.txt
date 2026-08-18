@@ -1,0 +1,36 @@
+// ============================================================
+// ADD TO EXISTING schema.prisma
+// ============================================================
+
+// 1. Update your existing Role enum to include DOCTOR:
+// enum Role {
+//   USER
+//   ADMIN
+//   DOCTOR
+// }
+
+// 2. Add this new model:
+model DoctorProfile {
+  id                String    @id @default(cuid())
+  userId            String    @unique
+  fullName          String
+  phone             String
+  licenseNumber     String
+  issuingAuthority  String
+  specialty         String
+  yearsExperience   Int
+  hospital          String?
+  bio               String?
+  licenseDocument   String?   @db.Text
+  verificationStatus String   @default("PENDING") // PENDING | APPROVED | REJECTED
+  rejectionReason   String?
+  verifiedAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([verificationStatus])
+}
+
+// 3. Add this relation to your existing User model:
+// doctorProfile DoctorProfile?

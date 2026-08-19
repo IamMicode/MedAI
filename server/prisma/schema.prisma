@@ -47,8 +47,11 @@ model User {
   triageRecords   TriageRecord[]
   achievements    Achievement[]
   resetCodes      PasswordResetCode[]
-  doctorProfile DoctorProfile?
+  doctorProfile   DoctorProfile?
   aiUsage         AIUsage[]
+  panicEvents     PanicEvent[]
+  doctorConversations   Conversation[] @relation("DoctorConversations")
+  patientConversations  Conversation[] @relation("PatientConversations")
 }
 
 model TriageRecord {
@@ -170,6 +173,3 @@ model Message {
 
   @@index([conversationId, createdAt])
 }
-
-// doctorConversations  Conversation[] @relation("DoctorConversations")
-// patientConversations Conversation[] @relation("PatientConversations")

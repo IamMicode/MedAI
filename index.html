@@ -162,6 +162,7 @@ footer{background:var(--surface);border-top:1px solid var(--border);padding:40px
   .steps::before{display:none}
   .doctor-split{grid-template-columns:1fr!important;gap:32px!important}
   .nav-links{display:none}
+  .nav-cta{display:none}
   .nav-hamburger{display:flex}
   footer{flex-direction:column;gap:20px;text-align:center}
   .footer-links{flex-wrap:wrap;justify-content:center}
@@ -176,11 +177,75 @@ footer{background:var(--surface);border-top:1px solid var(--border);padding:40px
 @media(prefers-reduced-motion:reduce){
   *{animation:none!important;transition:none!important}
 }
+
+/* ── CURSOR ── */
+#cursor{position:fixed;width:10px;height:10px;border-radius:50%;background:var(--accent);pointer-events:none;z-index:9999;transform:translate(-50%,-50%);transition:width .15s,height .15s,background .15s;mix-blend-mode:screen}
+#cursor-ring{position:fixed;width:36px;height:36px;border-radius:50%;border:1.5px solid rgba(0,212,255,0.45);pointer-events:none;z-index:9998;transform:translate(-50%,-50%);transition:width .2s,height .2s,border-color .2s}
+body:not(:hover) #cursor,body:not(:hover) #cursor-ring{opacity:0}
+@media(hover:none){#cursor,#cursor-ring{display:none}}
+
+/* ── ECG CANVAS ── */
+#ecg-canvas{position:absolute;bottom:0;left:0;right:0;width:100%;height:120px;pointer-events:none;opacity:0.35}
+
+/* ── PARTICLES ── */
+#particle-canvas{position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0.4}
+
+/* ── SCROLL REVEAL ── */
+.reveal{opacity:0;transform:translateY(28px);transition:opacity .65s ease,transform .65s ease}
+.reveal.visible{opacity:1;transform:translateY(0)}
+.reveal-left{opacity:0;transform:translateX(-28px);transition:opacity .65s ease,transform .65s ease}
+.reveal-left.visible{opacity:1;transform:translateX(0)}
+.reveal-right{opacity:0;transform:translateX(28px);transition:opacity .65s ease,transform .65s ease}
+.reveal-right.visible{opacity:1;transform:translateX(0)}
+
+/* ── HERO ENTRANCE ── */
+.hero-content{animation:hero-in .8s .1s both}
+.hero-visual{animation:hero-in .8s .3s both}
+@keyframes hero-in{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+
+/* ── CARD HOVER GLOW ── */
+.ai-mode-card:hover{box-shadow:0 20px 50px rgba(0,0,0,0.4),0 0 0 1px rgba(0,212,255,0.12),inset 0 0 30px rgba(0,212,255,0.02)}
+.feature-card:hover{box-shadow:0 12px 30px rgba(0,0,0,0.3),0 0 0 1px rgba(0,212,255,0.1)}
+
+/* ── NAV SCROLL STATE ── */
+nav.scrolled{background:rgba(4,9,15,0.97);box-shadow:0 4px 24px rgba(0,0,0,0.4)}
+
+/* ── STEP NUMBER GLOW ── */
+.step-num{box-shadow:0 0 0 0 rgba(0,212,255,0);transition:box-shadow .3s}
+.step:hover .step-num{box-shadow:0 0 0 8px rgba(0,212,255,0.06),0 0 30px rgba(0,212,255,0.12)}
+
+/* ── TICKER FADE EDGES ── */
+.ticker-bar{position:relative}
+.ticker-bar::before,.ticker-bar::after{content:'';position:absolute;top:0;bottom:0;width:80px;z-index:2;pointer-events:none}
+.ticker-bar::before{left:0;background:linear-gradient(90deg,var(--bg2),transparent)}
+.ticker-bar::after{right:0;background:linear-gradient(-90deg,var(--bg2),transparent)}
+
+
+/* ── DNA / CELL PARTICLE CANVAS (replaces flat particle canvas) ── */
+#dna-canvas{position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0.55}
+
+/* ── FLOATING MEDICAL SYMBOLS ── */
+.med-float{position:absolute;font-size:14px;opacity:0.06;animation:float-med linear infinite;pointer-events:none;z-index:1;color:var(--accent);font-weight:900}
+@keyframes float-med{0%{transform:translateY(100vh) rotate(0deg);opacity:0}10%{opacity:0.06}90%{opacity:0.03}100%{transform:translateY(-20vh) rotate(360deg);opacity:0}}
+
+/* ── MINI VITALS STRIP (under chat demo) ── */
+.vitals-strip{display:flex;gap:14px;margin-top:14px;padding:14px 16px;background:var(--surface);border:1px solid var(--border);border-radius:14px;align-items:center}
+.vital-mini{text-align:center;flex-shrink:0}
+.vital-mini-val{font-family:var(--head);font-size:17px;font-weight:800;color:var(--safe)}
+.vital-mini-label{font-family:var(--mono);font-size:8px;color:var(--muted);letter-spacing:1px;margin-top:2px}
+.vital-divider{width:1px;height:28px;background:var(--border2);flex-shrink:0}
+#ecg-mini{flex:1;height:36px;min-width:80px}
+
 </style>
 </head>
 <body>
 
 <!-- NAV -->
+
+<canvas id="dna-canvas"></canvas>
+<div id="cursor"></div>
+<div id="cursor-ring"></div>
+
 <nav>
   <a href="#" class="nav-logo">Med<span>AI</span></a>
   <ul class="nav-links">
@@ -236,7 +301,16 @@ footer{background:var(--surface);border-top:1px solid var(--border);padding:40px
         <div class="chat-demo-send">→</div>
       </div>
     </div>
+    <div class="vitals-strip">
+      <div class="vital-mini"><div class="vital-mini-val" id="v-hr">72</div><div class="vital-mini-label">BPM</div></div>
+      <div class="vital-divider"></div>
+      <div class="vital-mini"><div class="vital-mini-val" id="v-spo2">98</div><div class="vital-mini-label">SPO2%</div></div>
+      <div class="vital-divider"></div>
+      <div class="vital-mini"><div class="vital-mini-val" id="v-temp">37.2</div><div class="vital-mini-label">°C</div></div>
+      <canvas id="ecg-mini"></canvas>
+    </div>
   </div>
+<canvas id="ecg-canvas"></canvas>
 </section>
 
 <!-- TICKER -->
@@ -266,7 +340,7 @@ footer{background:var(--surface);border-top:1px solid var(--border);padding:40px
     <h2 class="section-title">Three steps to better health guidance</h2>
     <p class="section-sub">No appointments, no waiting rooms. Get intelligent health guidance in seconds.</p>
   </div>
-  <div class="steps">
+  <div class="steps reveal">
     <div class="step">
       <div class="step-num">01</div>
       <div class="step-title">Create your profile</div>
@@ -292,7 +366,7 @@ footer{background:var(--surface);border-top:1px solid var(--border);padding:40px
     <h2 class="section-title">Four AIs. One health platform.</h2>
     <p class="section-sub">Each AI is purpose-built for a different aspect of your health — not a one-size-fits-all chatbot.</p>
   </div>
-  <div class="ai-modes">
+  <div class="ai-modes reveal">
     <div class="ai-mode-card">
       <div class="ai-mode-icon">🏥</div>
       <div class="ai-mode-name">Medical Health AI</div>
@@ -330,7 +404,7 @@ footer{background:var(--surface);border-top:1px solid var(--border);padding:40px
     <p class="section-sub">Get matched with patients based on real triage severity, review their full health profile before you speak, and consult directly through secure real-time chat.</p>
   </div>
 
-  <div class="doctor-split" style="display:grid;grid-template-columns:1.1fr 1fr;gap:48px;align-items:center;max-width:1100px;margin:0 auto">
+  <div class="doctor-split reveal" style="display:grid;grid-template-columns:1.1fr 1fr;gap:48px;align-items:center;max-width:1100px;margin:0 auto">
     <div class="ai-modes" style="grid-template-columns:1fr;gap:14px">
       <div class="ai-mode-card" style="display:flex;gap:16px;align-items:flex-start;padding:20px">
         <div class="ai-mode-icon" style="margin:0;flex-shrink:0">🩺</div>
@@ -379,7 +453,7 @@ footer{background:var(--surface);border-top:1px solid var(--border);padding:40px
     <div class="section-label">// Features</div>
     <h2 class="section-title">Everything you need. Nothing you don't.</h2>
   </div>
-  <div class="features-grid">
+  <div class="features-grid reveal">
     <div class="feature-card">
       <div class="feature-icon">🚨</div>
       <div class="feature-title">Panic Mode</div>
@@ -416,7 +490,7 @@ footer{background:var(--surface);border-top:1px solid var(--border);padding:40px
 <!-- STATS -->
 <section style="background:var(--bg2);text-align:center">
   <div class="section-label" style="margin-bottom:40px">// By the numbers</div>
-  <div class="stats-row">
+  <div class="stats-row reveal">
     <div class="stat-card">
       <div class="stat-val">4</div>
       <div class="stat-label">SPECIALIZED AIs</div>
@@ -438,7 +512,7 @@ footer{background:var(--surface);border-top:1px solid var(--border);padding:40px
 
 <!-- DISCLAIMER -->
 <section id="disclaimer">
-  <div class="disclaimer-box">
+  <div class="disclaimer-box reveal">
     <div class="disclaimer-icon">⚠️</div>
     <div>
       <div class="disclaimer-title">MedAI is not a replacement for professional medical care</div>
@@ -476,16 +550,236 @@ footer{background:var(--surface);border-top:1px solid var(--border);padding:40px
 
 <script>
 // ── MOBILE NAV ──
+
+// ── CUSTOM CURSOR ──
+(function(){
+  const cursor = document.getElementById('cursor');
+  const ring = document.getElementById('cursor-ring');
+  if(!cursor || !ring || window.matchMedia('(hover:none)').matches) return;
+  let mx=0,my=0,rx=0,ry=0;
+  document.addEventListener('mousemove', e => {
+    mx = e.clientX; my = e.clientY;
+    cursor.style.left = mx+'px'; cursor.style.top = my+'px';
+  });
+  (function animRing(){
+    rx += (mx-rx)*0.12; ry += (my-ry)*0.12;
+    ring.style.left = rx+'px'; ring.style.top = ry+'px';
+    requestAnimationFrame(animRing);
+  })();
+  document.querySelectorAll('a,button,.ai-mode-card,.feature-card,.step-num').forEach(el => {
+    el.addEventListener('mouseenter', () => {
+      cursor.style.width='6px'; cursor.style.height='6px';
+      ring.style.width='52px'; ring.style.height='52px';
+      ring.style.borderColor='rgba(0,212,255,0.7)';
+    });
+    el.addEventListener('mouseleave', () => {
+      cursor.style.width='10px'; cursor.style.height='10px';
+      ring.style.width='40px'; ring.style.height='40px';
+      ring.style.borderColor='rgba(0,212,255,0.45)';
+    });
+  });
+})();
+
+// ── DNA / CELL PARTICLE CANVAS ──
+(function(){
+  const canvas = document.getElementById('dna-canvas');
+  if(!canvas) return;
+  const ctx = canvas.getContext('2d');
+  let W, H, cells = [];
+  function resize(){ W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+  resize();
+  window.addEventListener('resize', resize);
+  const cellCount = window.innerWidth < 700 ? 30 : 60;
+  for(let i=0; i<cellCount; i++){
+    cells.push({
+      x: Math.random()*window.innerWidth,
+      y: Math.random()*window.innerHeight,
+      r: Math.random()*2+0.8,
+      dx: (Math.random()-.5)*0.25,
+      dy: (Math.random()-.5)*0.25,
+      pulse: Math.random()*Math.PI*2,
+      hue: Math.random() > 0.7 ? 'safe' : 'accent'
+    });
+  }
+  function drawCells(t){
+    if(!W || !H) return;
+    ctx.clearRect(0,0,W,H);
+    cells.forEach(c => {
+      c.pulse += 0.02;
+      const pulseR = c.r + Math.sin(c.pulse)*0.6;
+      const alpha = 0.25 + Math.sin(c.pulse)*0.15;
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, pulseR, 0, Math.PI*2);
+      ctx.fillStyle = c.hue === 'safe' ? 'rgba(0,255,136,'+alpha+')' : 'rgba(0,212,255,'+alpha+')';
+      ctx.fill();
+      c.x += c.dx; c.y += c.dy;
+      if(c.x<0||c.x>W) c.dx*=-1;
+      if(c.y<0||c.y>H) c.dy*=-1;
+    });
+    for(let i=0;i<cells.length;i++){
+      for(let j=i+1;j<cells.length;j++){
+        const dist = Math.hypot(cells[i].x-cells[j].x, cells[i].y-cells[j].y);
+        if(dist < 130){
+          ctx.beginPath();
+          ctx.strokeStyle = 'rgba(0,212,255,'+(0.08*(1-dist/130))+')';
+          ctx.lineWidth = 0.6;
+          ctx.moveTo(cells[i].x,cells[i].y);
+          ctx.lineTo(cells[j].x,cells[j].y);
+          ctx.stroke();
+        }
+      }
+    }
+    requestAnimationFrame(drawCells);
+  }
+  requestAnimationFrame(drawCells);
+})();
+
+// ── MINI ECG (in hero vitals strip) ──
+(function(){
+  const canvas = document.getElementById('ecg-mini');
+  if(!canvas) return;
+  const ctx = canvas.getContext('2d');
+  let W, frame=0;
+  function resize(){ W = canvas.width = canvas.offsetWidth || 100; canvas.height = 36; }
+  resize();
+  window.addEventListener('resize', resize);
+  function ecgVal(x){
+    const c=100, p=x%c;
+    if(p<10) return 0; if(p<20) return -2; if(p<25) return 28;
+    if(p<30) return -2; if(p<35) return -9; if(p<38) return 45;
+    if(p<42) return -12; if(p<50) return 0; return 0;
+  }
+  function drawMini(){
+    if(!canvas.width) return;
+    ctx.clearRect(0,0,W,36);
+    const mid=18;
+    ctx.beginPath();
+    ctx.strokeStyle='rgba(0,255,136,0.8)';
+    ctx.lineWidth=1.3;
+    for(let x=0;x<W;x++){
+      const val = ecgVal(x+frame);
+      const y = mid-val*0.35;
+      x===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    frame+=1.5;
+    requestAnimationFrame(drawMini);
+  }
+  requestAnimationFrame(drawMini);
+})();
+
+// ── VITALS FLUCTUATION ──
+(function(){
+  const hrEl = document.getElementById('v-hr');
+  const spo2El = document.getElementById('v-spo2');
+  const tempEl = document.getElementById('v-temp');
+  if(!hrEl && !spo2El && !tempEl) return;
+  setInterval(() => {
+    if(hrEl) hrEl.textContent = 68 + Math.floor(Math.random()*8);
+    if(spo2El) spo2El.textContent = 96 + Math.floor(Math.random()*3);
+    if(tempEl) tempEl.textContent = (36.8 + Math.random()*0.6).toFixed(1);
+  }, 2200);
+})();
+
+// ── FLOATING MEDICAL SYMBOLS ──
+(function(){
+  const hero = document.getElementById('hero');
+  if(!hero) return;
+  const symbols = ['+', '⚕', '♡', '⚛'];
+  for(let i=0;i<8;i++){
+    const el = document.createElement('div');
+    el.className = 'med-float';
+    el.textContent = symbols[Math.floor(Math.random()*symbols.length)];
+    el.style.left = Math.random()*100+'%';
+    el.style.animationDuration = (14+Math.random()*10)+'s';
+    el.style.animationDelay = (Math.random()*10)+'s';
+    hero.appendChild(el);
+  }
+})();
+
+// ── ECG CANVAS ──
+(function(){
+  const canvas = document.getElementById('ecg-canvas');
+  if(!canvas) return;
+  const ctx = canvas.getContext('2d');
+  let W, frame=0;
+  function resize(){ W = canvas.width = canvas.offsetWidth||window.innerWidth; canvas.height=120; }
+  resize();
+  window.addEventListener('resize', resize);
+  function ecgVal(x){
+    const c=200, p=x%c;
+    if(p<20) return 0; if(p<40) return -4; if(p<50) return 55;
+    if(p<60) return -4; if(p<70) return -18; if(p<75) return 90;
+    if(p<82) return -25; if(p<100) return 0; return 0;
+  }
+  const spd=2;
+  function drawECG(){
+    if(!canvas.width) return;
+    ctx.clearRect(0,0,W,120);
+    const mid=60, scaleY=0.45;
+    const ecgX=(frame*spd)%W;
+    ctx.beginPath();
+    ctx.strokeStyle='rgba(0,212,255,0.7)';
+    ctx.lineWidth=1.5;
+    ctx.shadowBlur=8; ctx.shadowColor='rgba(0,212,255,0.5)';
+    for(let x=0;x<W;x++){
+      const drawX=(x+ecgX)%W;
+      const val=ecgVal(x+frame*spd);
+      const y=mid-val*scaleY;
+      x===0?ctx.moveTo(drawX,y):ctx.lineTo(drawX,y);
+    }
+    ctx.stroke();
+    ctx.shadowBlur=0;
+    if(ecgX>0){
+      const grad=ctx.createLinearGradient(Math.max(0,ecgX-160),0,ecgX,0);
+      grad.addColorStop(0,'rgba(4,9,15,0.95)');
+      grad.addColorStop(1,'rgba(4,9,15,0)');
+      ctx.fillStyle=grad;
+      ctx.fillRect(Math.max(0,ecgX-160),0,160,120);
+    }
+    frame++;
+    requestAnimationFrame(drawECG);
+  }
+  drawECG();
+})();
+
+// ── SCROLL REVEAL ──
+(function(){
+  const obs = new IntersectionObserver(entries => {
+    entries.forEach(e => { if(e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold:0.08 });
+  document.querySelectorAll('.reveal,.reveal-left,.reveal-right').forEach(el => obs.observe(el));
+})();
+
+// ── NAV SCROLL STATE ──
+window.addEventListener('scroll', () => {
+  const nav = document.querySelector('nav');
+  if(nav) nav.classList.toggle('scrolled', window.scrollY > 40);
+}, { passive:true });
+
 function toggleMobileNav(){
   const links = document.querySelector('.nav-links');
-  if(!links) return;
-  const open = links.style.display === 'flex';
-  links.style.cssText = open ? '' : 'display:flex;flex-direction:column;position:fixed;top:64px;left:0;right:0;background:rgba(4,9,15,0.97);padding:24px 5%;gap:20px;border-bottom:1px solid rgba(0,212,255,0.1);z-index:899';
+  const cta = document.querySelector('.nav-cta');
+  const nav = document.querySelector('nav');
+  if(!links || !cta || !nav) return;
+  const isOpen = links.classList.contains('mobile-open');
+
+  if(isOpen){
+    links.classList.remove('mobile-open');
+    links.style.cssText = '';
+    cta.style.cssText = '';
+    nav.appendChild(cta); // move CTA back to its normal nav position
+  } else {
+    links.classList.add('mobile-open');
+    links.style.cssText = 'display:flex;flex-direction:column;position:fixed;top:64px;left:0;right:0;background:rgba(4,9,15,0.97);padding:24px 5% 16px;gap:18px;border-bottom:1px solid rgba(0,212,255,0.1);z-index:899;max-height:calc(100vh - 64px);overflow-y:auto';
+    cta.style.cssText = 'display:flex;flex-direction:column;gap:10px;width:100%;padding-top:6px;border-top:1px solid rgba(0,212,255,0.1);margin-top:8px';
+    links.appendChild(cta); // move CTA inside the dropdown, after the links
+  }
 }
 
 // ── CHAT DEMO ANIMATION ──
 const demoConvo = [
-  { role:'user', text:'I've had a headache behind my eyes for 2 days. Should I be worried?' },
+  { role:'user', text:'I\'ve had a headache behind my eyes for 2 days. Should I be worried?' },
   { role:'ai',  text:'A 2-day headache behind the eyes can have several causes — tension headaches, sinusitis, or eye strain are the most common. Red flags that would warrant urgent care include: sudden severe onset ("thunderclap"), stiff neck, fever, vision changes, or neurological symptoms like weakness or confusion. If none of those apply, try rest, hydration, and OTC pain relief first. If it persists beyond 3-4 days or worsens, see a doctor.' },
   { role:'user', text:'No fever or neck stiffness. Just pressure. Could it be sinuses?' },
   { role:'ai',  text:'That does sound like sinus pressure — especially if it worsens when you lean forward or in the morning. Try a saline nasal rinse, steam inhalation, and a decongestant if you\'re not contraindicated. If you also have nasal congestion, postnasal drip, or recent cold symptoms, sinusitis is very likely the cause.' }
@@ -494,7 +788,7 @@ const demoConvo = [
 let demoIdx = 0;
 const msgsEl = document.getElementById('demo-messages');
 const inputEl = document.getElementById('demo-input');
-const inputTexts = ['I've had a headache for 2 days...', 'No fever. Just pressure behind eyes...'];
+const inputTexts = ['I\'ve had a headache for 2 days...', 'No fever. Just pressure behind eyes...'];
 let inputTextIdx = 0;
 
 function showNextDemoMsg(){

@@ -124,17 +124,14 @@ function closeMobileMore(){
 // Chatbot + Quick Triage → Gemini
 // Emotional + Mental + Physical → OpenRouter
 // ============================================================
-const DEFAULT_GEMINI_KEY = 'AIzaSyDggjhL0RJiepeRd08mGWAiWytq5qPojoo'; // ← fallback key
-function getGeminiKey() {
-  return localStorage.getItem('medai_gemini_key') || DEFAULT_GEMINI_KEY;
-}
-function getGeminiUrl() {
-  return `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${getGeminiKey()}`;
-}
-const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const DEFAULT_OPENROUTER_MODEL = 'openai/gpt-4o-mini';
-
 // Which AI uses which backend
+const DEFAULT_OPENROUTER_MODEL = 'openai/gpt-4o-mini'; // legacy Settings display only — not used by callOpenRouter
+function getOpenRouterSettings(){
+  return {
+    key: localStorage.getItem('medai_openrouter_key') || '',
+    model: localStorage.getItem('medai_openrouter_model') || DEFAULT_OPENROUTER_MODEL
+  };
+}
 const aiBackend = {
   chatbot:   'gemini',
   medical:   'gemini',
@@ -198,35 +195,30 @@ function restoreChatHistories(){
 
 // ---- GEMINI with retry on quota/overload ----
 async function callGemini(prompt, retries=3) {
-  const activeKey = getGeminiKey();
-  if (!activeKey || activeKey === 'YOUR_GEMINI_API_KEY_HERE') throw new Error('no_key');
+  const token = localStorage.getItem('medai_token');
+  const messages = [{ role: 'user', content: prompt }];
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
-      const res = await fetch(getGeminiUrl(), {
+      const res = await fetch(API_BASE_URL + '/api/ai/gemini', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.7, maxOutputTokens: 512 }
-        })
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': 'Bearer ' + token } : {})
+        },
+        body: JSON.stringify({ messages })
       });
-      if (res.status === 429 || res.status === 503) {
-        const waitMs = (attempt + 1) * 3000;
-        await new Promise(r => setTimeout(r, waitMs));
+      if (res.status === 429) {
+        const data = await res.json().catch(() => ({}));
+        if (data.upgradeRequired) throw new Error('daily_limit');
+        await new Promise(r => setTimeout(r, (attempt + 1) * 3000));
         continue;
       }
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        const msg = errData.error?.message || 'API error ' + res.status;
-        if (msg.includes('quota') || msg.includes('RESOURCE_EXHAUSTED')) {
-          throw new Error('quota_exceeded');
-        }
-        throw new Error(msg);
-      }
+      if (!res.ok) throw new Error('api_error_' + res.status);
       const data = await res.json();
-      return data.candidates?.[0]?.content?.parts?.[0]?.text || null;
+      if (data.usage && typeof updateUsageIndicator === 'function') updateUsageIndicator(data.usage);
+      return data.text || null;
     } catch(e) {
-      if (e.message === 'no_key' || e.message === 'quota_exceeded') throw e;
+      if (e.message === 'daily_limit') throw e;
       if (attempt === retries - 1) throw e;
       await new Promise(r => setTimeout(r, 2000));
     }
@@ -234,41 +226,27 @@ async function callGemini(prompt, retries=3) {
   throw new Error('high_demand');
 }
 
-// ---- OPENROUTER ----
-function getOpenRouterSettings(){
-  return {
-    key: localStorage.getItem('medai_openrouter_key') || '',
-    model: localStorage.getItem('medai_openrouter_model') || DEFAULT_OPENROUTER_MODEL
-  };
-}
-
+// ---- OPENROUTER (backend proxy) ----
 async function callOpenRouter(systemPrompt, userMessage) {
-  const settings = getOpenRouterSettings();
-  if(!settings.key) throw new Error('openrouter_no_key');
-  const res = await fetch(OPENROUTER_URL, {
+  const token = localStorage.getItem('medai_token');
+  const messages = [{ role: 'user', content: userMessage }];
+  const res = await fetch(API_BASE_URL + '/api/ai/openrouter', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${settings.key}`,
-      'HTTP-Referer': window.location.origin || 'http://localhost',
-      'X-Title': 'MedAI Dashboard'
+      ...(token ? { 'Authorization': 'Bearer ' + token } : {})
     },
-    body: JSON.stringify({
-      model: settings.model,
-      messages: [
-        { role:'system', content: systemPrompt },
-        { role:'user', content: userMessage }
-      ],
-      temperature: 0.7,
-      max_tokens: 650
-    })
+    body: JSON.stringify({ messages, systemPrompt })
   });
-  if (!res.ok) {
-    const err = await res.json().catch(()=>({}));
-    throw new Error(err.error?.message || `OpenRouter error ${res.status}`);
+  if (res.status === 429) {
+    const data = await res.json().catch(() => ({}));
+    if (data.upgradeRequired) throw new Error('daily_limit');
+    throw new Error('rate_limited');
   }
+  if (!res.ok) throw new Error('openrouter_error_' + res.status);
   const data = await res.json();
-  return data.choices?.[0]?.message?.content || null;
+  if (data.usage && typeof updateUsageIndicator === 'function') updateUsageIndicator(data.usage);
+  return data.text || null;
 }
 
 // ---- MAIN sendChat ----
@@ -320,14 +298,10 @@ async function sendChat(panelId, type) {
     const errBubble = document.createElement('div');
     errBubble.className = 'chat-bubble ai';
 
-    if (e.message === 'no_key') {
-      errBubble.innerHTML = `<div class="ai-label">⚙️ SETUP</div>Open <strong>dashboard.html</strong> and set your <code>GEMINI_KEY</code>.`;
-    } else if (e.message === 'quota_exceeded') {
-      errBubble.innerHTML = `<div class="ai-label">⚠️ QUOTA</div>Your Gemini free quota is exhausted for today. It resets at midnight. Try again tomorrow or upgrade your Gemini plan at <strong>aistudio.google.com</strong>.`;
+    if (e.message === 'daily_limit') {
+      errBubble.innerHTML = `<div class="ai-label">⚡ DAILY LIMIT</div>You've used all <strong>10 free AI messages</strong> for today. Your limit resets at midnight. <a href="#" onclick="showTab('premium',null);return false;" style="color:var(--accent)">Upgrade to Premium</a> for unlimited access.`;
     } else if (e.message === 'high_demand' || (e.message && e.message.includes('429'))) {
-      errBubble.innerHTML = `<div class="ai-label">⏳ HIGH DEMAND</div>Gemini is under high load right now. Please wait 30 seconds and try again — your message is not lost.`;
-    } else if (e.message === 'openrouter_no_key') {
-      errBubble.innerHTML = `<div class="ai-label">🔑 OPENROUTER SETUP</div>Go to <strong>Settings → OpenRouter API</strong>, paste your OpenRouter key, save it, then try again.`;
+      errBubble.innerHTML = `<div class="ai-label">⏳ HIGH DEMAND</div>The AI is under high load right now. Please wait 30 seconds and try again — your message is not lost.`;
     } else {
       errBubble.innerHTML = `<div class="ai-label">⚠️ ERROR</div>${e.message || 'Something went wrong. Please try again.'}`;
     }
@@ -374,6 +348,7 @@ Symptoms: ${input}`;
       </div>
     </div>`;
     saveTriageResult({
+      id: 'triage_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
       symptoms: input,
       level: r.triage_level || 'home',
       title: r.triage_title || c.label,
@@ -384,12 +359,10 @@ Symptoms: ${input}`;
 
   } catch(e) {
     let msg = '';
-    if (e.message === 'no_key') {
-      msg = '⚙️ Set your <code>GEMINI_KEY</code> in dashboard.html to use Quick Triage.';
-    } else if (e.message === 'quota_exceeded') {
-      msg = '⚠️ Gemini quota exhausted for today. Resets at midnight.';
+    if (e.message === 'daily_limit') {
+      msg = '⚡ You\'ve used all 10 free AI messages for today. Resets at midnight, or <a href="#" onclick="showTab(\'premium\',null);return false;" style="color:var(--accent)">upgrade to Premium</a> for unlimited access.';
     } else if (e.message === 'high_demand') {
-      msg = '⏳ Gemini is under high load. Wait 30 seconds and try again.';
+      msg = '⏳ The AI is under high load. Wait 30 seconds and try again.';
     } else {
       msg = '⚠️ ' + (e.message || 'Analysis failed. Please try again.');
     }
@@ -1327,10 +1300,10 @@ function renderTriageHistory(){
     renderRecentTriage([]);
     return;
   }
-  const rows = history.map(item => {
+  const rows = history.map((item, idx) => {
     const cfg = historyVisual(item.level);
     const date = new Date(item.createdAt || Date.now()).toLocaleString([], {month:'short', day:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'});
-    return `<div class="history-row"><div class="history-triage-dot ${cfg.dot}"></div><div class="history-info"><div class="history-symptom">${escapeHtml(item.symptoms || item.title || 'Triage session')}</div><div class="history-meta">${date} - ${cfg.label.toUpperCase()} - ${item.confidence || 70}% confidence</div></div><span class="badge ${cfg.badge}">${cfg.short}</span></div>`;
+    return `<div class="history-row" onclick="openTriageDetail(${idx})" style="cursor:pointer"><div class="history-triage-dot ${cfg.dot}"></div><div class="history-info"><div class="history-symptom">${escapeHtml(item.symptoms || item.title || 'Triage session')}</div><div class="history-meta">${date} - ${cfg.label.toUpperCase()} - ${item.confidence || 70}% confidence</div></div><span class="badge ${cfg.badge}">${cfg.short}</span></div>`;
   }).join('');
   list.innerHTML = rows;
   renderRecentTriage(history);
@@ -1344,12 +1317,62 @@ function renderRecentTriage(items){
     card.innerHTML = header + '<div class="mini-result" style="margin:1rem 1.25rem">No triage sessions yet. Your real Quick Triage results will appear here.</div><div style="padding:1rem 1.25rem"><div class="btn btn-outline" onclick="showTab(\'triage\',null)" style="width:100%;justify-content:center;font-size:10px">Start Triage -></div></div>';
     return;
   }
-  const rows=items.slice(0,3).map(item=>{
+  const rows=items.slice(0,3).map((item, idx)=>{
     const cfg=historyVisual(item.level);
     const date=new Date(item.createdAt || Date.now()).toLocaleDateString();
-    return `<div class="history-row"><div class="history-triage-dot ${cfg.dot}"></div><div class="history-info"><div class="history-symptom">${escapeHtml(item.symptoms || item.title || 'Triage session')}</div><div class="history-meta">${date} - ${cfg.label.toUpperCase()} - ${item.confidence || 70}% confidence</div></div><span class="badge ${cfg.badge}">${cfg.short}</span></div>`;
+    return `<div class="history-row" onclick="openTriageDetail(${idx})" style="cursor:pointer"><div class="history-triage-dot ${cfg.dot}"></div><div class="history-info"><div class="history-symptom">${escapeHtml(item.symptoms || item.title || 'Triage session')}</div><div class="history-meta">${date} - ${cfg.label.toUpperCase()} - ${item.confidence || 70}% confidence</div></div><span class="badge ${cfg.badge}">${cfg.short}</span></div>`;
   }).join('');
   card.innerHTML=header+rows+`<div style="padding:1rem 1.25rem"><div class="btn btn-outline" onclick="showTab('history',null)" style="width:100%;justify-content:center;font-size:10px">View Full History -></div></div>`;
+}
+
+function openTriageDetail(index){
+  const history = getTriageHistory();
+  const item = history[index];
+  if(!item) return;
+  const cfg = historyVisual(item.level);
+  const date = new Date(item.createdAt || Date.now()).toLocaleString([], {weekday:'long', month:'long', day:'numeric', year:'numeric', hour:'2-digit', minute:'2-digit'});
+
+  document.getElementById('triage-detail-content').innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1.25rem">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div class="history-triage-dot ${cfg.dot}" style="width:14px;height:14px"></div>
+        <div>
+          <div style="font-family:var(--head);font-size:18px;font-weight:800;color:${cfg.color}">${escapeHtml(item.title || cfg.label)}</div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:2px">${date}</div>
+        </div>
+      </div>
+      <button class="btn-ghost" style="padding:4px 10px" onclick="closeTriageDetail()">✕</button>
+    </div>
+
+    <div style="margin-bottom:1.25rem">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1px;margin-bottom:6px">WHAT YOU DESCRIBED</div>
+      <div style="background:rgba(0,0,0,0.2);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:14px;line-height:1.7">${escapeHtml(item.symptoms || 'No description recorded.')}</div>
+    </div>
+
+    <div style="margin-bottom:1.25rem">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1px;margin-bottom:6px">AI ASSESSMENT</div>
+      <div style="background:${cfg.color}11;border:1px solid ${cfg.color}33;border-radius:10px;padding:14px">
+        <div style="font-family:var(--head);font-size:14px;font-weight:700;color:${cfg.color};margin-bottom:6px">${escapeHtml(item.title || cfg.label)}</div>
+        <div style="font-size:13px;line-height:1.7;color:var(--text)">${escapeHtml(item.summary || 'No summary recorded.')}</div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:14px;align-items:center">
+      <span class="badge ${cfg.badge}">${cfg.short}</span>
+      <span style="font-family:var(--mono);font-size:11px;color:var(--muted)">CONFIDENCE: ${item.confidence || 70}%</span>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:1.5rem">
+      <button class="btn btn-outline" style="flex:1;justify-content:center" onclick="closeTriageDetail();showTab('triage',null)">Run New Triage</button>
+      <button class="btn btn-outline" style="flex:1;justify-content:center" onclick="closeTriageDetail();showTab('medical-ai',null)">Ask Medical AI</button>
+    </div>
+  `;
+  document.getElementById('triage-detail-overlay').style.display = 'flex';
+}
+
+function closeTriageDetail(){
+  const overlay = document.getElementById('triage-detail-overlay');
+  if(overlay) overlay.style.display = 'none';
 }
 
 function updateHistoryDashboard(history=getTriageHistory()){
@@ -1566,7 +1589,7 @@ async function testGeminiConnection(){
     const reply = await callGemini('Say Gemini connection test active for MedAI. Reply in one short sentence.');
     if(status) status.innerHTML = `<strong style="color:var(--safe)">Connected.</strong> ${escapeHtml(reply)}`;
   } catch(e) {
-    let msg = e.message === 'quota_exceeded' ? 'Quota exceeded.' : e.message === 'no_key' ? 'API Key not configured.' : e.message;
+    let msg = e.message === 'daily_limit' ? 'Daily message limit reached.' : e.message;
     if(status) status.innerHTML = `<strong style="color:var(--danger)">Failed.</strong> ${escapeHtml(msg || 'Check your API Key.')}`;
   }
 }

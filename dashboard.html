@@ -12,16 +12,6 @@
     const token = params.get('token');
     if(token){
       localStorage.setItem('medai_token', token);
-      // check if this user is an admin — redirect straight to the admin panel
-      try{
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        if(payload.role === 'ADMIN'){
-          sessionStorage.setItem('medai_admin_session','active');
-          sessionStorage.setItem('medai_admin_name', payload.username || '');
-          window.location.replace('admin.html');
-          return;
-        }
-      }catch(e){}
       params.delete('token');
       const cleanUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}${window.location.hash}`;
       window.history.replaceState({}, document.title, cleanUrl);
@@ -1282,9 +1272,15 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
     <div class="tab-panel" id="tab-history">
       <div class="sec-label">// My Health</div>
       <h2 class="sec-title">Symptom <span class="grad">History</span></h2>
+      <p class="sec-sub" style="margin-bottom:1rem">Click any session to see exactly what you described and what the AI assessed.</p>
       <div class="glass-card" id="history-list">
         <div class="mini-result" style="margin:1rem 1.25rem">No symptom history yet. Your completed Quick Triage sessions will appear here.</div>
       </div>
+    </div>
+
+    <!-- TRIAGE DETAIL MODAL -->
+    <div id="triage-detail-overlay" style="display:none;position:fixed;inset:0;z-index:9500;background:rgba(3,7,12,0.75);backdrop-filter:blur(10px);align-items:flex-start;justify-content:center;padding:6vh 1.5rem;overflow-y:auto" onclick="if(event.target===this)closeTriageDetail()">
+      <div class="glass-card" id="triage-detail-content" style="max-width:520px;width:100%;padding:1.75rem"></div>
     </div>
 
     <!-- ==================== VITALS ==================== -->

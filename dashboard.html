@@ -12,6 +12,16 @@
     const token = params.get('token');
     if(token){
       localStorage.setItem('medai_token', token);
+      // check if this user is an admin — redirect straight to the admin panel
+      try{
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        if(payload.role === 'ADMIN'){
+          sessionStorage.setItem('medai_admin_session','active');
+          sessionStorage.setItem('medai_admin_name', payload.username || '');
+          window.location.replace('admin.html');
+          return;
+        }
+      }catch(e){}
       params.delete('token');
       const cleanUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}${window.location.hash}`;
       window.history.replaceState({}, document.title, cleanUrl);

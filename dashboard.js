@@ -99,6 +99,7 @@ function showTab(id,el){
   document.getElementById('topbar-bc').textContent='// '+(tabBc[id]||id.toUpperCase());
   if(id === 'premium') renderPrices();
   if(id === 'therapy') renderTherapyFinder();
+  if(id === 'messages') loadPatientConversations();
   if(id === 'achievements') renderAchievements();
 }
 
@@ -1800,9 +1801,104 @@ function removePreviousLangStyles(){
 
 
 // ============================================================
-// ACHIEVEMENTS — REAL-TIME TRACKING
+// MESSAGES — PATIENT-DOCTOR REAL-TIME CHAT
 // ============================================================
-let _achievementsCache = null;
+let _patientConversations = [];
+let _activePatientConversation = null;
+let _patientChatPollInterval = null;
+
+function patientAuthHeaders(){
+  const token = localStorage.getItem('medai_token');
+  return token ? { 'Authorization': 'Bearer ' + token } : {};
+}
+
+function escapeHtmlChat(v){
+  return String(v ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch]));
+}
+
+async function loadPatientConversations(){
+  const list = document.getElementById('patient-conv-list');
+  if(!list) return;
+  try{
+    const res = await fetch(API_BASE_URL + '/api/chat/conversations', { headers: patientAuthHeaders() });
+    if(!res.ok) throw new Error('fetch_failed');
+    const data = await res.json();
+    _patientConversations = data.conversations || [];
+
+    const badge = document.getElementById('patient-msg-badge');
+    if(badge) badge.style.display = _patientConversations.length ? 'inline-block' : 'none';
+
+    if(!_patientConversations.length){
+      list.innerHTML = '<div style="padding:1.25rem;color:var(--muted);font-size:13px;line-height:1.6">No conversations yet. When a doctor starts a chat with you, it will appear here.</div>';
+      return;
+    }
+
+    list.innerHTML = _patientConversations.map(c => `
+      <div class="history-row" style="cursor:pointer;border-radius:0" onclick="openPatientConversation('${c.id}','${escapeHtmlChat(c.doctorName)}','${escapeHtmlChat(c.doctorSpecialty||'')}')" id="pconv-${c.id}">
+        <div class="history-triage-dot home"></div>
+        <div class="history-info">
+          <div class="history-symptom">Dr. ${escapeHtmlChat(c.doctorName)}</div>
+          <div class="history-meta">${escapeHtmlChat(c.doctorSpecialty || '')}${c.lastMessage ? ' — ' + escapeHtmlChat(c.lastMessage.slice(0,40)) : ' — No messages yet'}</div>
+        </div>
+      </div>`).join('');
+  }catch(e){
+    list.innerHTML = '<div style="padding:1.25rem;color:var(--muted);font-size:13px">Could not load conversations. Check your connection and try again.</div>';
+  }
+}
+
+function openPatientConversation(convId, doctorName, specialty){
+  _activePatientConversation = convId;
+  document.querySelectorAll('#patient-conv-list .history-row').forEach(el => el.style.background = '');
+  const active = document.getElementById('pconv-' + convId);
+  if(active) active.style.background = 'rgba(0,212,255,0.06)';
+
+  document.getElementById('patient-chat-header').textContent = 'Dr. ' + doctorName + (specialty ? ' — ' + specialty : '');
+  document.getElementById('patient-chat-input-row').style.display = 'flex';
+
+  loadPatientMessages();
+  if(_patientChatPollInterval) clearInterval(_patientChatPollInterval);
+  _patientChatPollInterval = setInterval(loadPatientMessages, 4000);
+}
+
+async function loadPatientMessages(){
+  if(!_activePatientConversation) return;
+  try{
+    const res = await fetch(API_BASE_URL + '/api/chat/conversations/' + _activePatientConversation + '/messages', { headers: patientAuthHeaders() });
+    if(!res.ok) return;
+    const data = await res.json();
+    const container = document.getElementById('patient-chat-messages');
+    const wasAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 60;
+
+    container.innerHTML = data.messages.map(m => {
+      const isMe = m.senderRole === 'USER';
+      return `<div style="max-width:70%;padding:10px 14px;border-radius:12px;font-size:13px;line-height:1.5;${isMe ? 'background:var(--accent);color:#04121c;margin-left:auto;border-bottom-right-radius:3px' : 'background:var(--surface2);border:1px solid var(--border);margin-right:auto;border-bottom-left-radius:3px'}">
+        ${escapeHtmlChat(m.content)}
+        <div style="font-family:var(--mono);font-size:9px;opacity:.65;margin-top:4px">${new Date(m.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div>
+      </div>`;
+    }).join('') || '<div style="text-align:center;color:var(--muted);font-size:13px;padding:2rem 0">No messages yet. Say hello 👋</div>';
+
+    if(wasAtBottom) container.scrollTop = container.scrollHeight;
+  }catch(e){}
+}
+
+async function sendPatientMessage(){
+  const input = document.getElementById('patient-chat-input');
+  const content = input.value.trim();
+  if(!content || !_activePatientConversation) return;
+  input.value = '';
+  try{
+    await fetch(API_BASE_URL + '/api/chat/conversations/' + _activePatientConversation + '/messages', {
+      method: 'POST',
+      headers: { ...patientAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content })
+    });
+    await loadPatientMessages();
+  }catch(e){
+    alert('Could not send message. Please try again.');
+  }
+}
+
+
 let _achievementsLoading = false;
 
 async function renderAchievements(){

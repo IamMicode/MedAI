@@ -917,6 +917,11 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
       <div class="sb-item-icon">📅</div>
       <span class="sb-item-label">Appointments</span>
     </div>
+    <div class="sb-item" onclick="showTab('messages',this)">
+      <div class="sb-item-icon">💬</div>
+      <span class="sb-item-label">Messages</span>
+      <span class="sb-badge" id="patient-msg-badge" style="display:none">•</span>
+    </div>
     <div class="sb-item" onclick="showTab('therapy',this)">
       <div class="sb-item-icon">🧘</div>
       <span class="sb-item-label">Therapy Finder</span>
@@ -1272,15 +1277,9 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
     <div class="tab-panel" id="tab-history">
       <div class="sec-label">// My Health</div>
       <h2 class="sec-title">Symptom <span class="grad">History</span></h2>
-      <p class="sec-sub" style="margin-bottom:1rem">Click any session to see exactly what you described and what the AI assessed.</p>
       <div class="glass-card" id="history-list">
         <div class="mini-result" style="margin:1rem 1.25rem">No symptom history yet. Your completed Quick Triage sessions will appear here.</div>
       </div>
-    </div>
-
-    <!-- TRIAGE DETAIL MODAL -->
-    <div id="triage-detail-overlay" style="display:none;position:fixed;inset:0;z-index:9500;background:rgba(3,7,12,0.75);backdrop-filter:blur(10px);align-items:flex-start;justify-content:center;padding:6vh 1.5rem;overflow-y:auto" onclick="if(event.target===this)closeTriageDetail()">
-      <div class="glass-card" id="triage-detail-content" style="max-width:520px;width:100%;padding:1.75rem"></div>
     </div>
 
     <!-- ==================== VITALS ==================== -->
@@ -1479,6 +1478,28 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
           <div class="timeline" id="appointment-list">
             <div class="timeline-item"><div class="timeline-time">May 14</div><div><div class="timeline-title">Dr. Afolabi</div><div class="timeline-meta">General checkup - 10:00</div></div><span class="badge badge-blue">Booked</span></div>
             <div class="timeline-item"><div class="timeline-time">May 18</div><div><div class="timeline-title">Nutritionist</div><div class="timeline-meta">Meal planning - 15:30</div></div><span class="badge badge-green">Online</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== MESSAGES ==================== -->
+    <div class="tab-panel" id="tab-messages">
+      <div class="sec-label">// Care Access</div>
+      <h2 class="sec-title">Messages with <span class="grad">Your Doctors</span></h2>
+      <p class="sec-sub" style="margin-bottom:1.25rem">Real-time conversations with doctors matched to your care. Start one from a doctor recommendation, or continue an existing chat below.</p>
+      <div class="glass-card" style="padding:0;overflow:hidden;display:grid;grid-template-columns:260px 1fr;min-height:520px" id="patient-chat-layout">
+        <div style="border-right:1px solid var(--border);overflow-y:auto" id="patient-conv-list">
+          <div style="padding:1.25rem;color:var(--muted);font-size:13px">Loading conversations...</div>
+        </div>
+        <div style="display:flex;flex-direction:column">
+          <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-weight:700;font-size:14px" id="patient-chat-header">Select a conversation</div>
+          <div style="flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:10px" id="patient-chat-messages">
+            <div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:13px;flex-direction:column;gap:10px">💬<br>Select a conversation to view messages</div>
+          </div>
+          <div style="display:none;gap:10px;padding:14px 18px;border-top:1px solid var(--border)" id="patient-chat-input-row">
+            <input class="tool-input" id="patient-chat-input" placeholder="Type a message..." style="flex:1" onkeydown="if(event.key==='Enter')sendPatientMessage()"/>
+            <div class="btn btn-primary" onclick="sendPatientMessage()" style="padding:0 18px;display:flex;align-items:center">→</div>
           </div>
         </div>
       </div>
@@ -1907,6 +1928,7 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
     <div class="sb-item" onclick="showTab('reports',null);closeMobileMore()"><div class="sb-item-icon">Rx</div><span class="sb-item-label">Reports & OCR</span></div>
     <div class="sb-item" onclick="showTab('appointments',null);closeMobileMore()"><div class="sb-item-icon">📅</div><span class="sb-item-label">Appointments</span></div>
     <div class="sb-item" onclick="showTab('therapy',null);closeMobileMore()"><div class="sb-item-icon">🧘</div><span class="sb-item-label">Therapy Finder</span></div>
+    <div class="sb-item" onclick="showTab('messages',null);closeMobileMore()"><div class="sb-item-icon">💬</div><span class="sb-item-label">Messages</span></div>
     <div class="sb-item" onclick="showTab('achievements',null);closeMobileMore()"><div class="sb-item-icon">🏆</div><span class="sb-item-label">Achievements</span></div>
 
     <div class="sb-section-label">Account</div>

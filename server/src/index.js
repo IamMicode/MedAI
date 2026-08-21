@@ -55,3 +55,5 @@ app.use((error, req, res, next) => {
 app.listen(port, () => {
   console.log(`MedAI API running on http://localhost:${port}`);
 });
+   const chatRoutes = require('./routes/chat');
+   app.use('/api/chat', chatRoutes);

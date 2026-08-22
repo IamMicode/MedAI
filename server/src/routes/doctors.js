@@ -163,17 +163,20 @@ router.get('/specialties', (req, res) => {
   res.json({ specialties });
 });
 
-// ── DIRECTORY: approved doctors with a pinned location, for patients (Therapy Finder / Appointments / Triage routing) ──
+// ── DIRECTORY: approved doctors, for patients (Therapy Finder / Appointments / Triage routing) ──
+// Location (latitude/longitude) is only required when the caller needs to plot a map —
+// pass requireLocation=true for that. Triage's specialty matching doesn't need a pinned
+// location at all, since it just opens a chat, so it omits that filter.
 router.get('/directory', requireAuth, async (req, res, next) => {
   try {
-    const { specialty, availableOnly } = req.query;
-    const where = {
-      verificationStatus: 'APPROVED',
-      latitude: { not: null },
-      longitude: { not: null }
-    };
+    const { specialty, availableOnly, requireLocation } = req.query;
+    const where = { verificationStatus: 'APPROVED' };
     if (specialty) where.specialty = specialty;
     if (availableOnly === 'true') where.isAvailable = true;
+    if (requireLocation === 'true') {
+      where.latitude = { not: null };
+      where.longitude = { not: null };
+    }
 
     const doctors = await prisma.doctorProfile.findMany({
       where,

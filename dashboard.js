@@ -596,7 +596,7 @@ async function loadDoctorDirectoryMap(){
   const doctors = await fetchDoctorDirectory();
 
   if(!doctors.length){
-    mapEl.innerHTML = 'No registered doctors with a pinned location yet.';
+    mapEl.innerHTML = 'No registered doctors yet.';
     listEl.innerHTML = '';
     return;
   }
@@ -606,10 +606,16 @@ async function loadDoctorDirectoryMap(){
       <div class="therapy-card-head">
         <div><div class="therapy-name">Dr. ${escapeHtml(d.fullName)}</div><div class="therapy-meta">${escapeHtml(d.specialty)}${d.hospital ? ' · ' + escapeHtml(d.hospital) : ''}</div></div>
       </div>
-      <div class="therapy-meta">${escapeHtml(d.formattedAddress || '')}</div>
+      <div class="therapy-meta">${escapeHtml(d.formattedAddress || 'Location not shared yet')}</div>
       <div class="therapy-meta">${d.yearsExperience} years experience</div>
     </div>
   `).join('');
+
+  const withLocation = doctors.filter(d => typeof d.latitude === 'number' && typeof d.longitude === 'number');
+  if(!withLocation.length){
+    mapEl.innerHTML = 'None of these doctors have shared a map location yet.';
+    return;
+  }
 
   try{
     await loadGoogleMapsApi();
@@ -619,7 +625,7 @@ async function loadDoctorDirectoryMap(){
   }
 
   mapEl.innerHTML = '';
-  const first = doctors[0];
+  const first = withLocation[0];
   _directoryMap = new google.maps.Map(mapEl, {
     center: { lat: first.latitude, lng: first.longitude },
     zoom: 11,
@@ -627,7 +633,7 @@ async function loadDoctorDirectoryMap(){
   });
 
   const bounds = new google.maps.LatLngBounds();
-  doctors.forEach(d => {
+  withLocation.forEach(d => {
     const pos = { lat: d.latitude, lng: d.longitude };
     const marker = new google.maps.Marker({ map: _directoryMap, position: pos, title: `Dr. ${d.fullName}` });
     const info = new google.maps.InfoWindow({
@@ -636,7 +642,7 @@ async function loadDoctorDirectoryMap(){
     marker.addListener('click', () => info.open(_directoryMap, marker));
     bounds.extend(pos);
   });
-  if(doctors.length > 1) _directoryMap.fitBounds(bounds);
+  if(withLocation.length > 1) _directoryMap.fitBounds(bounds);
 }
 
 // ---------- Appointments: real doctor selector + location preview ----------

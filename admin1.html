@@ -6,6 +6,14 @@
 <title>MedAI Admin</title>
 <script>
 (function(){
+  const params = new URLSearchParams(window.location.search);
+  const urlToken = params.get('token');
+  if(urlToken){
+    localStorage.setItem('medai_token', urlToken);
+    params.delete('token');
+    const cleanUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}${window.location.hash}`;
+    window.history.replaceState({}, document.title, cleanUrl);
+  }
   const token = localStorage.getItem('medai_token');
   const session = sessionStorage.getItem('medai_admin_session');
   if(!session || session !== 'active'){

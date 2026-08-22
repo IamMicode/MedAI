@@ -5,6 +5,17 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>MedAI Admin Panel</title>
 <script>
+(function(){
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get('token');
+  if(token){
+    localStorage.setItem('medai_token', token);
+    sessionStorage.setItem('medai_admin_session', 'active');
+    params.delete('token');
+    const cleanUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}${window.location.hash}`;
+    window.history.replaceState({}, document.title, cleanUrl);
+  }
+})();
 if(sessionStorage.getItem('medai_admin_session') !== 'active'){
   window.location.replace('Login_page.html');
 }

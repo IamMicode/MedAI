@@ -136,6 +136,10 @@ model DoctorProfile {
   hospital          String?
   bio               String?
   licenseDocument   String?   @db.Text
+  latitude          Float?
+  longitude         Float?
+  formattedAddress  String?
+  isAvailable       Boolean   @default(true)
   verificationStatus String   @default("PENDING")
   rejectionReason   String?
   verifiedAt        DateTime?
@@ -167,6 +171,7 @@ model Message {
   senderId       String
   senderRole     String       // DOCTOR | USER
   content        String       @db.Text
+  imageData      String?      @db.Text // base64 data URI, resized/compressed client-side
   readAt         DateTime?
   createdAt      DateTime     @default(now())
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)

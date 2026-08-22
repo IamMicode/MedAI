@@ -98,7 +98,8 @@ function showTab(id,el){
   document.getElementById('topbar-title').textContent=tabTitles[id]||id;
   document.getElementById('topbar-bc').textContent='// '+(tabBc[id]||id.toUpperCase());
   if(id === 'premium') renderPrices();
-  if(id === 'therapy') renderTherapyFinder();
+  if(id === 'therapy'){ renderTherapyFinder(); loadDoctorDirectoryMap(); }
+  if(id === 'appointments') loadAppointmentDoctors();
   if(id === 'messages') loadPatientConversations();
   if(id === 'achievements') renderAchievements();
 }
@@ -311,8 +312,11 @@ async function sendChat(panelId, type) {
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 // ============================================================
-// QUICK TRIAGE
+// QUICK TRIAGE — acts as a receptionist: routes emotional complaints to Mental Health AI,
+// serious complaints to a matching available registered doctor (or Medical AI as fallback).
 // ============================================================
+const TRIAGE_SPECIALTIES = ['General Practice','Pediatrics','Psychiatry','Cardiology','Dermatology','Internal Medicine','Emergency Medicine','Gynecology','Neurology','Orthopedics','Other'];
+
 async function startTriage() {
   const input  = document.getElementById('triage-input').value.trim();
   const result = document.getElementById('triage-result');
@@ -321,10 +325,18 @@ async function startTriage() {
   result.style.display = 'block';
   result.innerHTML = '<div style="display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:12px;color:var(--muted)"><div class="typing-dots"><span></span><span></span><span></span></div>Analyzing symptoms...</div>';
 
-  const prompt = `You are a medical triage AI. Analyze these symptoms and respond ONLY with a raw JSON object — no markdown, no backticks, no extra text whatsoever:
-{"triage_level":"home","triage_title":"short action phrase","summary":"2-3 sentence assessment","confidence":80}
-triage_level must be exactly one of: "home", "doctor_soon", or "emergency".
-Symptoms: ${input}`;
+  const prompt = `You are a medical triage receptionist AI. Read the complaint below and respond ONLY with a raw JSON object — no markdown, no backticks, no extra text whatsoever:
+{"triage_level":"home","triage_title":"short action phrase","summary":"2-3 sentence assessment","confidence":80,"category":"home","specialty":null}
+
+Field rules:
+- triage_level must be exactly one of: "home", "doctor_soon", or "emergency".
+- category must be exactly one of:
+  "emotional" — the complaint is primarily about mood, stress, anxiety, grief, relationships, sleep from worry, burnout, or other mental/emotional wellbeing concerns, with no urgent physical symptoms.
+  "serious" — the complaint describes a physical symptom or condition that warrants a real doctor's attention (pain, injury, infection, chronic symptoms, anything doctor_soon or emergency level).
+  "home" — mild, self-limiting physical symptoms manageable at home with no doctor needed right now.
+- specialty: if and only if category is "serious", pick the single best-fit specialty from exactly this list: ${TRIAGE_SPECIALTIES.join(', ')}. Otherwise set specialty to null.
+
+Complaint: ${input}`;
 
   try {
     const reply = await callGemini(prompt.replace('temperature: 0.7', 'temperature: 0.3'));
@@ -347,7 +359,9 @@ Symptoms: ${input}`;
         <div style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:8px">${r.summary || ''}</div>
         <div style="font-family:var(--mono);font-size:10px;color:var(--muted)">CONFIDENCE: ${r.confidence || 70}%</div>
       </div>
-    </div>`;
+    </div>
+    <div id="triage-routing" style="margin-top:1rem"></div>`;
+
     saveTriageResult({
       id: 'triage_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
       symptoms: input,
@@ -357,6 +371,8 @@ Symptoms: ${input}`;
       confidence: r.confidence || 70,
       createdAt: new Date().toISOString()
     });
+
+    routeTriageReceptionist(r.category || 'home', r.specialty || null);
 
   } catch(e) {
     let msg = '';
@@ -368,6 +384,70 @@ Symptoms: ${input}`;
       msg = '⚠️ ' + (e.message || 'Analysis failed. Please try again.');
     }
     result.innerHTML = `<div style="font-size:13px;color:var(--muted);line-height:1.7">${msg}</div>`;
+  }
+}
+
+function triageRoutingButton(label, icon, onclick){
+  return `<div class="btn btn-primary" style="justify-content:center;margin-top:.5rem" onclick="${onclick}">${icon} ${label}</div>`;
+}
+
+async function routeTriageReceptionist(category, specialty){
+  const box = document.getElementById('triage-routing');
+  if(!box) return;
+
+  if(category === 'emotional'){
+    box.innerHTML = `
+      <div style="font-size:12px;color:var(--muted);margin-bottom:.4rem">This sounds like it's more about how you're feeling than a physical illness. Our Mental Health AI can help right now:</div>
+      ${triageRoutingButton('Talk to Mental Health AI', '🧠', "showTab('mental-ai',null)")}`;
+    return;
+  }
+
+  if(category === 'serious'){
+    box.innerHTML = `<div style="font-size:12px;color:var(--muted)">Looking for an available ${escapeHtmlChat(specialty || 'doctor')}...</div>`;
+    let doctors = [];
+    try{
+      const url = `${API_BASE_URL}/api/doctors/directory?availableOnly=true` + (specialty ? `&specialty=${encodeURIComponent(specialty)}` : '');
+      const res = await fetch(url, { headers: patientAuthHeaders() });
+      if(res.ok){
+        const data = await res.json();
+        doctors = data.doctors || [];
+      }
+    }catch(e){ /* fall through to Medical AI fallback below */ }
+
+    if(doctors.length){
+      const d = doctors[0];
+      box.innerHTML = `
+        <div style="background:rgba(0,212,255,0.05);border:1px solid var(--border2);border-radius:12px;padding:1rem;margin-bottom:.5rem">
+          <div style="font-family:var(--head);font-weight:700;font-size:14px">Dr. ${escapeHtmlChat(d.fullName)}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">${escapeHtmlChat(d.specialty)}${d.hospital ? ' · ' + escapeHtmlChat(d.hospital) : ''}</div>
+          <div style="font-size:11px;color:var(--safe);font-family:var(--mono);margin-top:6px">● AVAILABLE NOW</div>
+        </div>
+        ${triageRoutingButton('Message Dr. ' + escapeHtmlChat(d.fullName), '💬', `startTriageDoctorChat('${d.userId}','${escapeHtmlChat(d.fullName)}','${escapeHtmlChat(d.specialty)}')`)}`;
+    } else {
+      box.innerHTML = `
+        <div style="font-size:12px;color:var(--muted);margin-bottom:.4rem">No ${escapeHtmlChat(specialty || 'matching')} doctor is available right now. Our Medical Health AI can help in the meantime:</div>
+        ${triageRoutingButton('Ask Medical Health AI', '🏥', "showTab('medical-ai',null)")}`;
+    }
+    return;
+  }
+
+  box.innerHTML = '';
+}
+
+async function startTriageDoctorChat(doctorId, doctorName, specialty){
+  try{
+    const res = await fetch(`${API_BASE_URL}/api/chat/conversations`, {
+      method: 'POST',
+      headers: { ...patientAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ doctorId })
+    });
+    if(!res.ok) throw new Error('failed');
+    const data = await res.json();
+    showTab('messages', null);
+    await loadPatientConversations();
+    openPatientConversation(data.conversation.id, doctorName, specialty);
+  }catch(e){
+    alert('Could not start a conversation with this doctor. Please try again from the Messages tab.');
   }
 }
 
@@ -457,6 +537,164 @@ const API_BASE_URL = localStorage.getItem('medai_api_base_url')
   || (['localhost','127.0.0.1'].includes(window.location.hostname)
         ? 'http://127.0.0.1:5500'
         : 'https://medai-backend-5r9o.onrender.com');
+
+// ============================================================
+// REGISTERED DOCTORS DIRECTORY + MAPS (Therapy Finder / Appointments)
+// ============================================================
+// TODO: replace with your own browser-restricted Google Maps JavaScript API key.
+// Must be locked to your domain(s) in Google Cloud Console — this key is public
+// in the page source, unlike the server-side Places key used for therapy.js.
+const GOOGLE_MAPS_JS_KEY = 'YOUR_GOOGLE_MAPS_API_KEY';
+
+let _googleMapsLoadPromise = null;
+let _doctorDirectory = null;
+let _directoryMap = null;
+let _apptDoctorMap = null;
+let _apptDoctorMarker = null;
+
+function loadGoogleMapsApi(){
+  if(_googleMapsLoadPromise) return _googleMapsLoadPromise;
+  _googleMapsLoadPromise = new Promise((resolve, reject) => {
+    if(GOOGLE_MAPS_JS_KEY === 'YOUR_GOOGLE_MAPS_API_KEY'){
+      reject(new Error('missing_key'));
+      return;
+    }
+    if(window.google && window.google.maps){ resolve(); return; }
+    window._onGoogleMapsLoaded = () => resolve();
+    const script = document.createElement('script');
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_JS_KEY}&libraries=places&callback=_onGoogleMapsLoaded`;
+    script.async = true;
+    script.defer = true;
+    script.onerror = () => reject(new Error('script_load_failed'));
+    document.head.appendChild(script);
+  });
+  return _googleMapsLoadPromise;
+}
+
+async function fetchDoctorDirectory(){
+  if(_doctorDirectory) return _doctorDirectory;
+  try{
+    const token = localStorage.getItem('medai_token');
+    const res = await fetch(`${API_BASE_URL}/api/doctors/directory`, {
+      headers: token ? { 'Authorization': 'Bearer ' + token } : {}
+    });
+    if(!res.ok) throw new Error('fetch_failed');
+    const data = await res.json();
+    _doctorDirectory = data.doctors || [];
+  }catch(e){
+    _doctorDirectory = [];
+  }
+  return _doctorDirectory;
+}
+
+// ---------- Therapy Finder: live map of registered doctors ----------
+async function loadDoctorDirectoryMap(){
+  const mapEl = document.getElementById('doctor-directory-map');
+  const listEl = document.getElementById('doctor-directory-list');
+  if(!mapEl || !listEl) return;
+
+  const doctors = await fetchDoctorDirectory();
+
+  if(!doctors.length){
+    mapEl.innerHTML = 'No registered doctors with a pinned location yet.';
+    listEl.innerHTML = '';
+    return;
+  }
+
+  listEl.innerHTML = doctors.map(d => `
+    <div class="glass-card therapy-card">
+      <div class="therapy-card-head">
+        <div><div class="therapy-name">Dr. ${escapeHtml(d.fullName)}</div><div class="therapy-meta">${escapeHtml(d.specialty)}${d.hospital ? ' · ' + escapeHtml(d.hospital) : ''}</div></div>
+      </div>
+      <div class="therapy-meta">${escapeHtml(d.formattedAddress || '')}</div>
+      <div class="therapy-meta">${d.yearsExperience} years experience</div>
+    </div>
+  `).join('');
+
+  try{
+    await loadGoogleMapsApi();
+  }catch(e){
+    mapEl.innerHTML = 'Map disabled — a Google Maps API key needs to be configured.';
+    return;
+  }
+
+  mapEl.innerHTML = '';
+  const first = doctors[0];
+  _directoryMap = new google.maps.Map(mapEl, {
+    center: { lat: first.latitude, lng: first.longitude },
+    zoom: 11,
+    styles: [{ elementType: 'geometry', stylers: [{ color: '#1a1a2e' }] }]
+  });
+
+  const bounds = new google.maps.LatLngBounds();
+  doctors.forEach(d => {
+    const pos = { lat: d.latitude, lng: d.longitude };
+    const marker = new google.maps.Marker({ map: _directoryMap, position: pos, title: `Dr. ${d.fullName}` });
+    const info = new google.maps.InfoWindow({
+      content: `<div style="color:#111;font-family:sans-serif;font-size:13px"><strong>Dr. ${escapeHtml(d.fullName)}</strong><br>${escapeHtml(d.specialty)}${d.hospital ? '<br>' + escapeHtml(d.hospital) : ''}</div>`
+    });
+    marker.addListener('click', () => info.open(_directoryMap, marker));
+    bounds.extend(pos);
+  });
+  if(doctors.length > 1) _directoryMap.fitBounds(bounds);
+}
+
+// ---------- Appointments: real doctor selector + location preview ----------
+async function loadAppointmentDoctors(){
+  const select = document.getElementById('appt-doctor');
+  if(!select) return;
+  const doctors = await fetchDoctorDirectory();
+
+  if(!doctors.length){
+    select.innerHTML = '<option value="">No registered doctors available yet</option>';
+    return;
+  }
+
+  select.innerHTML = doctors.map(d =>
+    `<option value="Dr. ${escapeHtml(d.fullName)} - ${escapeHtml(d.specialty)}" data-lat="${d.latitude}" data-lng="${d.longitude}" data-hospital="${escapeHtml(d.hospital || d.formattedAddress || '')}">Dr. ${escapeHtml(d.fullName)} - ${escapeHtml(d.specialty)}</option>`
+  ).join('');
+
+  onApptDoctorChange();
+}
+
+async function onApptDoctorChange(){
+  const select = document.getElementById('appt-doctor');
+  const mapEl = document.getElementById('appt-doctor-map');
+  if(!select || !mapEl) return;
+  const opt = select.options[select.selectedIndex];
+  const lat = parseFloat(opt?.dataset?.lat);
+  const lng = parseFloat(opt?.dataset?.lng);
+
+  if(!opt || isNaN(lat) || isNaN(lng)){
+    mapEl.style.display = 'none';
+    return;
+  }
+
+  mapEl.style.display = 'block';
+  try{
+    await loadGoogleMapsApi();
+  }catch(e){
+    mapEl.style.display = 'flex';
+    mapEl.style.alignItems = 'center';
+    mapEl.style.justifyContent = 'center';
+    mapEl.style.fontSize = '12px';
+    mapEl.style.color = 'var(--muted)';
+    mapEl.textContent = 'Map disabled — a Google Maps API key needs to be configured.';
+    return;
+  }
+
+  const pos = { lat, lng };
+  if(!_apptDoctorMap){
+    _apptDoctorMap = new google.maps.Map(mapEl, {
+      center: pos, zoom: 14, disableDefaultUI: true, zoomControl: true,
+      styles: [{ elementType: 'geometry', stylers: [{ color: '#1a1a2e' }] }]
+    });
+    _apptDoctorMarker = new google.maps.Marker({ map: _apptDoctorMap, position: pos });
+  }else{
+    _apptDoctorMap.setCenter(pos);
+    _apptDoctorMarker.setPosition(pos);
+  }
+}
 
 async function syncUserFromBackend(){
   const token = localStorage.getItem('medai_token');
@@ -1816,6 +2054,50 @@ function escapeHtmlChat(v){
   return String(v ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch]));
 }
 
+// ---------- image attachment (resize/compress client-side before sending) ----------
+let _pendingChatImage = null;
+
+function handlePatientImageSelect(event){
+  const file = event.target.files[0];
+  if(!file) return;
+  if(!file.type.startsWith('image/')){
+    alert('Please choose an image file.');
+    event.target.value = '';
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = () => {
+      const maxDim = 1280;
+      let { width, height } = img;
+      if(width > maxDim || height > maxDim){
+        const scale = maxDim / Math.max(width, height);
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      _pendingChatImage = canvas.toDataURL('image/jpeg', 0.75);
+
+      document.getElementById('patient-chat-image-preview-img').src = _pendingChatImage;
+      document.getElementById('patient-chat-image-preview').style.display = 'flex';
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+  event.target.value = '';
+}
+
+function clearPatientImageAttachment(){
+  _pendingChatImage = null;
+  document.getElementById('patient-chat-image-preview').style.display = 'none';
+  document.getElementById('patient-chat-image-preview-img').src = '';
+}
+
 async function loadPatientConversations(){
   const list = document.getElementById('patient-conv-list');
   if(!list) return;
@@ -1871,8 +2153,11 @@ async function loadPatientMessages(){
 
     container.innerHTML = data.messages.map(m => {
       const isMe = m.senderRole === 'USER';
+      const imageHtml = m.imageData
+        ? `<img src="${m.imageData}" style="max-width:100%;max-height:260px;border-radius:8px;display:block;cursor:pointer;${m.content ? 'margin-bottom:6px' : ''}" onclick="window.open(this.src,'_blank')"/>`
+        : '';
       return `<div style="max-width:70%;padding:10px 14px;border-radius:12px;font-size:13px;line-height:1.5;${isMe ? 'background:var(--accent);color:#04121c;margin-left:auto;border-bottom-right-radius:3px' : 'background:var(--surface2);border:1px solid var(--border);margin-right:auto;border-bottom-left-radius:3px'}">
-        ${escapeHtmlChat(m.content)}
+        ${imageHtml}${m.content ? escapeHtmlChat(m.content) : ''}
         <div style="font-family:var(--mono);font-size:9px;opacity:.65;margin-top:4px">${new Date(m.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div>
       </div>`;
     }).join('') || '<div style="text-align:center;color:var(--muted);font-size:13px;padding:2rem 0">No messages yet. Say hello 👋</div>';
@@ -1884,13 +2169,16 @@ async function loadPatientMessages(){
 async function sendPatientMessage(){
   const input = document.getElementById('patient-chat-input');
   const content = input.value.trim();
-  if(!content || !_activePatientConversation) return;
+  const imageData = _pendingChatImage;
+  if(!content && !imageData) return;
+  if(!_activePatientConversation) return;
   input.value = '';
+  clearPatientImageAttachment();
   try{
     await fetch(API_BASE_URL + '/api/chat/conversations/' + _activePatientConversation + '/messages', {
       method: 'POST',
       headers: { ...patientAuthHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content })
+      body: JSON.stringify({ content, imageData })
     });
     await loadPatientMessages();
   }catch(e){

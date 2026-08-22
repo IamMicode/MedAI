@@ -25,7 +25,10 @@ const registerSchema = z.object({
   yearsExperience: z.number().int().min(0).max(70),
   hospital: z.string().trim().max(150).optional(),
   bio: z.string().trim().max(600).optional(),
-  licenseDocument: z.string().optional() // base64 string, capped client-side
+  licenseDocument: z.string().optional(), // base64 string, capped client-side
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
+  formattedAddress: z.string().trim().max(300).optional()
 });
 
 const loginSchema = z.object({
@@ -52,7 +55,8 @@ router.post('/register', validate(registerSchema), async (req, res, next) => {
   try {
     const {
       fullName, email, password, phone, licenseNumber, issuingAuthority,
-      specialty, yearsExperience, hospital, bio, licenseDocument
+      specialty, yearsExperience, hospital, bio, licenseDocument,
+      latitude, longitude, formattedAddress
     } = req.body;
 
     const existing = await prisma.user.findUnique({ where: { email } });
@@ -83,6 +87,9 @@ router.post('/register', validate(registerSchema), async (req, res, next) => {
             hospital: hospital || null,
             bio: bio || null,
             licenseDocument: licenseDocument || null,
+            latitude: typeof latitude === 'number' ? latitude : null,
+            longitude: typeof longitude === 'number' ? longitude : null,
+            formattedAddress: formattedAddress || null,
             verificationStatus: 'PENDING'
           }
         }
@@ -154,6 +161,41 @@ router.get('/me', requireAuth, async (req, res, next) => {
 // ── LIST SPECIALTIES (for registration dropdown) ──
 router.get('/specialties', (req, res) => {
   res.json({ specialties });
+});
+
+// ── DIRECTORY: approved doctors with a pinned location, for patients (Therapy Finder / Appointments / Triage routing) ──
+router.get('/directory', requireAuth, async (req, res, next) => {
+  try {
+    const { specialty, availableOnly } = req.query;
+    const where = {
+      verificationStatus: 'APPROVED',
+      latitude: { not: null },
+      longitude: { not: null }
+    };
+    if (specialty) where.specialty = specialty;
+    if (availableOnly === 'true') where.isAvailable = true;
+
+    const doctors = await prisma.doctorProfile.findMany({
+      where,
+      select: {
+        id: true,
+        userId: true,
+        fullName: true,
+        specialty: true,
+        hospital: true,
+        formattedAddress: true,
+        latitude: true,
+        longitude: true,
+        yearsExperience: true,
+        bio: true,
+        isAvailable: true
+      },
+      orderBy: { fullName: 'asc' }
+    });
+    return res.json({ doctors });
+  } catch (error) {
+    return next(error);
+  }
 });
 
 module.exports = router;

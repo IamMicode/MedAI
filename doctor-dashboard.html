@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>MedAI Doctor Portal</title>
+<script>
+(function(){
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get('token');
+  if(token){
+    localStorage.setItem('medai_token', token);
+    params.delete('token');
+    const cleanUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}${window.location.hash}`;
+    window.history.replaceState({}, document.title, cleanUrl);
+  }
+  if(!localStorage.getItem('medai_token')){
+    window.location.replace('doctor-login.html');
+  }
+})();
+</script>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&family=Share+Tech+Mono&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#020a0f;--surface:#071018;--surface2:#0c1a26;
+  --border:rgba(255,80,0,0.1);--border2:rgba(255,80,0,0.22);
+  --accent:#ff5000;--accent2:#ff8c00;--safe:#00ff88;
+  --danger:#ff4d6d;--warning:#ffaa33;--blue:#00d4ff;
+  --text:#f0e8e0;--muted:rgba(200,170,140,0.5);
+  --sidebar-w:260px;--panel-w:340px;--head:'Syne',sans-serif;
+  --mono:'Share Tech Mono',monospace;--body:'DM Sans',sans-serif;
+  --radius:14px;
+}
+html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--text);overflow:hidden}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(255,80,0,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,80,0,0.025) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0}
+body::after{content:'';position:fixed;top:-200px;right:-100px;width:600px;height:600px;background:radial-gradient(circle,rgba(255,80,0,0.06),transparent 70%);pointer-events:none;z-index:0}
+
+#shell{position:relative;z-index:1;display:flex;height:100vh}
+
+/* SIDEBAR: patient list */
+.dp-sidebar{width:var(--sidebar-w);min-width:var(--sidebar-w);height:100vh;background:rgba(7,16,24,0.9);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;backdrop-filter:blur(20px)}
+.dp-logo{padding:18px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.dp-logo-icon{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#ff5000,#ff8c00);display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 0 16px rgba(255,80,0,0.4)}
+.dp-logo-text{font-family:var(--head);font-size:15px;font-weight:800}.dp-logo-text span{color:var(--accent)}
+.dp-search{padding:12px 14px;border-bottom:1px solid var(--border)}
+.dp-search-bar{display:flex;align-items:center;gap:8px;background:rgba(255,80,0,0.04);border:1px solid var(--border2);border-radius:8px;padding:8px 12px}
+.dp-search-input{background:none;border:none;outline:none;color:var(--text);font-family:var(--mono);font-size:11px;width:100%}
+.dp-search-input::placeholder{color:rgba(200,170,140,0.3)}
+.dp-list{flex:1;overflow-y:auto;padding:6px 0}
+.dp-list::-webkit-scrollbar{width:4px}
+.dp-list::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+.dp-empty{padding:2rem 1.25rem;text-align:center;font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:1px}
+.pt-item{display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;border-left:3px solid transparent;transition:all .2s;position:relative}
+.pt-item:hover{background:rgba(255,80,0,0.06)}
+.pt-item.active{background:rgba(255,80,0,0.1);border-left-color:var(--accent)}
+.pt-avatar{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#0c1a26,#1a2a38);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-family:var(--head);font-size:13px;font-weight:700;color:var(--accent);flex-shrink:0}
+.pt-info{flex:1;min-width:0}
+.pt-name{font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pt-preview{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.pt-sev{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.sev-EMERGENCY{background:var(--danger);box-shadow:0 0 8px rgba(255,77,109,0.6)}
+.sev-HIGH{background:var(--warning)}
+.sev-MEDIUM{background:var(--blue)}
+.sev-LOW{background:var(--safe)}
+.dp-bottom{padding:12px 16px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px}
+.dp-doc-name{font-size:12px;color:var(--muted);font-family:var(--mono);letter-spacing:.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dp-logout{font-family:var(--mono);font-size:10px;letter-spacing:1.5px;color:var(--danger);background:rgba(255,77,109,0.08);border:1px solid rgba(255,77,109,0.2);border-radius:8px;padding:6px 10px;cursor:pointer;transition:all .2s;flex-shrink:0}
+.dp-logout:hover{background:rgba(255,77,109,0.2)}
+
+/* MAIN CHAT COLUMN */
+.dp-main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+.dp-topbar{height:58px;flex-shrink:0;background:rgba(7,16,24,0.8);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;backdrop-filter:blur(16px)}
+.dp-topbar-left{display:flex;align-items:center;gap:12px;min-width:0}
+.dp-topbar-avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#0c1a26,#1a2a38);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-family:var(--head);font-size:12px;font-weight:700;color:var(--accent);flex-shrink:0}
+.dp-topbar-name{font-family:var(--head);font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dp-topbar-sub{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1px}
+.profile-toggle-btn{font-family:var(--mono);font-size:10px;letter-spacing:1.5px;text-transform:uppercase;padding:8px 16px;border:1px solid rgba(255,80,0,0.3);background:rgba(255,80,0,0.1);color:var(--accent);border-radius:8px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:6px;flex-shrink:0}
+.profile-toggle-btn:hover{background:rgba(255,80,0,0.2)}
+.profile-toggle-btn.open{background:var(--accent);color:#000}
+
+.dp-chat-area{flex:1;overflow-y:auto;padding:1.5rem;display:flex;flex-direction:column;gap:10px}
+.dp-chat-area::-webkit-scrollbar{width:4px}
+.dp-chat-area::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+.msg-row{display:flex;max-width:70%}
+.msg-row.me{align-self:flex-end;justify-content:flex-end}
+.msg-row.them{align-self:flex-start}
+.msg-bubble{padding:10px 14px;border-radius:14px;font-size:13.5px;line-height:1.5;word-wrap:break-word}
+.msg-row.me .msg-bubble{background:linear-gradient(135deg,rgba(255,80,0,0.22),rgba(255,140,0,0.14));border:1px solid rgba(255,80,0,0.3);border-bottom-right-radius:4px}
+.msg-row.them .msg-bubble{background:var(--surface2);border:1px solid var(--border);border-bottom-left-radius:4px}
+.msg-time{font-family:var(--mono);font-size:9px;color:var(--muted);margin-top:4px;letter-spacing:.5px}
+.msg-row.me .msg-time{text-align:right}
+
+.dp-composer{flex-shrink:0;padding:14px 1.5rem;border-top:1px solid var(--border);display:flex;gap:10px;background:rgba(7,16,24,0.6)}
+.dp-composer-input{flex:1;background:rgba(255,80,0,0.04);border:1px solid var(--border2);border-radius:10px;color:var(--text);font-family:var(--body);font-size:13.5px;padding:12px 16px;outline:none;resize:none;max-height:120px}
+.dp-composer-input:focus{border-color:var(--accent)}
+.dp-send-btn{background:linear-gradient(135deg,#ff5000,#ff8c00);border:none;border-radius:10px;color:#fff;font-family:var(--head);font-weight:700;font-size:13px;padding:0 20px;cursor:pointer;transition:transform .2s}
+.dp-send-btn:hover{transform:translateY(-1px)}
+.dp-send-btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+
+.dp-nochat{flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;color:var(--muted)}
+.dp-nochat-icon{font-size:40px;opacity:.4}
+.dp-nochat-text{font-family:var(--mono);font-size:11px;letter-spacing:1.5px;text-transform:uppercase}
+
+/* COLLAPSIBLE PROFILE PANEL */
+.profile-panel{width:0;min-width:0;height:100vh;background:rgba(7,16,24,0.95);border-left:1px solid var(--border);overflow:hidden;flex-shrink:0;transition:width .28s ease,min-width .28s ease;backdrop-filter:blur(20px)}
+.profile-panel.open{width:var(--panel-w);min-width:var(--panel-w)}
+.profile-panel-inner{width:var(--panel-w);height:100vh;overflow-y:auto;padding:1.25rem}
+.profile-panel-inner::-webkit-scrollbar{width:4px}
+.profile-panel-inner::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+.pp-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:1.25rem}
+.pp-title{font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:3px;text-transform:uppercase;display:flex;align-items:center;gap:8px}
+.pp-title::before{content:'';display:block;width:14px;height:1px;background:var(--accent)}
+.pp-close{cursor:pointer;color:var(--muted);font-size:18px;transition:color .2s;line-height:1}
+.pp-close:hover{color:var(--accent)}
+.pp-name{font-family:var(--head);font-size:20px;font-weight:800;margin-bottom:2px}
+.pp-email{font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:1.25rem;word-break:break-all}
+.pp-section{margin-bottom:1.25rem}
+.pp-section-label{font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:8px}
+.pp-stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.pp-stat{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 12px}
+.pp-stat-val{font-family:var(--head);font-size:15px;font-weight:800;color:var(--text)}
+.pp-stat-label{font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-top:2px}
+.chip-row{display:flex;flex-wrap:wrap;gap:4px}
+.allergy-chip{display:inline-flex;align-items:center;gap:4px;background:rgba(255,77,109,0.1);border:1px solid rgba(255,77,109,0.25);border-radius:20px;padding:3px 10px;font-size:11px;color:#ff8899;font-family:var(--mono)}
+.condition-chip{display:inline-flex;align-items:center;gap:4px;background:rgba(0,212,255,0.08);border:1px solid rgba(0,212,255,0.2);border-radius:20px;padding:3px 10px;font-size:11px;color:var(--blue);font-family:var(--mono)}
+.lifestyle-chip{display:inline-flex;align-items:center;gap:4px;background:rgba(255,170,51,0.08);border:1px solid rgba(255,170,51,0.2);border-radius:20px;padding:3px 10px;font-size:11px;color:var(--warning);font-family:var(--mono)}
+.pp-empty-note{font-size:12px;color:var(--muted);font-style:italic}
+.pp-row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(255,80,0,0.06);font-size:12.5px}
+.pp-key{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1px}
+.pp-val{color:var(--text);text-align:right;max-width:60%}
+.pp-emerg{background:rgba(255,80,0,0.06);border:1px solid var(--border2);border-radius:10px;padding:10px 12px}
+.triage-item{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+.triage-item-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.triage-badge{font-family:var(--mono);font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:2px 8px;border-radius:20px;border:1px solid}
+.triage-date{font-family:var(--mono);font-size:9px;color:var(--muted)}
+.triage-summary{font-size:12px;color:var(--text);line-height:1.4}
+.badge-EMERGENCY{color:var(--danger);border-color:rgba(255,77,109,0.3);background:rgba(255,77,109,0.08)}
+.badge-HIGH{color:var(--warning);border-color:rgba(255,170,51,0.3);background:rgba(255,170,51,0.08)}
+.badge-MEDIUM{color:var(--blue);border-color:rgba(0,212,255,0.3);background:rgba(0,212,255,0.08)}
+.badge-LOW{color:var(--safe);border-color:rgba(0,255,136,0.3);background:rgba(0,255,136,0.08)}
+
+@media(max-width:820px){
+  :root{--sidebar-w:220px;--panel-w:280px}
+  .profile-panel.open{position:fixed;right:0;top:0;z-index:500}
+}
+</style>
+</head>
+<body>
+
+<div id="shell">
+  <!-- SIDEBAR -->
+  <div class="dp-sidebar">
+    <div class="dp-logo">
+      <div class="dp-logo-icon">🩺</div>
+      <div class="dp-logo-text">Med<span>AI</span> Doctor</div>
+    </div>
+    <div class="dp-search">
+      <div class="dp-search-bar">
+        <span style="font-size:12px">🔍</span>
+        <input class="dp-search-input" id="patient-search" placeholder="Search patients..." oninput="filterPatients()"/>
+      </div>
+    </div>
+    <div class="dp-list" id="patient-list">
+      <div class="dp-empty">Loading patients...</div>
+    </div>
+    <div class="dp-bottom">
+      <div style="display:flex;flex-direction:column;gap:6px;flex:1;min-width:0">
+        <span class="dp-doc-name" id="doc-name">—</span>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-family:var(--mono);font-size:9px;letter-spacing:1px;color:var(--muted);text-transform:uppercase">
+          <input type="checkbox" id="availability-toggle" checked onchange="toggleAvailability(this.checked)" style="accent-color:var(--accent)"/>
+          Available for new patients
+        </label>
+      </div>
+      <button class="dp-logout" onclick="doctorLogout()">Logout</button>
+    </div>
+  </div>
+
+  <!-- MAIN CHAT -->
+  <div class="dp-main">
+    <div id="dp-nochat" class="dp-nochat">
+      <div class="dp-nochat-icon">💬</div>
+      <div class="dp-nochat-text">Select a patient to start chatting</div>
+    </div>
+
+    <div id="dp-chat-shell" style="display:none;flex-direction:column;height:100%">
+      <div class="dp-topbar">
+        <div class="dp-topbar-left">
+          <div class="dp-topbar-avatar" id="chat-avatar">--</div>
+          <div>
+            <div class="dp-topbar-name" id="chat-name">—</div>
+            <div class="dp-topbar-sub" id="chat-sub">—</div>
+          </div>
+        </div>
+        <button class="profile-toggle-btn" id="profile-toggle" onclick="toggleProfilePanel()">
+          <span>👤</span> Patient Profile
+        </button>
+      </div>
+
+      <div class="dp-chat-area" id="chat-area"></div>
+
+      <div id="composer-image-preview" style="display:none;padding:0 1.5rem 10px;align-items:center;gap:10px">
+        <img id="composer-image-preview-img" style="max-height:56px;border-radius:8px;border:1px solid var(--border)"/>
+        <span style="font-size:12px;color:var(--muted)">Image attached</span>
+        <span onclick="clearComposerImage()" style="cursor:pointer;color:var(--muted);font-size:16px;margin-left:auto">✕</span>
+      </div>
+      <div class="dp-composer">
+        <input type="file" accept="image/*" id="composer-image-input" style="display:none" onchange="handleComposerImageSelect(event)"/>
+        <button class="dp-send-btn" style="background:var(--surface2);border:1px solid var(--border2);color:var(--text)" onclick="document.getElementById('composer-image-input').click()" title="Attach an image">📎</button>
+        <textarea class="dp-composer-input" id="composer-input" placeholder="Type a message..." rows="1" onkeydown="handleComposerKey(event)"></textarea>
+        <button class="dp-send-btn" id="send-btn" onclick="sendMessage()">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- COLLAPSIBLE PROFILE PANEL -->
+  <div class="profile-panel" id="profile-panel">
+    <div class="profile-panel-inner">
+      <div class="pp-header">
+        <div class="pp-title">Patient Profile</div>
+        <div class="pp-close" onclick="toggleProfilePanel()">✕</div>
+      </div>
+      <div id="profile-body">
+        <div class="pp-empty-note">Loading profile...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API_BASE_URL = localStorage.getItem('medai_api_base_url')
+  || (['localhost','127.0.0.1'].includes(window.location.hostname)
+        ? 'http://127.0.0.1:5500'
+        : 'https://medai-backend-5r9o.onrender.com');
+
+function authHeaders(){
+  const token = localStorage.getItem('medai_token');
+  return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
+}
+
+function doctorLogout(){
+  localStorage.removeItem('medai_token');
+  window.location.href = 'doctor-login.html';
+}
+
+let allPatients = [];
+let activePatientId = null;
+let activeConversationId = null;
+let pollTimer = null;
+
+function initials(name){
+  return (name || '?').split(' ').filter(Boolean).slice(0,2).map(w => w[0].toUpperCase()).join('') || '?';
+}
+
+function timeAgo(dateStr){
+  if(!dateStr) return '';
+  const d = new Date(dateStr);
+  const diffMs = Date.now() - d.getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if(mins < 1) return 'now';
+  if(mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  if(hrs < 24) return `${hrs}h`;
+  return `${Math.floor(hrs / 24)}d`;
+}
+
+// ---------- doctor's own profile ----------
+async function loadDoctorMe(){
+  try{
+    const res = await fetch(`${API_BASE_URL}/api/doctor-portal/me`, { headers: authHeaders() });
+    if(res.status === 401){ doctorLogout(); return; }
+    const data = await res.json();
+    if(data.profile){
+      document.getElementById('doc-name').textContent = 'Dr. ' + data.profile.fullName;
+      document.getElementById('availability-toggle').checked = data.profile.isAvailable !== false;
+    }
+  }catch(e){ console.error('Failed to load doctor profile', e); }
+}
+
+async function toggleAvailability(isAvailable){
+  try{
+    await fetch(`${API_BASE_URL}/api/doctor-portal/me/availability`, {
+      method: 'PATCH', headers: authHeaders(), body: JSON.stringify({ isAvailable })
+    });
+  }catch(e){ console.error('Failed to update availability', e); }
+}
+
+// ---------- patient list ----------
+async function loadPatients(){
+  try{
+    const res = await fetch(`${API_BASE_URL}/api/doctor-portal/patients`, { headers: authHeaders() });
+    if(res.status === 401){ doctorLogout(); return; }
+    const data = await res.json();
+    allPatients = data.patients || [];
+    renderPatientList(allPatients);
+  }catch(e){
+    document.getElementById('patient-list').innerHTML = '<div class="dp-empty">Couldn\'t load patients. Retry shortly.</div>';
+  }
+}
+
+function renderPatientList(patients){
+  const list = document.getElementById('patient-list');
+  if(!patients.length){
+    list.innerHTML = '<div class="dp-empty">No patients yet.</div>';
+    return;
+  }
+  list.innerHTML = patients.map(p => `
+    <div class="pt-item ${p.id === activePatientId ? 'active' : ''}" onclick="selectPatient('${p.id}')">
+      <div class="pt-avatar">${initials(p.name)}</div>
+      <div class="pt-info">
+        <div class="pt-name">${p.name}</div>
+        <div class="pt-preview">${p.lastTriageSummary ? p.lastTriageSummary.slice(0,40) : 'No triage summary'}</div>
+      </div>
+      ${p.highestSeverity ? `<div class="pt-sev sev-${p.highestSeverity}" title="${p.highestSeverity}"></div>` : ''}
+    </div>
+  `).join('');
+}
+
+function filterPatients(){
+  const q = document.getElementById('patient-search').value.trim().toLowerCase();
+  const filtered = allPatients.filter(p =>
+    p.name.toLowerCase().includes(q) || (p.email || '').toLowerCase().includes(q)
+  );
+  renderPatientList(filtered);
+}
+
+// ---------- selecting a patient: open/create conversation + load profile ----------
+async function selectPatient(patientId){
+  activePatientId = patientId;
+  renderPatientList(allPatients.filter(p => (document.getElementById('patient-search').value.trim() === '') || true));
+  document.getElementById('dp-nochat').style.display = 'none';
+  document.getElementById('dp-chat-shell').style.display = 'flex';
+
+  const patient = allPatients.find(p => p.id === patientId);
+  document.getElementById('chat-avatar').textContent = initials(patient?.name);
+  document.getElementById('chat-name').textContent = patient?.name || 'Patient';
+  document.getElementById('chat-sub').textContent = patient?.email || '';
+
+  loadPatientProfile(patientId);
+  await openConversation(patientId);
+}
+
+async function openConversation(patientId){
+  try{
+    const res = await fetch(`${API_BASE_URL}/api/doctor-portal/conversations`, {
+      method: 'POST', headers: authHeaders(), body: JSON.stringify({ patientId })
+    });
+    const data = await res.json();
+    activeConversationId = data.conversation?.id;
+    await loadMessages();
+    if(pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(loadMessages, 4000);
+  }catch(e){ console.error('Failed to open conversation', e); }
+}
+
+async function loadMessages(){
+  if(!activeConversationId) return;
+  try{
+    const res = await fetch(`${API_BASE_URL}/api/doctor-portal/conversations/${activeConversationId}/messages`, { headers: authHeaders() });
+    const data = await res.json();
+    renderMessages(data.messages || []);
+  }catch(e){ console.error('Failed to load messages', e); }
+}
+
+function renderMessages(messages){
+  const area = document.getElementById('chat-area');
+  const wasAtBottom = area.scrollTop + area.clientHeight >= area.scrollHeight - 40;
+  area.innerHTML = messages.map(m => {
+    const imageHtml = m.imageData
+      ? `<img src="${m.imageData}" style="max-width:100%;max-height:280px;border-radius:8px;display:block;cursor:pointer;${m.content ? 'margin-bottom:6px' : ''}" onclick="window.open(this.src,'_blank')"/>`
+      : '';
+    return `
+    <div class="msg-row ${m.senderRole === 'DOCTOR' ? 'me' : 'them'}">
+      <div>
+        <div class="msg-bubble">${imageHtml}${m.content ? escapeHtml(m.content) : ''}</div>
+        <div class="msg-time">${new Date(m.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div>
+      </div>
+    </div>`;
+  }).join('');
+  if(wasAtBottom || messages.length <= 1) area.scrollTop = area.scrollHeight;
+}
+
+function escapeHtml(str){
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function handleComposerKey(e){
+  if(e.key === 'Enter' && !e.shiftKey){
+    e.preventDefault();
+    sendMessage();
+  }
+}
+
+let _pendingComposerImage = null;
+
+function handleComposerImageSelect(event){
+  const file = event.target.files[0];
+  if(!file) return;
+  if(!file.type.startsWith('image/')){
+    alert('Please choose an image file.');
+    event.target.value = '';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = () => {
+      const maxDim = 1280;
+      let { width, height } = img;
+      if(width > maxDim || height > maxDim){
+        const scale = maxDim / Math.max(width, height);
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      _pendingComposerImage = canvas.toDataURL('image/jpeg', 0.75);
+      document.getElementById('composer-image-preview-img').src = _pendingComposerImage;
+      document.getElementById('composer-image-preview').style.display = 'flex';
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+  event.target.value = '';
+}
+
+function clearComposerImage(){
+  _pendingComposerImage = null;
+  document.getElementById('composer-image-preview').style.display = 'none';
+  document.getElementById('composer-image-preview-img').src = '';
+}
+
+async function sendMessage(){
+  const input = document.getElementById('composer-input');
+  const content = input.value.trim();
+  const imageData = _pendingComposerImage;
+  if(!content && !imageData) return;
+  if(!activeConversationId) return;
+  input.value = '';
+  clearComposerImage();
+  const btn = document.getElementById('send-btn');
+  btn.disabled = true;
+  try{
+    await fetch(`${API_BASE_URL}/api/doctor-portal/conversations/${activeConversationId}/messages`, {
+      method: 'POST', headers: authHeaders(), body: JSON.stringify({ content, imageData })
+    });
+    await loadMessages();
+  }catch(e){ console.error('Failed to send message', e); }
+  finally{ btn.disabled = false; }
+}
+
+// ---------- patient profile panel ----------
+function toggleProfilePanel(){
+  const panel = document.getElementById('profile-panel');
+  const btn = document.getElementById('profile-toggle');
+  const isOpen = panel.classList.toggle('open');
+  btn.classList.toggle('open', isOpen);
+}
+
+async function loadPatientProfile(patientId){
+  const body = document.getElementById('profile-body');
+  body.innerHTML = '<div class="pp-empty-note">Loading profile...</div>';
+  try{
+    const res = await fetch(`${API_BASE_URL}/api/doctor-portal/patients/${patientId}`, { headers: authHeaders() });
+    const data = await res.json();
+    renderProfile(data.patient, data.triageHistory || []);
+  }catch(e){
+    body.innerHTML = '<div class="pp-empty-note">Couldn\'t load this patient\'s profile.</div>';
+  }
+}
+
+function renderProfile(patient, triageHistory){
+  const body = document.getElementById('profile-body');
+  const name = `${patient.firstname || ''} ${patient.lastname || ''}`.trim() || patient.username;
+  const age = patient.dob ? calcAge(patient.dob) : null;
+
+  const lifestyleChips = [];
+  if(patient.smokes) lifestyleChips.push('Smokes');
+  if(patient.alcohol) lifestyleChips.push('Drinks alcohol');
+  if(patient.exercises) lifestyleChips.push('Exercises regularly');
+
+  body.innerHTML = `
+    <div class="pp-name">${name}</div>
+    <div class="pp-email">${patient.email}</div>
+
+    <div class="pp-section">
+      <div class="pp-section-label">Vitals</div>
+      <div class="pp-stat-grid">
+        <div class="pp-stat"><div class="pp-stat-val">${age !== null ? age : '—'}</div><div class="pp-stat-label">Age</div></div>
+        <div class="pp-stat"><div class="pp-stat-val">${patient.gender || '—'}</div><div class="pp-stat-label">Gender</div></div>
+        <div class="pp-stat"><div class="pp-stat-val">${patient.height || '—'}</div><div class="pp-stat-label">Height</div></div>
+        <div class="pp-stat"><div class="pp-stat-val">${patient.weight || '—'}</div><div class="pp-stat-label">Weight</div></div>
+      </div>
+      <div class="pp-stat" style="margin-top:8px">
+        <div class="pp-stat-val">${patient.bloodGroup || '—'}</div>
+        <div class="pp-stat-label">Blood Group</div>
+      </div>
+    </div>
+
+    <div class="pp-section">
+      <div class="pp-section-label">Conditions</div>
+      ${patient.conditions && patient.conditions.length
+        ? `<div class="chip-row">${patient.conditions.map(c => `<span class="condition-chip">${escapeHtml(c)}</span>`).join('')}</div>`
+        : '<div class="pp-empty-note">None reported</div>'}
+      ${patient.otherConditions ? `<div class="pp-row" style="margin-top:8px"><span class="pp-val" style="text-align:left;max-width:100%">${escapeHtml(patient.otherConditions)}</span></div>` : ''}
+    </div>
+
+    <div class="pp-section">
+      <div class="pp-section-label">Allergies</div>
+      ${patient.allergies && patient.allergies.length
+        ? `<div class="chip-row">${patient.allergies.map(a => `<span class="allergy-chip">${escapeHtml(a)}</span>`).join('')}</div>`
+        : '<div class="pp-empty-note">None reported</div>'}
+    </div>
+
+    <div class="pp-section">
+      <div class="pp-section-label">Medications</div>
+      <div class="pp-empty-note" style="color:var(--text);font-style:normal">${patient.medications ? escapeHtml(patient.medications) : 'None reported'}</div>
+    </div>
+
+    <div class="pp-section">
+      <div class="pp-section-label">Lifestyle</div>
+      ${lifestyleChips.length
+        ? `<div class="chip-row">${lifestyleChips.map(c => `<span class="lifestyle-chip">${c}</span>`).join('')}</div>`
+        : '<div class="pp-empty-note">Not reported</div>'}
+    </div>
+
+    <div class="pp-section">
+      <div class="pp-section-label">Emergency Contact</div>
+      <div class="pp-emerg">
+        <div class="pp-row" style="border:none"><span class="pp-key">Name</span><span class="pp-val">${patient.emergName || '—'}</span></div>
+        <div class="pp-row" style="border:none"><span class="pp-key">Phone</span><span class="pp-val">${patient.emergPhone || '—'}</span></div>
+      </div>
+    </div>
+
+    <div class="pp-section">
+      <div class="pp-section-label">Recent Triage History</div>
+      ${triageHistory.length
+        ? triageHistory.map(t => `
+          <div class="triage-item">
+            <div class="triage-item-top">
+              <span class="triage-badge badge-${t.triageLevel}">${t.triageLevel}</span>
+              <span class="triage-date">${new Date(t.createdAt).toLocaleDateString()}</span>
+            </div>
+            <div class="triage-summary">${escapeHtml(t.summary || t.symptoms || '')}</div>
+          </div>
+        `).join('')
+        : '<div class="pp-empty-note">No triage records yet</div>'}
+    </div>
+  `;
+}
+
+function calcAge(dob){
+  const birth = new Date(dob);
+  if(isNaN(birth.getTime())) return null;
+  const diff = Date.now() - birth.getTime();
+  return Math.floor(diff / (365.25 * 24 * 60 * 60 * 1000));
+}
+
+// ---------- init ----------
+loadDoctorMe();
+loadPatients();
+</script>
+</body>
+</html>

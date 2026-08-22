@@ -5,6 +5,33 @@ const prisma = require('../db');
 
 router.use(requireAuth);
 
+// POST /api/chat/conversations — patient starts (or resumes) a conversation with an approved doctor
+router.post('/conversations', async (req, res, next) => {
+  try {
+    const { doctorId } = req.body;
+    if (!doctorId) return res.status(400).json({ message: 'doctorId is required.' });
+
+    const doctorProfile = await prisma.doctorProfile.findUnique({ where: { userId: doctorId } });
+    if (!doctorProfile || doctorProfile.verificationStatus !== 'APPROVED') {
+      return res.status(404).json({ message: 'Doctor not found or not available.' });
+    }
+
+    let conversation = await prisma.conversation.findUnique({
+      where: { doctorId_patientId: { doctorId, patientId: req.user.id } }
+    });
+
+    if (!conversation) {
+      conversation = await prisma.conversation.create({
+        data: { doctorId, patientId: req.user.id }
+      });
+    }
+
+    return res.json({ conversation });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 // GET /api/chat/conversations — list this patient's conversations with doctors
 router.get('/conversations', async (req, res, next) => {
   try {
@@ -63,11 +90,23 @@ router.get('/conversations/:id/messages', async (req, res, next) => {
   }
 });
 
-// POST /api/chat/conversations/:id/messages — patient sends a message
+// POST /api/chat/conversations/:id/messages — patient sends a message (text and/or image)
 router.post('/conversations/:id/messages', async (req, res, next) => {
   try {
-    const { content } = req.body;
-    if (!content || !content.trim()) return res.status(400).json({ message: 'Message content is required.' });
+    const { content, imageData } = req.body;
+    const trimmedContent = (content || '').trim();
+
+    if (!trimmedContent && !imageData) {
+      return res.status(400).json({ message: 'Message content or image is required.' });
+    }
+    if (imageData) {
+      if (typeof imageData !== 'string' || !imageData.startsWith('data:image/')) {
+        return res.status(400).json({ message: 'Invalid image format.' });
+      }
+      if (imageData.length > 7_000_000) { // ~5MB decoded
+        return res.status(400).json({ message: 'Image is too large. Please use an image under 5MB.' });
+      }
+    }
 
     const conversation = await prisma.conversation.findUnique({ where: { id: req.params.id } });
     if (!conversation || conversation.patientId !== req.user.id) {
@@ -79,7 +118,8 @@ router.post('/conversations/:id/messages', async (req, res, next) => {
         conversationId: req.params.id,
         senderId: req.user.id,
         senderRole: 'USER',
-        content: content.trim()
+        content: trimmedContent,
+        imageData: imageData || null
       }
     });
 

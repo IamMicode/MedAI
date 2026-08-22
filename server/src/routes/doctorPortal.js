@@ -28,6 +28,23 @@ router.get('/me', async (req, res, next) => {
   }
 });
 
+// PATCH /api/doctor-portal/me/availability — toggle "available for new patients"
+router.patch('/me/availability', async (req, res, next) => {
+  try {
+    const { isAvailable } = req.body;
+    if (typeof isAvailable !== 'boolean') {
+      return res.status(400).json({ message: 'isAvailable (boolean) is required.' });
+    }
+    const profile = await prisma.doctorProfile.update({
+      where: { userId: req.user.id },
+      data: { isAvailable }
+    });
+    return res.json({ profile });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 // GET /api/doctor-portal/patients — real patients with triage activity, most recent/severe first
 router.get('/patients', async (req, res, next) => {
   try {
@@ -182,11 +199,23 @@ router.get('/conversations/:id/messages', async (req, res, next) => {
   }
 });
 
-// POST /api/doctor-portal/conversations/:id/messages — send a message
+// POST /api/doctor-portal/conversations/:id/messages — send a message (text and/or image)
 router.post('/conversations/:id/messages', async (req, res, next) => {
   try {
-    const { content } = req.body;
-    if (!content || !content.trim()) return res.status(400).json({ message: 'Message content is required.' });
+    const { content, imageData } = req.body;
+    const trimmedContent = (content || '').trim();
+
+    if (!trimmedContent && !imageData) {
+      return res.status(400).json({ message: 'Message content or image is required.' });
+    }
+    if (imageData) {
+      if (typeof imageData !== 'string' || !imageData.startsWith('data:image/')) {
+        return res.status(400).json({ message: 'Invalid image format.' });
+      }
+      if (imageData.length > 7_000_000) { // ~5MB decoded
+        return res.status(400).json({ message: 'Image is too large. Please use an image under 5MB.' });
+      }
+    }
 
     const conversation = await prisma.conversation.findUnique({ where: { id: req.params.id } });
     if (!conversation || conversation.doctorId !== req.user.id) {
@@ -198,7 +227,8 @@ router.post('/conversations/:id/messages', async (req, res, next) => {
         conversationId: req.params.id,
         senderId: req.user.id,
         senderRole: 'DOCTOR',
-        content: content.trim()
+        content: trimmedContent,
+        imageData: imageData || null
       }
     });
 

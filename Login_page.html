@@ -979,7 +979,7 @@
           sessionStorage.setItem('medai_admin_started_at', new Date().toISOString());
           sessionStorage.setItem('medai_admin_name', data.user.username);
           if(window.medaiShowLoader) window.medaiShowLoader('Opening admin console');
-          setTimeout(()=>{ window.location.href = 'admin1.html'; }, 420);
+          setTimeout(()=>{ window.location.href = 'admin.html'; }, 420);
         } else {
           if(window.medaiShowLoader) window.medaiShowLoader('Opening dashboard');
           setTimeout(()=>{ window.location.href = 'dashboard.html'; }, 420);

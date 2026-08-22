@@ -100,7 +100,7 @@ router.get('/google/callback', authLimiter, (req, res, next) => {
     }
 
     const token = createToken(user);
-    const destination = user.role === 'ADMIN' ? '/admin1.html' : '/dashboard.html';
+    const destination = user.role === 'ADMIN' ? '/admin.html' : '/dashboard.html';
     const redirectUrl = new URL(destination, process.env.FRONTEND_ORIGIN || 'http://localhost:3000');
     redirectUrl.searchParams.set('token', token);
     return res.redirect(redirectUrl.toString());

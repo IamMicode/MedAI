@@ -178,6 +178,12 @@ select option{background:var(--surface2)}
           <label>Hospital / Clinic Affiliation <span style="opacity:.6">(optional)</span></label>
           <input type="text" id="hospital" placeholder="e.g. Lagos University Teaching Hospital"/>
         </div>
+        <div class="field-group">
+          <label>Workplace Location <span style="opacity:.6">(optional — helps patients find you in Therapy Finder & Appointments)</span></label>
+          <input type="text" id="hospital-address" placeholder="Start typing an address..." autocomplete="off"/>
+          <div id="doctor-map" style="height:220px;border-radius:12px;margin-top:10px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.03);display:flex;align-items:center;justify-content:center;font-size:12px;color:rgba(255,255,255,0.4)">Loading map...</div>
+          <div id="location-status" style="font-size:11px;color:rgba(255,255,255,0.45);margin-top:6px">Search an address above, or drag the pin once the map loads to fine-tune your exact location.</div>
+        </div>
         <div class="step-actions">
           <button type="button" class="btn btn-ghost" onclick="goToStep(1)">← Back</button>
           <button type="button" class="btn btn-primary" onclick="goToStep(3)">Continue →</button>
@@ -228,6 +234,98 @@ const API_BASE_URL = localStorage.getItem('medai_api_base_url')
   || (['localhost','127.0.0.1'].includes(window.location.hostname)
         ? 'http://127.0.0.1:5500'
         : 'https://medai-backend-5r9o.onrender.com');
+
+// ============================================================
+// WORKPLACE LOCATION PICKER (Google Maps + Places Autocomplete)
+// ============================================================
+// TODO: replace with your own browser-restricted Google Maps JavaScript API key
+// (Google Cloud Console → APIs & Services → Credentials → restrict to your domain).
+// This must be a different key from any server-side Places key — this one is public
+// in the page source, so it should be locked to HTTP referrers, not IP/server use.
+const GOOGLE_MAPS_JS_KEY = 'AIzaSyBxX7k5ARcUC7sFAtIAwjbqFUUqnKfm3-I';
+
+let _selectedLat = null;
+let _selectedLng = null;
+let _doctorMap = null;
+let _doctorMarker = null;
+
+function loadGoogleMapsScript(){
+  if(GOOGLE_MAPS_JS_KEY === 'YOUR_GOOGLE_MAPS_API_KEY'){
+    document.getElementById('doctor-map').textContent = 'Map disabled — add a Google Maps API key to enable location picking.';
+    return;
+  }
+  const script = document.createElement('script');
+  script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_JS_KEY}&libraries=places&callback=initDoctorMap`;
+  script.async = true;
+  script.defer = true;
+  document.head.appendChild(script);
+}
+
+function reverseGeocode(lat, lng){
+  const geocoder = new google.maps.Geocoder();
+  geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+    if(status === 'OK' && results[0]){
+      document.getElementById('hospital-address').value = results[0].formatted_address;
+    }
+  });
+}
+
+function setDoctorLocation(lat, lng, skipReverseGeocode){
+  _selectedLat = lat;
+  _selectedLng = lng;
+  const pos = { lat, lng };
+  _doctorMap.setCenter(pos);
+  _doctorMap.setZoom(16);
+  _doctorMarker.setPosition(pos);
+  _doctorMarker.setVisible(true);
+  document.getElementById('location-status').textContent = `Pinned at ${lat.toFixed(5)}, ${lng.toFixed(5)}. Drag the marker to adjust.`;
+  if(!skipReverseGeocode) reverseGeocode(lat, lng);
+}
+
+function initDoctorMap(){
+  const defaultCenter = { lat: 6.5244, lng: 3.3792 }; // Lagos, as a sensible default
+  _doctorMap = new google.maps.Map(document.getElementById('doctor-map'), {
+    center: defaultCenter,
+    zoom: 11,
+    disableDefaultUI: true,
+    zoomControl: true,
+    styles: [{ elementType: 'geometry', stylers: [{ color: '#1a1a2e' }] }]
+  });
+
+  _doctorMarker = new google.maps.Marker({
+    map: _doctorMap,
+    draggable: true,
+    visible: false
+  });
+
+  _doctorMarker.addListener('dragend', () => {
+    const pos = _doctorMarker.getPosition();
+    setDoctorLocation(pos.lat(), pos.lng());
+  });
+
+  _doctorMap.addListener('click', (e) => {
+    setDoctorLocation(e.latLng.lat(), e.latLng.lng());
+  });
+
+  const autocomplete = new google.maps.places.Autocomplete(document.getElementById('hospital-address'), {
+    fields: ['geometry', 'formatted_address']
+  });
+  autocomplete.addListener('place_changed', () => {
+    const place = autocomplete.getPlace();
+    if(!place.geometry) return;
+    setDoctorLocation(place.geometry.location.lat(), place.geometry.location.lng(), true);
+  });
+
+  // Try to center on the doctor's current location as a starting point, if allowed
+  if(navigator.geolocation){
+    navigator.geolocation.getCurrentPosition(
+      (pos) => { _doctorMap.setCenter({ lat: pos.coords.latitude, lng: pos.coords.longitude }); },
+      () => {} // silently ignore if denied
+    );
+  }
+}
+
+loadGoogleMapsScript();
 
 let currentStep = 1;
 let licenseDocumentBase64 = null;
@@ -331,7 +429,10 @@ document.getElementById('doctor-form').addEventListener('submit', async (e) => {
     yearsExperience: parseInt(document.getElementById('yearsExperience').value, 10),
     hospital: document.getElementById('hospital').value.trim() || undefined,
     bio: document.getElementById('bio').value.trim() || undefined,
-    licenseDocument: licenseDocumentBase64 || undefined
+    licenseDocument: licenseDocumentBase64 || undefined,
+    latitude: typeof _selectedLat === 'number' ? _selectedLat : undefined,
+    longitude: typeof _selectedLng === 'number' ? _selectedLng : undefined,
+    formattedAddress: document.getElementById('hospital-address').value.trim() || undefined
   };
 
   try{

@@ -176,6 +176,7 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
     <div class="dp-bottom">
       <div style="display:flex;flex-direction:column;gap:6px;flex:1;min-width:0">
         <span class="dp-doc-name" id="doc-name">—</span>
+        <span id="doc-rating" style="font-family:var(--mono);font-size:10px;color:var(--warning)"></span>
         <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-family:var(--mono);font-size:9px;letter-spacing:1px;color:var(--muted);text-transform:uppercase">
           <input type="checkbox" id="availability-toggle" checked onchange="toggleAvailability(this.checked)" style="accent-color:var(--accent)"/>
           Available for new patients
@@ -282,8 +283,20 @@ async function loadDoctorMe(){
     if(data.profile){
       document.getElementById('doc-name').textContent = 'Dr. ' + data.profile.fullName;
       document.getElementById('availability-toggle').checked = data.profile.isAvailable !== false;
+      loadDoctorOwnRating(data.profile.userId);
     }
   }catch(e){ console.error('Failed to load doctor profile', e); }
+}
+
+async function loadDoctorOwnRating(doctorId){
+  const el = document.getElementById('doc-rating');
+  if(!el) return;
+  try{
+    const res = await fetch(`${API_BASE_URL}/api/doctors/${doctorId}/reviews`, { headers: authHeaders() });
+    if(!res.ok) return;
+    const data = await res.json();
+    el.textContent = data.avgRating ? `★ ${data.avgRating} (${data.reviewCount})` : 'No reviews yet';
+  }catch(e){ /* non-critical */ }
 }
 
 async function toggleAvailability(isAvailable){

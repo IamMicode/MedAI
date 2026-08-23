@@ -52,6 +52,8 @@ model User {
   panicEvents     PanicEvent[]
   doctorConversations   Conversation[] @relation("DoctorConversations")
   patientConversations  Conversation[] @relation("PatientConversations")
+  reviewsReceived       DoctorReview[] @relation("DoctorReviewsReceived")
+  reviewsGiven          DoctorReview[] @relation("DoctorReviewsGiven")
 }
 
 model TriageRecord {
@@ -148,6 +150,21 @@ model DoctorProfile {
   user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([verificationStatus])
+}
+
+model DoctorReview {
+  id             String   @id @default(cuid())
+  doctorId       String
+  patientId      String
+  rating         Int      // 1-5
+  comment        String?  @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  doctor         User     @relation("DoctorReviewsReceived", fields: [doctorId], references: [id], onDelete: Cascade)
+  patient        User     @relation("DoctorReviewsGiven", fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@unique([doctorId, patientId])
+  @@index([doctorId])
 }
 
 model Conversation {

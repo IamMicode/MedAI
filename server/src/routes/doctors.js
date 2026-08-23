@@ -195,7 +195,94 @@ router.get('/directory', requireAuth, async (req, res, next) => {
       },
       orderBy: { fullName: 'asc' }
     });
-    return res.json({ doctors });
+
+    if (!doctors.length) return res.json({ doctors });
+
+    const ratingRows = await prisma.doctorReview.groupBy({
+      by: ['doctorId'],
+      where: { doctorId: { in: doctors.map(d => d.userId) } },
+      _avg: { rating: true },
+      _count: { rating: true }
+    });
+    const ratingMap = Object.fromEntries(
+      ratingRows.map(r => [r.doctorId, { avgRating: Math.round(r._avg.rating * 10) / 10, reviewCount: r._count.rating }])
+    );
+
+    const withRatings = doctors.map(d => ({
+      ...d,
+      avgRating: ratingMap[d.userId]?.avgRating ?? null,
+      reviewCount: ratingMap[d.userId]?.reviewCount ?? 0
+    }));
+
+    return res.json({ doctors: withRatings });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// ── REVIEWS: list a doctor's reviews (public to any authenticated patient) ──
+router.get('/:doctorId/reviews', requireAuth, async (req, res, next) => {
+  try {
+    const { doctorId } = req.params;
+    const reviews = await prisma.doctorReview.findMany({
+      where: { doctorId },
+      orderBy: { createdAt: 'desc' },
+      include: { patient: { select: { firstname: true, lastname: true, username: true } } }
+    });
+    const agg = await prisma.doctorReview.aggregate({
+      where: { doctorId },
+      _avg: { rating: true },
+      _count: { rating: true }
+    });
+
+    return res.json({
+      reviews: reviews.map(r => ({
+        id: r.id,
+        rating: r.rating,
+        comment: r.comment,
+        createdAt: r.createdAt,
+        patientName: (r.patient.firstname ? `${r.patient.firstname} ${r.patient.lastname || ''}`.trim() : r.patient.username)
+      })),
+      avgRating: agg._avg.rating ? Math.round(agg._avg.rating * 10) / 10 : null,
+      reviewCount: agg._count.rating
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// ── REVIEWS: submit or update the current patient's review of a doctor ──
+// Only allowed if the patient has an existing conversation with this doctor (i.e. they've chatted).
+const reviewSchema = z.object({
+  rating: z.number().int().min(1).max(5),
+  comment: z.string().trim().max(1000).optional()
+});
+router.post('/:doctorId/reviews', requireAuth, async (req, res, next) => {
+  try {
+    const { doctorId } = req.params;
+    const parsed = reviewSchema.safeParse({
+      rating: Number(req.body.rating),
+      comment: req.body.comment
+    });
+    if (!parsed.success) {
+      return res.status(400).json({ message: 'A rating from 1 to 5 is required.' });
+    }
+    const { rating, comment } = parsed.data;
+
+    const conversation = await prisma.conversation.findUnique({
+      where: { doctorId_patientId: { doctorId, patientId: req.user.id } }
+    });
+    if (!conversation) {
+      return res.status(403).json({ message: 'You can only review a doctor after chatting with them.' });
+    }
+
+    const review = await prisma.doctorReview.upsert({
+      where: { doctorId_patientId: { doctorId, patientId: req.user.id } },
+      create: { doctorId, patientId: req.user.id, rating, comment: comment || null },
+      update: { rating, comment: comment || null }
+    });
+
+    return res.json({ review });
   } catch (error) {
     return next(error);
   }

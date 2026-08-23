@@ -420,6 +420,7 @@ async function routeTriageReceptionist(category, specialty){
         <div style="background:rgba(0,212,255,0.05);border:1px solid var(--border2);border-radius:12px;padding:1rem;margin-bottom:.5rem">
           <div style="font-family:var(--head);font-weight:700;font-size:14px">Dr. ${escapeHtmlChat(d.fullName)}</div>
           <div style="font-size:12px;color:var(--muted);margin-top:2px">${escapeHtmlChat(d.specialty)}${d.hospital ? ' · ' + escapeHtmlChat(d.hospital) : ''}</div>
+          ${d.avgRating ? `<div style="font-size:11px;color:var(--warning);margin-top:4px">${'★'.repeat(Math.round(d.avgRating))}${'☆'.repeat(5-Math.round(d.avgRating))} ${d.avgRating} (${d.reviewCount})</div>` : ''}
           <div style="font-size:11px;color:var(--safe);font-family:var(--mono);margin-top:6px">● AVAILABLE NOW</div>
         </div>
         ${triageRoutingButton('Message Dr. ' + escapeHtmlChat(d.fullName), '💬', `startTriageDoctorChat('${d.userId}','${escapeHtmlChat(d.fullName)}','${escapeHtmlChat(d.specialty)}')`)}`;
@@ -544,7 +545,7 @@ const API_BASE_URL = localStorage.getItem('medai_api_base_url')
 // TODO: replace with your own browser-restricted Google Maps JavaScript API key.
 // Must be locked to your domain(s) in Google Cloud Console — this key is public
 // in the page source, unlike the server-side Places key used for therapy.js.
-const GOOGLE_MAPS_JS_KEY = 'YOUR_GOOGLE_MAPS_API_KEY';
+const GOOGLE_MAPS_JS_KEY = 'AIzaSyBxX7k5ARcUC7sFAtIAwjbqFUUqnKfm3-I';
 
 let _googleMapsLoadPromise = null;
 let _doctorDirectory = null;
@@ -606,6 +607,7 @@ async function loadDoctorDirectoryMap(){
       <div class="therapy-card-head">
         <div><div class="therapy-name">Dr. ${escapeHtml(d.fullName)}</div><div class="therapy-meta">${escapeHtml(d.specialty)}${d.hospital ? ' · ' + escapeHtml(d.hospital) : ''}</div></div>
       </div>
+      ${d.avgRating ? `<div class="therapy-meta" style="color:var(--warning)">${'★'.repeat(Math.round(d.avgRating))}${'☆'.repeat(5-Math.round(d.avgRating))} ${d.avgRating} (${d.reviewCount} review${d.reviewCount===1?'':'s'})</div>` : `<div class="therapy-meta">No reviews yet</div>`}
       <div class="therapy-meta">${escapeHtml(d.formattedAddress || 'Location not shared yet')}</div>
       <div class="therapy-meta">${d.yearsExperience} years experience</div>
     </div>
@@ -656,9 +658,10 @@ async function loadAppointmentDoctors(){
     return;
   }
 
-  select.innerHTML = doctors.map(d =>
-    `<option value="Dr. ${escapeHtml(d.fullName)} - ${escapeHtml(d.specialty)}" data-lat="${d.latitude}" data-lng="${d.longitude}" data-hospital="${escapeHtml(d.hospital || d.formattedAddress || '')}">Dr. ${escapeHtml(d.fullName)} - ${escapeHtml(d.specialty)}</option>`
-  ).join('');
+  select.innerHTML = doctors.map(d => {
+    const ratingLabel = d.avgRating ? ` (★${d.avgRating} · ${d.reviewCount})` : '';
+    return `<option value="Dr. ${escapeHtml(d.fullName)} - ${escapeHtml(d.specialty)}" data-lat="${d.latitude}" data-lng="${d.longitude}" data-hospital="${escapeHtml(d.hospital || d.formattedAddress || '')}">Dr. ${escapeHtml(d.fullName)} - ${escapeHtml(d.specialty)}${ratingLabel}</option>`;
+  }).join('');
 
   onApptDoctorChange();
 }
@@ -2122,7 +2125,7 @@ async function loadPatientConversations(){
     }
 
     list.innerHTML = _patientConversations.map(c => `
-      <div class="history-row" style="cursor:pointer;border-radius:0" onclick="openPatientConversation('${c.id}','${escapeHtmlChat(c.doctorName)}','${escapeHtmlChat(c.doctorSpecialty||'')}')" id="pconv-${c.id}">
+      <div class="history-row" style="cursor:pointer;border-radius:0" onclick="openPatientConversation('${c.id}','${escapeHtmlChat(c.doctorName)}','${escapeHtmlChat(c.doctorSpecialty||'')}','${c.doctorId}')" id="pconv-${c.id}">
         <div class="history-triage-dot home"></div>
         <div class="history-info">
           <div class="history-symptom">Dr. ${escapeHtmlChat(c.doctorName)}</div>
@@ -2134,18 +2137,93 @@ async function loadPatientConversations(){
   }
 }
 
-function openPatientConversation(convId, doctorName, specialty){
+let _activePatientDoctorId = null;
+let _activePatientDoctorName = null;
+
+function openPatientConversation(convId, doctorName, specialty, doctorId){
   _activePatientConversation = convId;
+  _activePatientDoctorId = doctorId || _activePatientDoctorId;
+  _activePatientDoctorName = doctorName;
   document.querySelectorAll('#patient-conv-list .history-row').forEach(el => el.style.background = '');
   const active = document.getElementById('pconv-' + convId);
   if(active) active.style.background = 'rgba(0,212,255,0.06)';
 
-  document.getElementById('patient-chat-header').textContent = 'Dr. ' + doctorName + (specialty ? ' — ' + specialty : '');
+  document.getElementById('patient-chat-header').innerHTML =
+    `<span>Dr. ${escapeHtmlChat(doctorName)}${specialty ? ' — ' + escapeHtmlChat(specialty) : ''}</span>
+     <span onclick="openRateDoctorModal()" style="float:right;cursor:pointer;font-family:var(--mono);font-size:10px;letter-spacing:1px;color:var(--accent);border:1px solid var(--border2);border-radius:20px;padding:4px 10px">⭐ RATE DOCTOR</span>`;
   document.getElementById('patient-chat-input-row').style.display = 'flex';
 
   loadPatientMessages();
   if(_patientChatPollInterval) clearInterval(_patientChatPollInterval);
   _patientChatPollInterval = setInterval(loadPatientMessages, 4000);
+}
+
+// ---------- Rate Doctor modal ----------
+function openRateDoctorModal(){
+  if(!_activePatientDoctorId){
+    alert('Select a conversation first.');
+    return;
+  }
+  const existing = document.getElementById('rate-doctor-modal');
+  if(existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'rate-doctor-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:900;display:flex;align-items:center;justify-content:center;padding:1rem';
+  modal.innerHTML = `
+    <div class="glass-card" style="max-width:380px;width:100%;padding:1.5rem" onclick="event.stopPropagation()">
+      <div style="font-family:var(--head);font-weight:700;font-size:16px;margin-bottom:4px">Rate Dr. ${escapeHtmlChat(_activePatientDoctorName || '')}</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:1rem">Your review helps other patients choose the right doctor.</div>
+      <div id="star-picker" style="display:flex;gap:6px;font-size:28px;margin-bottom:1rem;cursor:pointer;justify-content:center">
+        ${[1,2,3,4,5].map(n => `<span data-star="${n}" onclick="setStarRating(${n})" style="opacity:.3;transition:opacity .15s">⭐</span>`).join('')}
+      </div>
+      <textarea class="tool-textarea" id="review-comment" placeholder="Optional: share more about your experience..." style="width:100%;min-height:80px"></textarea>
+      <div style="display:flex;gap:10px;margin-top:1rem">
+        <div class="btn" style="flex:1;justify-content:center" onclick="document.getElementById('rate-doctor-modal').remove()">Cancel</div>
+        <div class="btn btn-primary" style="flex:1;justify-content:center" onclick="submitDoctorReview()">Submit</div>
+      </div>
+      <div id="review-submit-status" style="font-size:11px;color:var(--muted);margin-top:.5rem;text-align:center"></div>
+    </div>`;
+  modal.onclick = () => modal.remove();
+  document.body.appendChild(modal);
+  window._selectedStarRating = 0;
+}
+
+function setStarRating(n){
+  window._selectedStarRating = n;
+  document.querySelectorAll('#star-picker span').forEach(el => {
+    el.style.opacity = Number(el.dataset.star) <= n ? '1' : '.3';
+  });
+}
+
+async function submitDoctorReview(){
+  const status = document.getElementById('review-submit-status');
+  const rating = window._selectedStarRating || 0;
+  if(rating < 1){
+    status.textContent = 'Please select a star rating.';
+    status.style.color = 'var(--danger)';
+    return;
+  }
+  const comment = document.getElementById('review-comment').value.trim();
+  status.textContent = 'Submitting...';
+  status.style.color = 'var(--muted)';
+  try{
+    const res = await fetch(`${API_BASE_URL}/api/doctors/${_activePatientDoctorId}/reviews`, {
+      method: 'POST',
+      headers: { ...patientAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rating, comment })
+    });
+    if(!res.ok){
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || 'Could not submit review.');
+    }
+    status.textContent = 'Thank you for your feedback!';
+    status.style.color = 'var(--safe)';
+    setTimeout(() => { const m = document.getElementById('rate-doctor-modal'); if(m) m.remove(); }, 1200);
+  }catch(e){
+    status.textContent = e.message || 'Could not submit review. Please try again.';
+    status.style.color = 'var(--danger)';
+  }
 }
 
 async function loadPatientMessages(){

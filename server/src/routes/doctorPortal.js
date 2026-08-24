@@ -14,6 +14,62 @@ function requireDoctor(req, res, next) {
 
 router.use(requireDoctor);
 
+// GET /api/doctor-portal/appointments — this doctor's incoming appointment requests, pending first
+router.get('/appointments', async (req, res, next) => {
+  try {
+    const appointments = await prisma.appointment.findMany({
+      where: { doctorId: req.user.id },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        patient: { select: { id: true, firstname: true, lastname: true, username: true, email: true } }
+      }
+    });
+
+    const statusRank = { PENDING: 0, ACCEPTED: 1, DECLINED: 2, CANCELLED: 3 };
+    const sorted = appointments.sort((a, b) => (statusRank[a.status] ?? 9) - (statusRank[b.status] ?? 9));
+
+    return res.json({
+      appointments: sorted.map(a => ({
+        id: a.id,
+        patientName: `${a.patient.firstname || ''} ${a.patient.lastname || ''}`.trim() || a.patient.username,
+        patientEmail: a.patient.email,
+        scheduledDate: a.scheduledDate,
+        scheduledTime: a.scheduledTime,
+        reason: a.reason,
+        urgency: a.urgency,
+        status: a.status,
+        createdAt: a.createdAt
+      }))
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// PATCH /api/doctor-portal/appointments/:id — accept or decline an appointment request
+router.patch('/appointments/:id', async (req, res, next) => {
+  try {
+    const { status, declineReason } = req.body;
+    if (!['ACCEPTED', 'DECLINED'].includes(status)) {
+      return res.status(400).json({ message: 'status must be ACCEPTED or DECLINED.' });
+    }
+
+    const appointment = await prisma.appointment.findUnique({ where: { id: req.params.id } });
+    if (!appointment || appointment.doctorId !== req.user.id) {
+      return res.status(404).json({ message: 'Appointment not found.' });
+    }
+
+    const updated = await prisma.appointment.update({
+      where: { id: req.params.id },
+      data: { status, declineReason: status === 'DECLINED' ? (declineReason || null) : null }
+    });
+
+    return res.json({ appointment: updated });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 // GET /api/doctor-portal/me — doctor's own profile + verification status
 router.get('/me', async (req, res, next) => {
   try {

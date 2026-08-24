@@ -99,7 +99,7 @@ function showTab(id,el){
   document.getElementById('topbar-bc').textContent='// '+(tabBc[id]||id.toUpperCase());
   if(id === 'premium') renderPrices();
   if(id === 'therapy'){ renderTherapyFinder(); loadDoctorDirectoryMap(); }
-  if(id === 'appointments') loadAppointmentDoctors();
+  if(id === 'appointments'){ loadAppointmentDoctors(); loadPatientAppointments(); }
   if(id === 'messages') loadPatientConversations();
   if(id === 'achievements') renderAchievements();
 }
@@ -660,7 +660,7 @@ async function loadAppointmentDoctors(){
 
   select.innerHTML = doctors.map(d => {
     const ratingLabel = d.avgRating ? ` (★${d.avgRating} · ${d.reviewCount})` : '';
-    return `<option value="Dr. ${escapeHtml(d.fullName)} - ${escapeHtml(d.specialty)}" data-lat="${d.latitude}" data-lng="${d.longitude}" data-hospital="${escapeHtml(d.hospital || d.formattedAddress || '')}">Dr. ${escapeHtml(d.fullName)} - ${escapeHtml(d.specialty)}${ratingLabel}</option>`;
+    return `<option value="${d.userId}" data-lat="${d.latitude}" data-lng="${d.longitude}" data-hospital="${escapeHtml(d.hospital || d.formattedAddress || '')}" data-name="${escapeHtml(d.fullName)}" data-specialty="${escapeHtml(d.specialty)}">Dr. ${escapeHtml(d.fullName)} - ${escapeHtml(d.specialty)}${ratingLabel}</option>`;
   }).join('');
 
   onApptDoctorChange();
@@ -1221,25 +1221,86 @@ function analyzeLabReportText(text){
   }).filter(Boolean);
 }
 
-function bookAppointment(){
-  const doctor=document.getElementById('appt-doctor')?.value || 'Doctor';
-  const urgency=document.getElementById('appt-urgency')?.value || 'Routine';
-  const date=document.getElementById('appt-date')?.value || 'Next available';
-  const time=document.getElementById('appt-time')?.value || 'TBD';
-  const reason=document.getElementById('appt-reason')?.value.trim() || 'General consultation';
-  const list=document.getElementById('appointment-list');
+async function bookAppointment(){
+  const select = document.getElementById('appt-doctor');
+  const doctorId = select?.value || '';
+  const opt = select?.options[select.selectedIndex];
+  const doctorName = opt?.dataset?.name || 'Doctor';
+  const urgency = document.getElementById('appt-urgency')?.value || 'Routine';
+  const date = document.getElementById('appt-date')?.value || '';
+  const time = document.getElementById('appt-time')?.value || '';
+  const reason = document.getElementById('appt-reason')?.value.trim() || 'General consultation';
+
+  if(!doctorId){
+    alert('Please select a doctor.');
+    return;
+  }
+  if(!date || !time){
+    alert('Please choose a date and time.');
+    return;
+  }
+
+  const btn = event?.target;
+  if(btn) btn.style.opacity = '.6';
+
+  try{
+    const res = await fetch(`${API_BASE_URL}/api/chat/appointments`, {
+      method: 'POST',
+      headers: { ...patientAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ doctorId, scheduledDate: date, scheduledTime: time, reason, urgency })
+    });
+    if(!res.ok){
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || 'Could not book appointment.');
+    }
+    document.getElementById('appt-reason').value = '';
+    await loadPatientAppointments();
+  }catch(e){
+    alert(e.message || 'Could not book appointment. Please try again.');
+  }finally{
+    if(btn) btn.style.opacity = '1';
+  }
+}
+
+const APPT_STATUS_BADGE = {
+  PENDING:   { label: 'Pending doctor response', cls: 'badge-warn' },
+  ACCEPTED:  { label: 'Accepted', cls: 'badge-green' },
+  DECLINED:  { label: 'Declined', cls: 'badge-danger' },
+  CANCELLED: { label: 'Cancelled', cls: 'badge-blue' }
+};
+
+async function loadPatientAppointments(){
+  const list = document.getElementById('appointment-list');
   if(!list) return;
-  const item=document.createElement('div');
-  item.className='timeline-item';
-  item.innerHTML=`<div class="timeline-time">${escapeHtml(date)}</div><div><div class="timeline-title">${escapeHtml(doctor)}</div><div class="timeline-meta">${escapeHtml(reason)} - ${escapeHtml(time)}</div></div><span class="badge ${urgency==='Urgent'?'badge-danger':urgency==='Soon'?'badge-warn':'badge-blue'}">${escapeHtml(urgency)}</span>`;
-  list.prepend(item);
-  const appointments = getStored('appointments', []);
-  appointments.unshift({doctor,urgency,date,time,reason,createdAt:new Date().toISOString()});
-  setStored('appointments', appointments.slice(0,30));
-  updateHistoryDashboard();
-  renderNotifications();
-  const reasonEl=document.getElementById('appt-reason');
-  if(reasonEl) reasonEl.value='';
+  list.innerHTML = '<div style="padding:1rem;color:var(--muted);font-size:12px">Loading appointments...</div>';
+  try{
+    const res = await fetch(`${API_BASE_URL}/api/chat/appointments`, { headers: patientAuthHeaders() });
+    if(!res.ok) throw new Error('failed');
+    const data = await res.json();
+    const appointments = data.appointments || [];
+
+    if(!appointments.length){
+      list.innerHTML = '<div style="padding:1rem;color:var(--muted);font-size:12px">No appointments booked yet.</div>';
+      return;
+    }
+
+    list.innerHTML = appointments.map(a => {
+      const badge = APPT_STATUS_BADGE[a.status] || APPT_STATUS_BADGE.PENDING;
+      const declineNote = (a.status === 'DECLINED' && a.declineReason)
+        ? `<div class="timeline-meta" style="color:var(--danger)">Doctor's note: ${escapeHtmlChat(a.declineReason)}</div>` : '';
+      return `<div class="timeline-item">
+        <div class="timeline-time">${escapeHtml(a.scheduledDate)}</div>
+        <div>
+          <div class="timeline-title">Dr. ${escapeHtml(a.doctorName)}${a.specialty ? ' — ' + escapeHtml(a.specialty) : ''}</div>
+          <div class="timeline-meta">${escapeHtml(a.reason || 'General consultation')} - ${escapeHtml(a.scheduledTime)}</div>
+          ${declineNote}
+        </div>
+        <span class="badge ${badge.cls}">${badge.label}</span>
+      </div>`;
+    }).join('');
+  }catch(e){
+    list.innerHTML = '<div style="padding:1rem;color:var(--muted);font-size:12px">Could not load appointments. Check your connection and try again.</div>';
+  }
 }
 
 function escapeHtml(value){
@@ -1272,7 +1333,6 @@ function loadLocalFrontendData(){
   if(total) total.textContent = calorieTotal;
   renderStoredReminders();
   renderStoredFoods();
-  renderStoredAppointments();
   renderVitalsList();
   updateHistoryDashboard();
   renderSavedRating();
@@ -2483,19 +2543,56 @@ function renderNotifications(){
     return;
   }
   const reminders=localStorage.getItem('medicine_notifications') === 'false' ? [] : getStored('reminders', []).filter(r=>r.status!=='Taken').slice(0,3);
-  const appointments=localStorage.getItem('appointment_notifications') === 'false' ? [] : getStored('appointments', []).slice(0,2);
+  const appointmentNotifs=localStorage.getItem('appointment_notifications') === 'false' ? [] : (window._apptNotifications || []);
   const system=localStorage.getItem('system_notifications') === 'false' ? [] : [
-    {text:'Your health data is saved locally until backend sync is added.',time:'System'},
     {text:'Tip: complete your profile to improve health score personalization.',time:'Profile'}
   ];
   const items=[
+    ...appointmentNotifs,
     ...reminders.map(r=>({text:`Medicine reminder due: ${r.name} at ${r.time || 'now'}`,time:'Reminder'})),
-    ...appointments.map(a=>({text:`Appointment booked: ${a.doctor} on ${a.date || 'next available'}`,time:'Appointment'})),
     ...system
   ];
   list.innerHTML = items.map(i=>`<div class="notif-item">${escapeHtml(i.text)}<div class="notif-time">${escapeHtml(i.time)}</div></div>`).join('');
   if(dot) dot.style.display = items.length ? 'block' : 'none';
 }
+
+// ---------- Appointment status notifications (poll for doctor accept/decline) ----------
+async function pollAppointmentStatusForNotifications(){
+  const token = localStorage.getItem('medai_token');
+  if(!token) return;
+  try{
+    const res = await fetch(`${API_BASE_URL}/api/chat/appointments`, { headers: patientAuthHeaders() });
+    if(!res.ok) return;
+    const data = await res.json();
+    const appointments = data.appointments || [];
+
+    const seenKey = userStoragePrefix() + 'appt_seen_status';
+    let seen = {};
+    try{ seen = JSON.parse(localStorage.getItem(seenKey) || '{}'); }catch(e){ seen = {}; }
+
+    const newNotifs = [];
+    appointments.forEach(a => {
+      const prevStatus = seen[a.id];
+      if(a.status !== 'PENDING' && prevStatus !== a.status){
+        if(a.status === 'ACCEPTED'){
+          newNotifs.push({ text: `Dr. ${a.doctorName} accepted your appointment for ${a.scheduledDate} at ${a.scheduledTime}.`, time: 'Appointment' });
+        } else if(a.status === 'DECLINED'){
+          newNotifs.push({ text: `Dr. ${a.doctorName} declined your appointment request${a.declineReason ? ': ' + a.declineReason : '.'}`, time: 'Appointment' });
+        }
+      }
+      seen[a.id] = a.status;
+    });
+
+    localStorage.setItem(seenKey, JSON.stringify(seen));
+
+    if(newNotifs.length){
+      window._apptNotifications = [...newNotifs, ...(window._apptNotifications || [])].slice(0, 10);
+      renderNotifications();
+    }
+  }catch(e){ /* non-critical, retry on next interval */ }
+}
+setInterval(pollAppointmentStatusForNotifications, 30000);
+pollAppointmentStatusForNotifications();
 
 function toggleNotifications(){
   const panel=document.getElementById('notif-panel');

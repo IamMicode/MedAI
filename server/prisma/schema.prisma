@@ -54,6 +54,8 @@ model User {
   patientConversations  Conversation[] @relation("PatientConversations")
   reviewsReceived       DoctorReview[] @relation("DoctorReviewsReceived")
   reviewsGiven          DoctorReview[] @relation("DoctorReviewsGiven")
+  doctorAppointments    Appointment[]  @relation("DoctorAppointments")
+  patientAppointments   Appointment[]  @relation("PatientAppointments")
 }
 
 model TriageRecord {
@@ -165,6 +167,25 @@ model DoctorReview {
 
   @@unique([doctorId, patientId])
   @@index([doctorId])
+}
+
+model Appointment {
+  id            String   @id @default(cuid())
+  doctorId      String
+  patientId     String
+  scheduledDate String   // e.g. "2026-09-01" — kept as free text to match the existing date/time inputs
+  scheduledTime String   // e.g. "14:30"
+  reason        String?  @db.Text
+  urgency       String   @default("Routine") // Routine | Soon | Urgent
+  status        String   @default("PENDING") // PENDING | ACCEPTED | DECLINED | CANCELLED
+  declineReason String?  @db.Text
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  doctor        User     @relation("DoctorAppointments", fields: [doctorId], references: [id], onDelete: Cascade)
+  patient       User     @relation("PatientAppointments", fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([doctorId])
+  @@index([patientId])
 }
 
 model Conversation {

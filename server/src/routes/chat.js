@@ -5,6 +5,68 @@ const prisma = require('../db');
 
 router.use(requireAuth);
 
+// POST /api/chat/appointments — patient books an appointment with an approved doctor
+router.post('/appointments', async (req, res, next) => {
+  try {
+    const { doctorId, scheduledDate, scheduledTime, reason, urgency } = req.body;
+    if (!doctorId || !scheduledDate || !scheduledTime) {
+      return res.status(400).json({ message: 'doctorId, scheduledDate, and scheduledTime are required.' });
+    }
+
+    const doctorProfile = await prisma.doctorProfile.findUnique({ where: { userId: doctorId } });
+    if (!doctorProfile || doctorProfile.verificationStatus !== 'APPROVED') {
+      return res.status(404).json({ message: 'Doctor not found or not available.' });
+    }
+
+    const appointment = await prisma.appointment.create({
+      data: {
+        doctorId,
+        patientId: req.user.id,
+        scheduledDate,
+        scheduledTime,
+        reason: reason || null,
+        urgency: urgency || 'Routine',
+        status: 'PENDING'
+      }
+    });
+
+    return res.json({ appointment });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// GET /api/chat/appointments — patient's own appointments, most recent first
+router.get('/appointments', async (req, res, next) => {
+  try {
+    const appointments = await prisma.appointment.findMany({
+      where: { patientId: req.user.id },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        doctor: { select: { id: true, doctorProfile: { select: { fullName: true, specialty: true } } } }
+      }
+    });
+
+    return res.json({
+      appointments: appointments.map(a => ({
+        id: a.id,
+        doctorName: a.doctor.doctorProfile?.fullName || 'Doctor',
+        specialty: a.doctor.doctorProfile?.specialty || '',
+        scheduledDate: a.scheduledDate,
+        scheduledTime: a.scheduledTime,
+        reason: a.reason,
+        urgency: a.urgency,
+        status: a.status,
+        declineReason: a.declineReason,
+        createdAt: a.createdAt,
+        updatedAt: a.updatedAt
+      }))
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 // POST /api/chat/conversations — patient starts (or resumes) a conversation with an approved doctor
 router.post('/conversations', async (req, res, next) => {
   try {

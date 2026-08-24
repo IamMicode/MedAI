@@ -545,7 +545,7 @@ const API_BASE_URL = localStorage.getItem('medai_api_base_url')
 // TODO: replace with your own browser-restricted Google Maps JavaScript API key.
 // Must be locked to your domain(s) in Google Cloud Console — this key is public
 // in the page source, unlike the server-side Places key used for therapy.js.
-const GOOGLE_MAPS_JS_KEY = 'AIzaSyBxX7k5ARcUC7sFAtIAwjbqFUUqnKfm3-I';
+const GOOGLE_MAPS_JS_KEY = 'YOUR_GOOGLE_MAPS_API_KEY';
 
 let _googleMapsLoadPromise = null;
 let _doctorDirectory = null;
@@ -1486,7 +1486,7 @@ function loadProfileForm(){
   renderProfileAvatar(u);
 }
 
-function saveProfile(){
+async function saveProfile(){
   const u = getCurrentUser();
   const updated = {
     ...u,
@@ -1509,13 +1509,56 @@ function saveProfile(){
     alcohol: !!document.getElementById('profile-alcohol')?.checked,
     exercises: !!document.getElementById('profile-exercises')?.checked
   };
+
   setCurrentUser(updated);
   personalizeEmergencyContact(updated);
   refreshDailyScore();
   renderProfileAvatar(updated);
   syncTherapyCountryFromProfile(updated, true);
+
   const msg = document.getElementById('profile-save-msg');
-  if(msg) msg.innerHTML = '<strong style="color:var(--safe)">Saved.</strong> Your health profile has been updated for this browser.';
+  if(msg) msg.innerHTML = '<strong style="color:var(--accent)">Saving...</strong>';
+
+  const token = localStorage.getItem('medai_token');
+  if(!token){
+    if(msg) msg.innerHTML = '<strong style="color:var(--warning)">Saved locally only</strong> — log in to sync this to your doctors.';
+    return;
+  }
+
+  try{
+    const res = await fetch(`${API_BASE_URL}/api/profile`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        firstname: updated.firstname,
+        lastname: updated.lastname,
+        dob: updated.dob,
+        gender: updated.gender,
+        height: updated.height,
+        weight: updated.weight,
+        bloodGroup: updated.bloodGroup,
+        country: updated.country,
+        phone: updated.phone,
+        conditions: updated.conditions,
+        allergies: updated.allergies,
+        medications: updated.medications,
+        smokes: updated.smokes,
+        alcohol: updated.alcohol,
+        exercises: updated.exercises,
+        emergName: updated.emergName,
+        emergPhone: updated.emergPhone
+      })
+    });
+    if(!res.ok){
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || 'Could not sync to server.');
+    }
+    const data = await res.json();
+    if(data.user) localStorage.setItem('medai_current_user', JSON.stringify(data.user));
+    if(msg) msg.innerHTML = '<strong style="color:var(--safe)">Saved.</strong> Your doctors will see this the next time they open your profile.';
+  }catch(e){
+    if(msg) msg.innerHTML = `<strong style="color:var(--danger)">Saved locally, but couldn't sync:</strong> ${escapeHtmlChat(e.message)}`;
+  }
 }
 
 function splitCsv(value){

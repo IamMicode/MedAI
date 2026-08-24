@@ -257,6 +257,7 @@ let allPatients = [];
 let activePatientId = null;
 let activeConversationId = null;
 let pollTimer = null;
+let profilePollTimer = null;
 
 function initials(name){
   return (name || '?').split(' ').filter(Boolean).slice(0,2).map(w => w[0].toUpperCase()).join('') || '?';
@@ -359,6 +360,9 @@ async function selectPatient(patientId){
   document.getElementById('chat-sub').textContent = patient?.email || '';
 
   loadPatientProfile(patientId);
+  if(profilePollTimer) clearInterval(profilePollTimer);
+  profilePollTimer = setInterval(() => loadPatientProfile(patientId), 10000);
+
   await openConversation(patientId);
 }
 

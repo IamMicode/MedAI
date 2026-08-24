@@ -13,6 +13,13 @@ const optionalString = z.preprocess(
   z.string().optional()
 );
 
+const optionalBoolean = z.preprocess((value) => {
+  if (value === undefined || value === '') return undefined;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') return value === 'true';
+  return value;
+}, z.boolean().optional());
+
 const profileSchema = z.object({
   firstname: optionalString,
   lastname: optionalString,
@@ -27,9 +34,9 @@ const profileSchema = z.object({
   otherConditions: optionalString,
   allergies: z.array(z.string()).optional(),
   medications: optionalString,
-  smokes: optionalString,
-  alcohol: optionalString,
-  exercises: optionalString,
+  smokes: optionalBoolean,
+  alcohol: optionalBoolean,
+  exercises: optionalBoolean,
   emergName: optionalString,
   emergPhone: optionalString
 });

@@ -372,6 +372,13 @@ Complaint: ${input}`;
       createdAt: new Date().toISOString()
     });
 
+    _lastTriageContext = {
+      complaint: input,
+      title: r.triage_title || c.label,
+      summary: r.summary || '',
+      confidence: r.confidence || 70
+    };
+
     routeTriageReceptionist(r.category || 'home', r.specialty || null);
 
   } catch(e) {
@@ -391,6 +398,40 @@ function triageRoutingButton(label, icon, onclick){
   return `<div class="btn btn-primary" style="justify-content:center;margin-top:.5rem" onclick="${onclick}">${icon} ${label}</div>`;
 }
 
+let _lastTriageContext = null;
+
+function buildHandoffPrompt(targetAI){
+  const ctx = _lastTriageContext;
+  if(!ctx) return '';
+  if(targetAI === 'mental'){
+    return `Hi — I just used the Quick Triage tool and described this: "${ctx.complaint}". The triage assessment suggested this may be more of an emotional or mental health concern (${ctx.title}: ${ctx.summary}). Can you help me talk through what I'm feeling and figure out next steps?`;
+  }
+  return `Hi — I just used the Quick Triage tool and described this: "${ctx.complaint}". The triage result was "${ctx.title}" — ${ctx.summary} (confidence: ${ctx.confidence}%). No specialist doctor is available right now — can you help me understand this better and what I should do next?`;
+}
+
+function renderHandoffPromptBox(targetAI, boxId){
+  const promptText = buildHandoffPrompt(targetAI);
+  return `
+    <div style="font-size:11px;color:var(--muted);margin-bottom:.35rem">Copy this and paste it in as your first message, so it already has your context:</div>
+    <div style="position:relative;background:rgba(0,0,0,0.25);border:1px solid var(--border2);border-radius:10px;padding:10px 12px;margin-bottom:.5rem">
+      <div id="${boxId}" style="font-size:12px;color:var(--text);line-height:1.5;white-space:pre-wrap">${escapeHtmlChat(promptText)}</div>
+    </div>
+    <div class="btn" style="justify-content:center;margin-bottom:.5rem" onclick="copyHandoffPrompt('${boxId}', this)">📋 Copy Prompt</div>`;
+}
+
+function copyHandoffPrompt(boxId, btnEl){
+  const el = document.getElementById(boxId);
+  if(!el) return;
+  const text = el.textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const original = btnEl.innerHTML;
+    btnEl.innerHTML = '✅ Copied!';
+    setTimeout(() => { btnEl.innerHTML = original; }, 1800);
+  }).catch(() => {
+    alert('Could not copy automatically — please select and copy the text manually.');
+  });
+}
+
 async function routeTriageReceptionist(category, specialty){
   const box = document.getElementById('triage-routing');
   if(!box) return;
@@ -398,6 +439,7 @@ async function routeTriageReceptionist(category, specialty){
   if(category === 'emotional'){
     box.innerHTML = `
       <div style="font-size:12px;color:var(--muted);margin-bottom:.4rem">This sounds like it's more about how you're feeling than a physical illness. Our Mental Health AI can help right now:</div>
+      ${renderHandoffPromptBox('mental', 'handoff-prompt-mental')}
       ${triageRoutingButton('Talk to Mental Health AI', '🧠', "showTab('mental-ai',null)")}`;
     return;
   }
@@ -427,6 +469,7 @@ async function routeTriageReceptionist(category, specialty){
     } else {
       box.innerHTML = `
         <div style="font-size:12px;color:var(--muted);margin-bottom:.4rem">No ${escapeHtmlChat(specialty || 'matching')} doctor is available right now. Our Medical Health AI can help in the meantime:</div>
+        ${renderHandoffPromptBox('medical', 'handoff-prompt-medical')}
         ${triageRoutingButton('Ask Medical Health AI', '🏥', "showTab('medical-ai',null)")}`;
     }
     return;

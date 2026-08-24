@@ -45,58 +45,58 @@ router.patch('/me/availability', async (req, res, next) => {
   }
 });
 
-// GET /api/doctor-portal/patients — real patients with triage activity, most recent/severe first
+// GET /api/doctor-portal/patients — this doctor's patients (from real conversations), most recently active first
 router.get('/patients', async (req, res, next) => {
   try {
-    const records = await prisma.triageRecord.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: 100,
+    const conversations = await prisma.conversation.findMany({
+      where: { doctorId: req.user.id },
       include: {
-        user: {
+        patient: {
           select: {
             id: true, username: true, firstname: true, lastname: true,
             email: true, bloodGroup: true, allergies: true, conditions: true,
             emergName: true, emergPhone: true, createdAt: true
           }
+        },
+        messages: {
+          orderBy: { createdAt: 'desc' },
+          take: 1
         }
       }
     });
 
-    // group by patient, keep their most recent + most severe triage
-    const byPatient = {};
-    for (const r of records) {
-      if (!r.user) continue;
-      const pid = r.user.id;
-      if (!byPatient[pid]) {
-        byPatient[pid] = { user: r.user, triageCount: 0, lastTriage: null, highestSeverity: null };
-      }
-      byPatient[pid].triageCount++;
-      if (!byPatient[pid].lastTriage) byPatient[pid].lastTriage = r;
-      const severityRank = { LOW: 1, MEDIUM: 2, HIGH: 3, EMERGENCY: 4 };
-      const currentRank = severityRank[r.triageLevel] || 0;
-      const highestRank = severityRank[byPatient[pid].highestSeverity] || 0;
-      if (currentRank > highestRank) byPatient[pid].highestSeverity = r.triageLevel;
+    // pull each patient's most recent triage record too, if any exists, for severity context
+    const patientIds = conversations.map(c => c.patient.id);
+    const triageRecords = patientIds.length
+      ? await prisma.triageRecord.findMany({
+          where: { userId: { in: patientIds } },
+          orderBy: { createdAt: 'desc' }
+        })
+      : [];
+    const latestTriageByPatient = {};
+    for (const t of triageRecords) {
+      if (!latestTriageByPatient[t.userId]) latestTriageByPatient[t.userId] = t;
     }
 
-    const patients = Object.values(byPatient)
-      .sort((a, b) => {
-        const sevRank = { EMERGENCY: 4, HIGH: 3, MEDIUM: 2, LOW: 1 };
-        const diff = (sevRank[b.highestSeverity] || 0) - (sevRank[a.highestSeverity] || 0);
-        if (diff !== 0) return diff;
-        return new Date(b.lastTriage.createdAt) - new Date(a.lastTriage.createdAt);
+    const patients = conversations
+      .map(c => {
+        const lastMessage = c.messages[0] || null;
+        const triage = latestTriageByPatient[c.patient.id] || null;
+        return {
+          id: c.patient.id,
+          conversationId: c.id,
+          name: `${c.patient.firstname || ''} ${c.patient.lastname || ''}`.trim() || c.patient.username,
+          email: c.patient.email,
+          bloodGroup: c.patient.bloodGroup,
+          allergies: c.patient.allergies,
+          conditions: c.patient.conditions,
+          highestSeverity: triage ? triage.triageLevel : null,
+          lastTriageSummary: triage ? (triage.summary || triage.symptoms || null) : null,
+          lastMessage: lastMessage ? (lastMessage.content || (lastMessage.imageData ? '📷 Image' : '')) : null,
+          lastMessageAt: lastMessage ? lastMessage.createdAt : c.createdAt
+        };
       })
-      .map(p => ({
-        id: p.user.id,
-        name: `${p.user.firstname || ''} ${p.user.lastname || ''}`.trim() || p.user.username,
-        email: p.user.email,
-        bloodGroup: p.user.bloodGroup,
-        allergies: p.user.allergies,
-        conditions: p.user.conditions,
-        triageCount: p.triageCount,
-        highestSeverity: p.highestSeverity,
-        lastTriageDate: p.lastTriage.createdAt,
-        lastTriageSummary: p.lastTriage.summary || p.lastTriage.symptoms || null
-      }));
+      .sort((a, b) => new Date(b.lastMessageAt) - new Date(a.lastMessageAt));
 
     return res.json({ patients });
   } catch (error) {
@@ -107,6 +107,12 @@ router.get('/patients', async (req, res, next) => {
 // GET /api/doctor-portal/patients/:id — full patient profile + triage history for chat context
 router.get('/patients/:id', async (req, res, next) => {
   try {
+    // Only allow viewing a patient's full profile if this doctor actually has a conversation with them
+    const conversation = await prisma.conversation.findUnique({
+      where: { doctorId_patientId: { doctorId: req.user.id, patientId: req.params.id } }
+    });
+    if (!conversation) return res.status(403).json({ message: 'You do not have a conversation with this patient.' });
+
     const patient = await prisma.user.findUnique({
       where: { id: req.params.id },
       select: {

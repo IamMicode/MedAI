@@ -331,7 +331,7 @@ function renderPatientList(patients){
       <div class="pt-avatar">${initials(p.name)}</div>
       <div class="pt-info">
         <div class="pt-name">${p.name}</div>
-        <div class="pt-preview">${p.lastTriageSummary ? p.lastTriageSummary.slice(0,40) : 'No triage summary'}</div>
+        <div class="pt-preview">${p.lastMessage ? p.lastMessage.slice(0,40) : (p.lastTriageSummary ? p.lastTriageSummary.slice(0,40) : 'No messages yet')}</div>
       </div>
       ${p.highestSeverity ? `<div class="pt-sev sev-${p.highestSeverity}" title="${p.highestSeverity}"></div>` : ''}
     </div>

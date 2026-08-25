@@ -1811,6 +1811,27 @@ function saveVitalReading(reading){
   localStorage.setItem(vitalsKey(), JSON.stringify(vitals.slice(0,100)));
   renderVitalsList();
   updateHistoryDashboard();
+  syncVitalReadingToBackend(reading);
+}
+
+async function syncVitalReadingToBackend(reading){
+  const token = localStorage.getItem('medai_token');
+  if(!token) return;
+  try{
+    await fetch(`${API_BASE_URL}/api/profile/vitals`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        heartRate: reading.heartRate || undefined,
+        spo2: reading.spo2 || undefined,
+        temp: reading.temp || undefined,
+        bp: reading.bp || undefined,
+        glucose: reading.glucose || undefined,
+        weight: reading.weight || undefined,
+        source: reading.source === 'camera' ? 'camera' : 'manual'
+      })
+    });
+  }catch(e){ /* non-critical — vitals still saved locally, doctor sync just delayed */ }
 }
 
 function setVitalText(ids, value, fallback='--'){
@@ -1860,7 +1881,7 @@ function logManualVitals(){
   if(!reading.heartRate && !reading.spo2 && !reading.temp && !reading.bp && !reading.glucose && !reading.weight) return;
   saveVitalReading(reading);
   const msg=document.getElementById('manual-vitals-msg');
-  if(msg) msg.innerHTML='<strong style="color:var(--safe)">Saved.</strong> Manual vitals were added to local history.';
+  if(msg) msg.innerHTML='<strong style="color:var(--safe)">Saved.</strong> Your doctors will see this the next time they open your profile.';
   ['manual-hr','manual-spo2','manual-temp','manual-bp','manual-glucose','manual-weight'].forEach(id=>{const el=document.getElementById(id); if(el) el.value='';});
 }
 

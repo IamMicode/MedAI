@@ -56,6 +56,7 @@ model User {
   reviewsGiven          DoctorReview[] @relation("DoctorReviewsGiven")
   doctorAppointments    Appointment[]  @relation("DoctorAppointments")
   patientAppointments   Appointment[]  @relation("PatientAppointments")
+  vitalReadings         VitalReading[]
 }
 
 model TriageRecord {
@@ -167,6 +168,22 @@ model DoctorReview {
 
   @@unique([doctorId, patientId])
   @@index([doctorId])
+}
+
+model VitalReading {
+  id        String   @id @default(cuid())
+  userId    String
+  heartRate String?
+  spo2      String?
+  temp      String?
+  bp        String?
+  glucose   String?
+  weight    String?
+  source    String   @default("manual") // manual | camera
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Appointment {

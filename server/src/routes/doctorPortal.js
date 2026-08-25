@@ -186,7 +186,13 @@ router.get('/patients/:id', async (req, res, next) => {
       take: 20
     });
 
-    return res.json({ patient, triageHistory });
+    const vitalReadings = await prisma.vitalReading.findMany({
+      where: { userId: req.params.id },
+      orderBy: { createdAt: 'desc' },
+      take: 20
+    });
+
+    return res.json({ patient, triageHistory, vitalReadings });
   } catch (error) {
     return next(error);
   }

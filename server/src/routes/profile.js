@@ -102,4 +102,53 @@ router.put('/password', validate(passwordSchema), async (req, res, next) => {
   }
 });
 
+const vitalSchema = z.object({
+  heartRate: optionalString,
+  spo2: optionalString,
+  temp: optionalString,
+  bp: optionalString,
+  glucose: optionalString,
+  weight: optionalString,
+  source: z.enum(['manual', 'camera']).optional()
+});
+
+// POST /api/profile/vitals — log a new vital reading (manual entry or camera scan)
+router.post('/vitals', validate(vitalSchema), async (req, res, next) => {
+  try {
+    const { heartRate, spo2, temp, bp, glucose, weight, source } = req.body;
+    if (!heartRate && !spo2 && !temp && !bp && !glucose && !weight) {
+      return res.status(400).json({ message: 'At least one vital reading is required.' });
+    }
+    const reading = await prisma.vitalReading.create({
+      data: {
+        userId: req.user.id,
+        heartRate: heartRate || null,
+        spo2: spo2 || null,
+        temp: temp || null,
+        bp: bp || null,
+        glucose: glucose || null,
+        weight: weight || null,
+        source: source || 'manual'
+      }
+    });
+    return res.json({ reading });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// GET /api/profile/vitals — this patient's own vitals history, most recent first
+router.get('/vitals', async (req, res, next) => {
+  try {
+    const readings = await prisma.vitalReading.findMany({
+      where: { userId: req.user.id },
+      orderBy: { createdAt: 'desc' },
+      take: 100
+    });
+    return res.json({ readings });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 module.exports = router;

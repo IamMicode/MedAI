@@ -499,16 +499,27 @@ async function loadPatientProfile(patientId){
   try{
     const res = await fetch(`${API_BASE_URL}/api/doctor-portal/patients/${patientId}`, { headers: authHeaders() });
     const data = await res.json();
-    renderProfile(data.patient, data.triageHistory || []);
+    renderProfile(data.patient, data.triageHistory || [], data.vitalReadings || []);
   }catch(e){
     body.innerHTML = '<div class="pp-empty-note">Couldn\'t load this patient\'s profile.</div>';
   }
 }
 
-function renderProfile(patient, triageHistory){
+function timeAgoShort(dateStr){
+  const diffMs = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if(mins < 1) return 'just now';
+  if(mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if(hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
+function renderProfile(patient, triageHistory, vitalReadings){
   const body = document.getElementById('profile-body');
   const name = `${patient.firstname || ''} ${patient.lastname || ''}`.trim() || patient.username;
   const age = patient.dob ? calcAge(patient.dob) : null;
+  const latestVital = vitalReadings && vitalReadings.length ? vitalReadings[0] : null;
 
   const lifestyleChips = [];
   if(patient.smokes) lifestyleChips.push('Smokes');
@@ -520,7 +531,30 @@ function renderProfile(patient, triageHistory){
     <div class="pp-email">${patient.email}</div>
 
     <div class="pp-section">
-      <div class="pp-section-label">Vitals</div>
+      <div class="pp-section-label">Live Vitals ${latestVital ? `<span style="color:var(--muted);text-transform:none;letter-spacing:0">· ${timeAgoShort(latestVital.createdAt)} (${latestVital.source})</span>` : ''}</div>
+      ${latestVital ? `
+        <div class="pp-stat-grid">
+          <div class="pp-stat"><div class="pp-stat-val">${latestVital.heartRate || '—'}</div><div class="pp-stat-label">Heart Rate (bpm)</div></div>
+          <div class="pp-stat"><div class="pp-stat-val">${latestVital.spo2 || '—'}</div><div class="pp-stat-label">SpO2 (%)</div></div>
+          <div class="pp-stat"><div class="pp-stat-val">${latestVital.temp || '—'}</div><div class="pp-stat-label">Temp (°C)</div></div>
+          <div class="pp-stat"><div class="pp-stat-val">${latestVital.bp || '—'}</div><div class="pp-stat-label">Blood Pressure</div></div>
+          <div class="pp-stat"><div class="pp-stat-val">${latestVital.glucose || '—'}</div><div class="pp-stat-label">Glucose</div></div>
+          <div class="pp-stat"><div class="pp-stat-val">${latestVital.weight || '—'}</div><div class="pp-stat-label">Weight</div></div>
+        </div>
+        ${vitalReadings.length > 1 ? `
+          <div style="margin-top:10px">
+            ${vitalReadings.slice(1, 6).map(v => `
+              <div class="pp-row">
+                <span class="pp-key">${timeAgoShort(v.createdAt)} · ${v.source}</span>
+                <span class="pp-val">${[v.heartRate && v.heartRate + ' bpm', v.bp, v.temp && v.temp + '°C', v.spo2 && v.spo2 + '% SpO2'].filter(Boolean).join(' · ') || '—'}</span>
+              </div>
+            `).join('')}
+          </div>` : ''}
+      ` : '<div class="pp-empty-note">No vitals logged yet</div>'}
+    </div>
+
+    <div class="pp-section">
+      <div class="pp-section-label">Basic Info</div>
       <div class="pp-stat-grid">
         <div class="pp-stat"><div class="pp-stat-val">${age !== null ? age : '—'}</div><div class="pp-stat-label">Age</div></div>
         <div class="pp-stat"><div class="pp-stat-val">${patient.gender || '—'}</div><div class="pp-stat-label">Gender</div></div>

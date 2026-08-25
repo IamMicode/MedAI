@@ -2887,10 +2887,21 @@ const therapyDirectory = {
 
 function normalizeCountryCode(value){
   const v = String(value || '').trim().toLowerCase();
-  if(['ng','nigeria'].includes(v)) return 'NG';
-  if(['us','usa','united states','united states of america','america'].includes(v)) return 'US';
-  if(['gb','uk','united kingdom','england','britain'].includes(v)) return 'GB';
-  if(['za','south africa'].includes(v)) return 'ZA';
+  const known = {
+    ng:'NG', nigeria:'NG',
+    us:'US', usa:'US', 'united states':'US', 'united states of america':'US', america:'US',
+    gb:'GB', uk:'GB', 'united kingdom':'GB', england:'GB', britain:'GB',
+    za:'ZA', 'south africa':'ZA',
+    ca:'CA', canada:'CA',
+    au:'AU', australia:'AU',
+    ie:'IE', ireland:'IE',
+    gh:'GH', ghana:'GH',
+    ke:'KE', kenya:'KE',
+    in:'IN', india:'IN',
+    de:'DE', germany:'DE',
+    fr:'FR', france:'FR'
+  };
+  if(known[v]) return known[v];
   return therapyDirectory[v.toUpperCase()] ? v.toUpperCase() : 'NG';
 }
 
@@ -3148,20 +3159,40 @@ function testGroundingReset(){
   });
 }
 
+const PANIC_HOTLINES = {
+  NG: [{label:'Emergency 112', phone:'112'}, {label:'SURPIN Crisis Line', phone:'09080217555'}],
+  US: [{label:'Emergency 911', phone:'911'}, {label:'988 Lifeline', phone:'988'}],
+  GB: [{label:'Emergency 999', phone:'999'}, {label:'Samaritans', phone:'116123'}],
+  ZA: [{label:'Emergency 112', phone:'112'}, {label:'SADAG Crisis Line', phone:'0800567567'}],
+  CA: [{label:'Emergency 911', phone:'911'}, {label:'988 Lifeline', phone:'988'}],
+  AU: [{label:'Emergency 000', phone:'000'}, {label:'Lifeline', phone:'131114'}],
+  IE: [{label:'Emergency 112', phone:'112'}, {label:'Samaritans', phone:'116123'}],
+  GH: [{label:'Emergency 999', phone:'999'}, {label:'Mental Health Lifeline', phone:'233244471279'}],
+  KE: [{label:'Emergency 999', phone:'999'}, {label:'Befrienders Kenya', phone:'254722178177'}],
+  IN: [{label:'Emergency 112', phone:'112'}, {label:'KIRAN Helpline', phone:'18005990019'}],
+  DE: [{label:'Emergency 112', phone:'112'}, {label:'Telefonseelsorge', phone:'08001110111'}],
+  FR: [{label:'Emergency 112', phone:'112'}, {label:'Numéro National (3114)', phone:'3114'}]
+};
+
+function updatePanicHotlines(){
+  const select = document.getElementById('panic-country');
+  if(select) localStorage.setItem('medai_panic_country', select.value);
+  renderPanicDials();
+}
+
 function renderPanicDials(){
   const box = document.getElementById('panic-dials');
   if(!box) return;
   const u = getCurrentUser();
-  const country = normalizeCountryCode(u.country || localStorage.getItem('medai_country') || 'NG');
-  const hotlines = {
-    NG: [{label:'Emergency 112', phone:'112'}, {label:'Nigeria 199', phone:'199'}],
-    US: [{label:'Emergency 911', phone:'911'}, {label:'988 Lifeline', phone:'988'}],
-    GB: [{label:'Emergency 999', phone:'999'}, {label:'Samaritans 116123', phone:'116123'}],
-    ZA: [{label:'Emergency 112', phone:'112'}, {label:'SADAG 0800567567', phone:'0800567567'}]
-  };
-  const entries = [...(hotlines[country] || hotlines.NG)];
+  const select = document.getElementById('panic-country');
+  const country = normalizeCountryCode(
+    localStorage.getItem('medai_panic_country') || u.country || localStorage.getItem('medai_country') || 'NG'
+  );
+  if(select && PANIC_HOTLINES[country]) select.value = country;
+
+  const entries = [...(PANIC_HOTLINES[country] || PANIC_HOTLINES.NG)];
   if(u.emergPhone) entries.unshift({label:u.emergName ? `Call ${u.emergName}` : 'Emergency Contact', phone:u.emergPhone});
-  box.innerHTML = entries.slice(0,4).map(item=>`<a href="tel:${escapeHtml(item.phone)}" class="btn ${item.label.includes('Emergency')?'btn-danger':'btn-outline'}" style="justify-content:center;padding:12px;font-size:10px;text-decoration:none">${escapeHtml(item.label)}</a>`).join('');
+  box.innerHTML = entries.slice(0,4).map(item=>`<a href="tel:${escapeHtml(item.phone)}" class="btn ${item.label.includes('Emergency') || item.label.includes('Call')?'btn-danger':'btn-outline'}" style="justify-content:center;padding:12px;font-size:10px;text-decoration:none">${escapeHtml(item.label)}</a>`).join('');
 }
 
 function toggleCalmingSound(){

@@ -2031,10 +2031,21 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
     <!-- Emergency contacts / hotlines -->
     <div style="margin-bottom:1.75rem">
       <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--danger);letter-spacing:2px;margin-bottom:0.75rem;text-transform:uppercase">// CRISIS HELPLINES</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px" id="panic-dials">
-        <a href="tel:112" class="btn btn-danger" style="justify-content:center;padding:12px;font-size:10px">🚑 CALL 112 / 199</a>
-        <a href="tel:988" class="btn btn-outline" style="justify-content:center;padding:12px;font-size:10px;color:var(--warning);border-color:rgba(255,170,51,0.3)">🧠 CALL 988 LIFELINE</a>
-      </div>
+      <select class="tool-select" id="panic-country" onchange="updatePanicHotlines()" style="width:100%;margin-bottom:10px">
+        <option value="NG">🇳🇬 Nigeria</option>
+        <option value="US">🇺🇸 United States</option>
+        <option value="GB">🇬🇧 United Kingdom</option>
+        <option value="ZA">🇿🇦 South Africa</option>
+        <option value="CA">🇨🇦 Canada</option>
+        <option value="AU">🇦🇺 Australia</option>
+        <option value="IE">🇮🇪 Ireland</option>
+        <option value="GH">🇬🇭 Ghana</option>
+        <option value="KE">🇰🇪 Kenya</option>
+        <option value="IN">🇮🇳 India</option>
+        <option value="DE">🇩🇪 Germany</option>
+        <option value="FR">🇫🇷 France</option>
+      </select>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px" id="panic-dials"></div>
     </div>
 
     <!-- Action buttons -->

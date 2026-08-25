@@ -584,35 +584,42 @@ const API_BASE_URL = localStorage.getItem('medai_api_base_url')
 
 // ============================================================
 // REGISTERED DOCTORS DIRECTORY + MAPS (Therapy Finder / Appointments)
+// Leaflet + OpenStreetMap — no API key needed.
 // ============================================================
-// TODO: replace with your own browser-restricted Google Maps JavaScript API key.
-// Must be locked to your domain(s) in Google Cloud Console — this key is public
-// in the page source, unlike the server-side Places key used for therapy.js.
-const GOOGLE_MAPS_JS_KEY = 'YOUR_GOOGLE_MAPS_API_KEY';
-
-let _googleMapsLoadPromise = null;
+let _leafletLoadPromise = null;
 let _doctorDirectory = null;
 let _directoryMap = null;
 let _apptDoctorMap = null;
 let _apptDoctorMarker = null;
 
-function loadGoogleMapsApi(){
-  if(_googleMapsLoadPromise) return _googleMapsLoadPromise;
-  _googleMapsLoadPromise = new Promise((resolve, reject) => {
-    if(GOOGLE_MAPS_JS_KEY === 'YOUR_GOOGLE_MAPS_API_KEY'){
-      reject(new Error('missing_key'));
-      return;
-    }
-    if(window.google && window.google.maps){ resolve(); return; }
-    window._onGoogleMapsLoaded = () => resolve();
+function loadLeaflet(){
+  if(_leafletLoadPromise) return _leafletLoadPromise;
+  _leafletLoadPromise = new Promise((resolve, reject) => {
+    if(window.L){ resolve(); return; }
+
+    const cssLink = document.createElement('link');
+    cssLink.rel = 'stylesheet';
+    cssLink.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    cssLink.integrity = 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=';
+    cssLink.crossOrigin = '';
+    document.head.appendChild(cssLink);
+
     const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_JS_KEY}&libraries=places&callback=_onGoogleMapsLoaded`;
-    script.async = true;
-    script.defer = true;
-    script.onerror = () => reject(new Error('script_load_failed'));
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    script.integrity = 'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=';
+    script.crossOrigin = '';
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('leaflet_load_failed'));
     document.head.appendChild(script);
   });
-  return _googleMapsLoadPromise;
+  return _leafletLoadPromise;
+}
+
+function addOsmTileLayer(map){
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    maxZoom: 19
+  }).addTo(map);
 }
 
 async function fetchDoctorDirectory(){
@@ -663,31 +670,25 @@ async function loadDoctorDirectoryMap(){
   }
 
   try{
-    await loadGoogleMapsApi();
+    await loadLeaflet();
   }catch(e){
-    mapEl.innerHTML = 'Map disabled — a Google Maps API key needs to be configured.';
+    mapEl.innerHTML = 'Map could not be loaded — check your connection and try again.';
     return;
   }
 
   mapEl.innerHTML = '';
   const first = withLocation[0];
-  _directoryMap = new google.maps.Map(mapEl, {
-    center: { lat: first.latitude, lng: first.longitude },
-    zoom: 11,
-    styles: [{ elementType: 'geometry', stylers: [{ color: '#1a1a2e' }] }]
-  });
+  if(_directoryMap){ _directoryMap.remove(); _directoryMap = null; }
+  _directoryMap = L.map(mapEl).setView([first.latitude, first.longitude], 11);
+  addOsmTileLayer(_directoryMap);
 
-  const bounds = new google.maps.LatLngBounds();
+  const bounds = [];
   withLocation.forEach(d => {
-    const pos = { lat: d.latitude, lng: d.longitude };
-    const marker = new google.maps.Marker({ map: _directoryMap, position: pos, title: `Dr. ${d.fullName}` });
-    const info = new google.maps.InfoWindow({
-      content: `<div style="color:#111;font-family:sans-serif;font-size:13px"><strong>Dr. ${escapeHtml(d.fullName)}</strong><br>${escapeHtml(d.specialty)}${d.hospital ? '<br>' + escapeHtml(d.hospital) : ''}</div>`
-    });
-    marker.addListener('click', () => info.open(_directoryMap, marker));
-    bounds.extend(pos);
+    const marker = L.marker([d.latitude, d.longitude]).addTo(_directoryMap);
+    marker.bindPopup(`<strong>Dr. ${escapeHtml(d.fullName)}</strong><br>${escapeHtml(d.specialty)}${d.hospital ? '<br>' + escapeHtml(d.hospital) : ''}`);
+    bounds.push([d.latitude, d.longitude]);
   });
-  if(withLocation.length > 1) _directoryMap.fitBounds(bounds);
+  if(withLocation.length > 1) _directoryMap.fitBounds(bounds, { padding: [30,30] });
 }
 
 // ---------- Appointments: real doctor selector + location preview ----------
@@ -724,28 +725,27 @@ async function onApptDoctorChange(){
 
   mapEl.style.display = 'block';
   try{
-    await loadGoogleMapsApi();
+    await loadLeaflet();
   }catch(e){
     mapEl.style.display = 'flex';
     mapEl.style.alignItems = 'center';
     mapEl.style.justifyContent = 'center';
     mapEl.style.fontSize = '12px';
     mapEl.style.color = 'var(--muted)';
-    mapEl.textContent = 'Map disabled — a Google Maps API key needs to be configured.';
+    mapEl.textContent = 'Map could not be loaded — check your connection and try again.';
     return;
   }
 
-  const pos = { lat, lng };
   if(!_apptDoctorMap){
-    _apptDoctorMap = new google.maps.Map(mapEl, {
-      center: pos, zoom: 14, disableDefaultUI: true, zoomControl: true,
-      styles: [{ elementType: 'geometry', stylers: [{ color: '#1a1a2e' }] }]
-    });
-    _apptDoctorMarker = new google.maps.Marker({ map: _apptDoctorMap, position: pos });
+    mapEl.textContent = '';
+    _apptDoctorMap = L.map(mapEl, { zoomControl: true }).setView([lat, lng], 14);
+    addOsmTileLayer(_apptDoctorMap);
+    _apptDoctorMarker = L.marker([lat, lng]).addTo(_apptDoctorMap);
   }else{
-    _apptDoctorMap.setCenter(pos);
-    _apptDoctorMarker.setPosition(pos);
+    _apptDoctorMap.setView([lat, lng], 14);
+    _apptDoctorMarker.setLatLng([lat, lng]);
   }
+  setTimeout(() => _apptDoctorMap.invalidateSize(), 50);
 }
 
 async function syncUserFromBackend(){

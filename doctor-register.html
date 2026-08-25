@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Register as a Doctor — MedAI</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&family=Share+Tech+Mono&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
@@ -40,6 +42,9 @@ h1{font-family:var(--head);font-size:clamp(28px,4vw,38px);font-weight:800;letter
 @keyframes step-in{from{opacity:0;transform:translateX(12px)}to{opacity:1;transform:translateX(0)}}
 
 .field-group{margin-bottom:20px}
+.address-suggestion{padding:10px 12px;font-size:12px;color:#dfe8f5;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.06)}
+.address-suggestion:last-child{border-bottom:none}
+.address-suggestion:hover{background:rgba(0,212,255,0.1)}
 .field-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 label{display:block;font-family:var(--mono);font-size:11px;letter-spacing:1px;color:var(--muted);margin-bottom:8px;text-transform:uppercase}
 input,select,textarea{width:100%;background:rgba(255,255,255,0.03);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:12px 14px;color:var(--text);font-family:var(--body);font-size:14px;outline:none;transition:border-color .2s}
@@ -93,8 +98,8 @@ select option{background:var(--surface2)}
 <div class="bg-glow2"></div>
 
 <nav>
-  <a href="index.html" class="nav-logo">Med<span>AI</span></a>
-  <a href="index.html" class="nav-back">← Back to home</a>
+  <a href="MED_AI_LAND.html" class="nav-logo">Med<span>AI</span></a>
+  <a href="MED_AI_LAND.html" class="nav-back">← Back to home</a>
 </nav>
 
 <div class="wrap">
@@ -180,9 +185,12 @@ select option{background:var(--surface2)}
         </div>
         <div class="field-group">
           <label>Workplace Location <span style="opacity:.6">(optional — helps patients find you in Therapy Finder & Appointments)</span></label>
-          <input type="text" id="hospital-address" placeholder="Start typing an address..." autocomplete="off"/>
+          <div style="position:relative">
+            <input type="text" id="hospital-address" placeholder="Start typing an address..." autocomplete="off"/>
+            <div id="address-suggestions" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:50;background:#0e1e35;border:1px solid rgba(0,212,255,0.25);border-radius:10px;margin-top:4px;max-height:220px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,0.4)"></div>
+          </div>
           <div id="doctor-map" style="height:220px;border-radius:12px;margin-top:10px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.03);display:flex;align-items:center;justify-content:center;font-size:12px;color:rgba(255,255,255,0.4)">Loading map...</div>
-          <div id="location-status" style="font-size:11px;color:rgba(255,255,255,0.45);margin-top:6px">Search an address above, or drag the pin once the map loads to fine-tune your exact location.</div>
+          <div id="location-status" style="font-size:11px;color:rgba(255,255,255,0.45);margin-top:6px">Search an address above, or drag the pin (or click the map) to fine-tune your exact location.</div>
         </div>
         <div class="step-actions">
           <button type="button" class="btn btn-ghost" onclick="goToStep(1)">← Back</button>
@@ -236,96 +244,102 @@ const API_BASE_URL = localStorage.getItem('medai_api_base_url')
         : 'https://medai-backend-5r9o.onrender.com');
 
 // ============================================================
-// WORKPLACE LOCATION PICKER (Google Maps + Places Autocomplete)
+// WORKPLACE LOCATION PICKER (Leaflet + OpenStreetMap — no API key needed)
 // ============================================================
-// TODO: replace with your own browser-restricted Google Maps JavaScript API key
-// (Google Cloud Console → APIs & Services → Credentials → restrict to your domain).
-// This must be a different key from any server-side Places key — this one is public
-// in the page source, so it should be locked to HTTP referrers, not IP/server use.
-const GOOGLE_MAPS_JS_KEY = 'AIzaSyBxX7k5ARcUC7sFAtIAwjbqFUUqnKfm3-I';
-
 let _selectedLat = null;
 let _selectedLng = null;
 let _doctorMap = null;
 let _doctorMarker = null;
 
-function loadGoogleMapsScript(){
-  if(GOOGLE_MAPS_JS_KEY === 'YOUR_GOOGLE_MAPS_API_KEY'){
-    document.getElementById('doctor-map').textContent = 'Map disabled — add a Google Maps API key to enable location picking.';
-    return;
-  }
-  const script = document.createElement('script');
-  script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_JS_KEY}&libraries=places&callback=initDoctorMap`;
-  script.async = true;
-  script.defer = true;
-  document.head.appendChild(script);
-}
-
-function reverseGeocode(lat, lng){
-  const geocoder = new google.maps.Geocoder();
-  geocoder.geocode({ location: { lat, lng } }, (results, status) => {
-    if(status === 'OK' && results[0]){
-      document.getElementById('hospital-address').value = results[0].formatted_address;
-    }
-  });
-}
-
 function setDoctorLocation(lat, lng, skipReverseGeocode){
   _selectedLat = lat;
   _selectedLng = lng;
-  const pos = { lat, lng };
-  _doctorMap.setCenter(pos);
-  _doctorMap.setZoom(16);
-  _doctorMarker.setPosition(pos);
-  _doctorMarker.setVisible(true);
+  _doctorMap.setView([lat, lng], 16);
+  _doctorMarker.setLatLng([lat, lng]);
+  _doctorMarker.setOpacity(1);
   document.getElementById('location-status').textContent = `Pinned at ${lat.toFixed(5)}, ${lng.toFixed(5)}. Drag the marker to adjust.`;
   if(!skipReverseGeocode) reverseGeocode(lat, lng);
 }
 
+async function reverseGeocode(lat, lng){
+  try{
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`, {
+      headers: { 'Accept-Language': 'en' }
+    });
+    const data = await res.json();
+    if(data.display_name) document.getElementById('hospital-address').value = data.display_name;
+  }catch(e){ /* non-critical — the pin coordinates are already saved either way */ }
+}
+
+let _addressSearchDebounce = null;
+function handleAddressInput(){
+  clearTimeout(_addressSearchDebounce);
+  const query = document.getElementById('hospital-address').value.trim();
+  const resultsBox = document.getElementById('address-suggestions');
+  if(query.length < 3){
+    resultsBox.style.display = 'none';
+    resultsBox.innerHTML = '';
+    return;
+  }
+  _addressSearchDebounce = setTimeout(async () => {
+    try{
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(query)}&limit=5`, {
+        headers: { 'Accept-Language': 'en' }
+      });
+      const results = await res.json();
+      if(!results.length){
+        resultsBox.style.display = 'none';
+        return;
+      }
+      resultsBox.innerHTML = results.map((r, i) =>
+        `<div class="address-suggestion" onclick="selectAddressSuggestion(${i})">${r.display_name}</div>`
+      ).join('');
+      resultsBox.style.display = 'block';
+      window._addressSuggestions = results;
+    }catch(e){ resultsBox.style.display = 'none'; }
+  }, 400);
+}
+
+function selectAddressSuggestion(i){
+  const r = window._addressSuggestions[i];
+  if(!r) return;
+  document.getElementById('hospital-address').value = r.display_name;
+  document.getElementById('address-suggestions').style.display = 'none';
+  setDoctorLocation(parseFloat(r.lat), parseFloat(r.lon), true);
+}
+
 function initDoctorMap(){
-  const defaultCenter = { lat: 6.5244, lng: 3.3792 }; // Lagos, as a sensible default
-  _doctorMap = new google.maps.Map(document.getElementById('doctor-map'), {
-    center: defaultCenter,
-    zoom: 11,
-    disableDefaultUI: true,
-    zoomControl: true,
-    styles: [{ elementType: 'geometry', stylers: [{ color: '#1a1a2e' }] }]
+  const defaultCenter = [6.5244, 3.3792]; // Lagos, as a sensible default
+
+  _doctorMap = L.map('doctor-map', { zoomControl: true }).setView(defaultCenter, 11);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    maxZoom: 19
+  }).addTo(_doctorMap);
+
+  _doctorMarker = L.marker(defaultCenter, { draggable: true, opacity: 0 }).addTo(_doctorMap);
+
+  _doctorMarker.on('dragend', () => {
+    const pos = _doctorMarker.getLatLng();
+    setDoctorLocation(pos.lat, pos.lng);
   });
 
-  _doctorMarker = new google.maps.Marker({
-    map: _doctorMap,
-    draggable: true,
-    visible: false
+  _doctorMap.on('click', (e) => {
+    setDoctorLocation(e.latlng.lat, e.latlng.lng);
   });
 
-  _doctorMarker.addListener('dragend', () => {
-    const pos = _doctorMarker.getPosition();
-    setDoctorLocation(pos.lat(), pos.lng());
-  });
-
-  _doctorMap.addListener('click', (e) => {
-    setDoctorLocation(e.latLng.lat(), e.latLng.lng());
-  });
-
-  const autocomplete = new google.maps.places.Autocomplete(document.getElementById('hospital-address'), {
-    fields: ['geometry', 'formatted_address']
-  });
-  autocomplete.addListener('place_changed', () => {
-    const place = autocomplete.getPlace();
-    if(!place.geometry) return;
-    setDoctorLocation(place.geometry.location.lat(), place.geometry.location.lng(), true);
-  });
+  document.getElementById('hospital-address').addEventListener('input', handleAddressInput);
 
   // Try to center on the doctor's current location as a starting point, if allowed
   if(navigator.geolocation){
     navigator.geolocation.getCurrentPosition(
-      (pos) => { _doctorMap.setCenter({ lat: pos.coords.latitude, lng: pos.coords.longitude }); },
+      (pos) => { _doctorMap.setView([pos.coords.latitude, pos.coords.longitude], 11); },
       () => {} // silently ignore if denied
     );
   }
 }
 
-loadGoogleMapsScript();
+initDoctorMap();
 
 let currentStep = 1;
 let licenseDocumentBase64 = null;

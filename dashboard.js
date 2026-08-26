@@ -1682,6 +1682,30 @@ function saveTriageResult(entry){
   history.unshift(entry);
   localStorage.setItem(triageKey(), JSON.stringify(history.slice(0,50)));
   renderTriageHistory();
+  syncTriageResultToBackend(entry);
+}
+
+async function syncTriageResultToBackend(entry){
+  const token = localStorage.getItem('medai_token');
+  if(!token) return;
+  const levelMap = { home: 'LOW', doctor_soon: 'HIGH', emergency: 'EMERGENCY' };
+  try{
+    const res = await fetch(`${API_BASE_URL}/api/triage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        symptoms: entry.symptoms,
+        triage_level: levelMap[entry.level] || 'LOW',
+        triage_title: entry.title,
+        summary: entry.summary,
+        confidence: typeof entry.confidence === 'number' ? entry.confidence : undefined
+      })
+    });
+    if(!res.ok){
+      const err = await res.json().catch(() => ({}));
+      console.warn('Triage sync to backend failed:', err.message || res.status);
+    }
+  }catch(e){ /* non-critical — triage still saved locally, doctor visibility just delayed */ }
 }
 
 function renderTriageHistory(){
@@ -2105,7 +2129,7 @@ function changeLocalPassword(){
   ['current-password','new-password'].forEach(id=>{const el=document.getElementById(id); if(el) el.value='';});
 }
 
-function saveEmergencySettings(){
+async function saveEmergencySettings(){
   const u=getCurrentUser();
   u.emergName=document.getElementById('settings-emerg-name')?.value.trim() || '';
   u.emergPhone=document.getElementById('settings-emerg-phone')?.value.trim() || '';
@@ -2113,7 +2137,29 @@ function saveEmergencySettings(){
   loadProfileForm();
   personalizeEmergencyContact(u);
   const status=document.getElementById('emergency-status');
-  if(status) status.innerHTML='<strong style="color:var(--safe)">Saved.</strong> Dashboard quick-dial updated.';
+  if(status) status.innerHTML='<strong style="color:var(--accent)">Saving...</strong>';
+
+  const token = localStorage.getItem('medai_token');
+  if(!token){
+    if(status) status.innerHTML='<strong style="color:var(--warning)">Saved locally only</strong> — log in to sync this to your doctors.';
+    return;
+  }
+  try{
+    const res = await fetch(`${API_BASE_URL}/api/profile`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ emergName: u.emergName, emergPhone: u.emergPhone })
+    });
+    if(!res.ok){
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || 'Could not sync to server.');
+    }
+    const data = await res.json();
+    if(data.user) localStorage.setItem('medai_current_user', JSON.stringify(data.user));
+    if(status) status.innerHTML='<strong style="color:var(--safe)">Emergency contact updated.</strong>';
+  }catch(e){
+    if(status) status.innerHTML=`<strong style="color:var(--danger)">Saved locally, but couldn't sync:</strong> ${escapeHtmlChat(e.message)}`;
+  }
 }
 
 // ============================================================

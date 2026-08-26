@@ -883,7 +883,7 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
     </div>
     <div class="sb-item" onclick="showTab('emotional-ai',this)">
       <div class="sb-item-icon">💭</div>
-      <span class="sb-item-label">Emotional AI</span>
+      <span class="sb-item-label">Safe Space AI</span>
     </div>
     <div class="sb-item" onclick="showTab('mental-ai',this)">
       <div class="sb-item-icon">🧠</div>
@@ -1113,7 +1113,7 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
             <div class="btn btn-primary" onclick="showTab('triage',null)" style="justify-content:center">⚡ Start Triage</div>
             <div class="btn btn-outline" onclick="showTab('chatbot',null)" style="justify-content:center">🤖 Ask AI Chatbot</div>
             <div class="btn btn-outline" onclick="showTab('medical-ai',null)" style="justify-content:center">🏥 Medical AI</div>
-            <div class="btn btn-outline" onclick="showTab('emotional-ai',null)" style="justify-content:center">💭 Emotional Support</div>
+            <div class="btn btn-outline" onclick="showTab('emotional-ai',null)" style="justify-content:center">💭 Safe Space</div>
             <div class="btn btn-outline" onclick="showTab('tools',null)" style="justify-content:center">+ Health Tools</div>
             <div class="btn btn-outline" onclick="showTab('appointments',null)" style="justify-content:center">Book Appointment</div>
           </div>
@@ -1225,13 +1225,13 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
       </div>
     </div>
 
-    <!-- ==================== EMOTIONAL AI ==================== -->
+    <!-- ==================== SAFE SPACE AI ==================== -->
     <div class="tab-panel" id="tab-emotional-ai">
       <div class="sec-label">// AI Support</div>
-      <h2 class="sec-title">Emotional <span class="grad">AI Support</span></h2>
+      <h2 class="sec-title">Safe Space <span class="grad">AI</span></h2>
       <div class="glass-card chat-wrap">
         <div class="chat-messages" id="chat-emotional-ai">
-          <div class="chat-bubble ai"><div class="ai-label">💭 EMOTIONAL AI</div>Hi, I'm here for you. This is a safe, judgment-free space to talk about how you're feeling emotionally. Whether you're stressed, anxious, overwhelmed, or just need someone to listen — I'm here. How are you feeling right now?</div>
+          <div class="chat-bubble ai"><div class="ai-label">💭 SAFE SPACE AI</div>Hi, I'm here for you. This is a safe, judgment-free space to talk about how you're feeling emotionally. Whether you're stressed, anxious, overwhelmed, or just need someone to listen — I'm here. How are you feeling right now?</div>
         </div>
         <div class="ai-usage-indicator" style="display:none;font-size:12px;text-align:center;padding:4px 0;font-family:var(--mono);letter-spacing:1px"></div>
         <div class="chat-input-row">
@@ -1695,7 +1695,7 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
 
         <div class="glass-card settings-panel" id="openrouter-panel">
           <div class="settings-panel-title">OpenRouter API</div>
-          <p class="settings-panel-copy">Emotional, Mental, and Physical AI support now use OpenRouter. Paste your key here. Frontend storage is convenient for testing, but backend proxying is safer for production.</p>
+          <p class="settings-panel-copy">Safe Space, Mental, and Physical AI support now use OpenRouter. Paste your key here. Frontend storage is convenient for testing, but backend proxying is safer for production.</p>
           <div class="grid-2">
             <input class="tool-input" id="openrouter-key" type="password" placeholder="OpenRouter API key"/>
             <input class="tool-input" id="openrouter-model" placeholder="Model e.g. openai/gpt-4o-mini"/>
@@ -1861,7 +1861,7 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
             <div style="display:flex;align-items:center;gap:8px;font-size:13px"><span style="color:var(--safe)">✓</span> 5 triage sessions/day</div>
             <div style="display:flex;align-items:center;gap:8px;font-size:13px"><span style="color:var(--safe)">✓</span> Basic AI chatbot</div>
             <div style="display:flex;align-items:center;gap:8px;font-size:13px"><span style="color:var(--safe)">✓</span> Symptom history (7 days)</div>
-            <div style="display:flex;align-items:center;gap:8px;font-size:13px"><span style="color:var(--muted)">✗</span> <span style="color:var(--muted)">Emotional / Mental / Physical AI</span></div>
+            <div style="display:flex;align-items:center;gap:8px;font-size:13px"><span style="color:var(--muted)">✗</span> <span style="color:var(--muted)">Safe Space / Mental / Physical AI</span></div>
             <div style="display:flex;align-items:center;gap:8px;font-size:13px"><span style="color:var(--muted)">✗</span> <span style="color:var(--muted)">Health reports</span></div>
             <div style="display:flex;align-items:center;gap:8px;font-size:13px"><span style="color:var(--muted)">✗</span> <span style="color:var(--muted)">Priority support</span></div>
           </div>
@@ -1882,7 +1882,7 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
           <div style="font-size:13px;color:var(--muted);margin-bottom:1.5rem" id="premium-subtext">Billed monthly. Cancel anytime.</div>
           <div style="display:flex;flex-direction:column;gap:.6rem;margin-bottom:1.5rem">
             <div style="display:flex;align-items:center;gap:8px;font-size:13px"><span style="color:var(--safe)">✓</span> Unlimited triage sessions</div>
-            <div style="display:flex;align-items:center;gap:8px;font-size:13px"><span style="color:var(--safe)">✓</span> All AI support (Emotional, Mental, Physical)</div>
+            <div style="display:flex;align-items:center;gap:8px;font-size:13px"><span style="color:var(--safe)">✓</span> All AI support (Safe Space, Mental, Physical)</div>
             <div style="display:flex;align-items:center;gap:8px;font-size:13px"><span style="color:var(--safe)">✓</span> Full symptom history</div>
             <div style="display:flex;align-items:center;gap:8px;font-size:13px"><span style="color:var(--safe)">✓</span> Detailed health reports</div>
             <div style="display:flex;align-items:center;gap:8px;font-size:13px"><span style="color:var(--safe)">✓</span> Family health tracking</div>
@@ -1936,7 +1936,7 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
 
     <div class="sb-section-label">AI Support</div>
     <div class="sb-item" onclick="showTab('medical-ai',null);closeMobileMore()"><div class="sb-item-icon">🏥</div><span class="sb-item-label">Medical Health AI</span></div>
-    <div class="sb-item" onclick="showTab('emotional-ai',null);closeMobileMore()"><div class="sb-item-icon">💭</div><span class="sb-item-label">Emotional AI</span></div>
+    <div class="sb-item" onclick="showTab('emotional-ai',null);closeMobileMore()"><div class="sb-item-icon">💭</div><span class="sb-item-label">Safe Space AI</span></div>
     <div class="sb-item" onclick="showTab('mental-ai',null);closeMobileMore()"><div class="sb-item-icon">🧠</div><span class="sb-item-label">Mental Health AI</span></div>
     <div class="sb-item" onclick="showTab('physical-ai',null);closeMobileMore()"><div class="sb-item-icon">💪</div><span class="sb-item-label">Physical Health AI</span></div>
 

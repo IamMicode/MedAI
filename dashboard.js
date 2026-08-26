@@ -86,8 +86,8 @@ function toggleSidebar(){const sb=document.getElementById('sidebar');sb.classLis
 // ============================================================
 // TAB NAVIGATION
 // ============================================================
-const tabTitles={dashboard:'Dashboard',triage:'Quick Triage',chatbot:'AI Chatbot','medical-ai':'Medical Health AI','emotional-ai':'Emotional AI','mental-ai':'Mental Health AI','physical-ai':'Physical Health AI',history:'Symptom History',vitals:'Vitals Monitor',tools:'Health Tools',reports:'Reports & OCR',appointments:'Appointments',therapy:'Therapy Finder',achievements:'Achievements',profile:'My Profile',settings:'Settings',premium:'Unlock Premium'};
-const tabBc={dashboard:'HOME / DASHBOARD',triage:'HOME / TRIAGE',chatbot:'AI / CHATBOT','medical-ai':'AI / MEDICAL','emotional-ai':'AI / EMOTIONAL','mental-ai':'AI / MENTAL','physical-ai':'AI / PHYSICAL',history:'HEALTH / HISTORY',vitals:'HEALTH / VITALS',tools:'HEALTH / TOOLS',reports:'HEALTH / REPORTS',appointments:'CARE / APPOINTMENTS',therapy:'CARE / THERAPY FINDER',achievements:'HEALTH / ACHIEVEMENTS',profile:'ACCOUNT / PROFILE',settings:'ACCOUNT / SETTINGS',premium:'ACCOUNT / PREMIUM'};
+const tabTitles={dashboard:'Dashboard',triage:'Quick Triage',chatbot:'AI Chatbot','medical-ai':'Medical Health AI','emotional-ai':'Safe Space AI','mental-ai':'Mental Health AI','physical-ai':'Physical Health AI',history:'Symptom History',vitals:'Vitals Monitor',tools:'Health Tools',reports:'Reports & OCR',appointments:'Appointments',therapy:'Therapy Finder',achievements:'Achievements',profile:'My Profile',settings:'Settings',premium:'Unlock Premium'};
+const tabBc={dashboard:'HOME / DASHBOARD',triage:'HOME / TRIAGE',chatbot:'AI / CHATBOT','medical-ai':'AI / MEDICAL','emotional-ai':'AI / SAFE SPACE','mental-ai':'AI / MENTAL','physical-ai':'AI / PHYSICAL',history:'HEALTH / HISTORY',vitals:'HEALTH / VITALS',tools:'HEALTH / TOOLS',reports:'HEALTH / REPORTS',appointments:'CARE / APPOINTMENTS',therapy:'CARE / THERAPY FINDER',achievements:'HEALTH / ACHIEVEMENTS',profile:'ACCOUNT / PROFILE',settings:'ACCOUNT / SETTINGS',premium:'ACCOUNT / PREMIUM'};
 
 function showTab(id,el){
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
@@ -147,7 +147,7 @@ window.systemPrompts = {
 
   medical: `You are MedAI Medical Health AI — a clinically-grounded health information assistant. Help users understand medical conditions, symptoms, medications (uses, common side effects, general interactions), procedures, and lab/clinical terminology in plain language. Be precise and evidence-based, citing well-established medical consensus rather than speculation. You do NOT diagnose, prescribe, or replace a licensed clinician — always frame information as educational. If the user describes symptoms that could be urgent or severe (e.g. chest pain, difficulty breathing, severe bleeding, signs of stroke, suicidal ideation), clearly and calmly tell them to seek immediate in-person or emergency care, and mention they can use MedAI's Quick Triage or Book Appointment features for next steps. Keep responses focused and clear — 3-6 sentences, using simple structure (short sentences, not walls of text). Never use the user's message as confirmation of a diagnosis.`,
 
-  emotional: `You are MedAI Emotional Support AI — a compassionate, non-judgmental emotional companion. Your ONLY role is emotional support. Listen actively, validate feelings without minimizing them, reflect back what the user shares, and offer gentle comfort. NEVER give medical advice. NEVER push solutions. Ask open-ended questions to understand the user better. Respond with warmth, empathy and full presence. If the user expresses suicidal thoughts or extreme distress, gently encourage them to contact a professional or crisis line. Keep responses warm and human — 3-5 sentences.`,
+  emotional: `You are MedAI Safe Space AI — a compassionate, non-judgmental emotional companion. Your ONLY role is emotional support. Listen actively, validate feelings without minimizing them, reflect back what the user shares, and offer gentle comfort. NEVER give medical advice. NEVER push solutions. Ask open-ended questions to understand the user better. Respond with warmth, empathy and full presence. If the user expresses suicidal thoughts or extreme distress, gently encourage them to contact a professional or crisis line. Keep responses warm and human — 3-5 sentences.`,
 
   mental: `You are MedAI Mental Health AI — a supportive mental wellness guide. Help users with anxiety, depression, stress, sleep problems, burnout, low self-esteem, trauma, and general mental wellbeing. Use evidence-based techniques: CBT thought reframing, mindfulness exercises, breathing techniques, behavioural activation, journaling prompts, and grounding exercises. Give practical, actionable tools the user can try right now. Always clarify you are not a therapist and encourage professional help for serious conditions. Be compassionate but structured. Respond in 3-6 sentences with one practical tip.`,
 
@@ -159,7 +159,7 @@ const chatKeys = { 'chatbot':'chatbot', 'medical-ai':'medical', 'emotional-ai':'
 const aiMeta = {
   chatbot:   { icon:'🤖', label:'MEDAI CHATBOT',      badge:'Gemini' },
   medical:   { icon:'🏥', label:'MEDICAL HEALTH AI',  badge:'Gemini' },
-  emotional: { icon:'💭', label:'EMOTIONAL AI',        badge:'OpenRouter' },
+  emotional: { icon:'💭', label:'SAFE SPACE AI',        badge:'OpenRouter' },
   mental:    { icon:'🧠', label:'MENTAL HEALTH AI',    badge:'OpenRouter' },
   physical:  { icon:'💪', label:'PHYSICAL HEALTH AI',  badge:'OpenRouter' }
 };

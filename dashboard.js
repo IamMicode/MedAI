@@ -2877,27 +2877,113 @@ function renderPrices() {
   }
 }
 
-function upgradePremium() {
+let _flutterwaveLoadPromise = null;
+function loadFlutterwaveScript(){
+  if(_flutterwaveLoadPromise) return _flutterwaveLoadPromise;
+  _flutterwaveLoadPromise = new Promise((resolve, reject) => {
+    if(window.FlutterwaveCheckout){ resolve(); return; }
+    const script = document.createElement('script');
+    script.src = 'https://checkout.flutterwave.com/v3.js';
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('flutterwave_script_failed'));
+    document.head.appendChild(script);
+  });
+  return _flutterwaveLoadPromise;
+}
+
+async function upgradePremium() {
   const u = getCurrentUser();
   if(!u || !u.username){
     alert('No logged-in user detected. Please sign in and try again.');
     return;
   }
-  const isYearly = currentBilling === 'yearly';
-  const price = isYearly ? prices[currentCountry].yearly : prices[currentCountry].monthly;
-  const period = isYearly ? 'year' : 'month';
-
   if(u.plan === 'Premium'){
     alert('You already have Premium. Enjoy the benefits!');
     return;
   }
+  const token = localStorage.getItem('medai_token');
+  if(!token){
+    alert('Please log in again to upgrade — your session may have expired.');
+    return;
+  }
 
-  u.plan = 'Premium';
-  u.premiumActivatedAt = new Date().toISOString();
-  setCurrentUser(u);
-  updatePremiumDisplay(u);
+  const planType = currentBilling === 'yearly' ? 'yearly' : 'monthly';
 
-  alert(`Premium upgraded successfully!\n\nPlan: ${isYearly ? 'Yearly' : 'Monthly'}\nPrice: ${prices[currentCountry].symbol}${formatPriceNumber(price)} / ${period}\n\nYour account is now on the Premium plan.`);
+  try{
+    const initRes = await fetch(`${API_BASE_URL}/api/payments/initialize`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ country: currentCountry, planType })
+    });
+    if(!initRes.ok){
+      const err = await initRes.json().catch(() => ({}));
+      throw new Error(err.message || 'Could not start checkout.');
+    }
+    const { txRef, amount, currency, email, name, publicKey } = await initRes.json();
+
+    if(!publicKey){
+      alert('Payments are not configured yet — please try again later.');
+      return;
+    }
+
+    await loadFlutterwaveScript();
+
+    FlutterwaveCheckout({
+      public_key: publicKey,
+      tx_ref: txRef,
+      amount: amount,
+      currency: currency,
+      payment_options: 'card,banktransfer,ussd,mobilemoney',
+      customer: { email, name },
+      customizations: {
+        title: 'MedAI Premium',
+        description: `${planType === 'yearly' ? 'Yearly' : 'Monthly'} Premium subscription`,
+        logo: ''
+      },
+      callback: function(response){
+        pollPaymentStatus(txRef);
+      },
+      onclose: function(){ /* user closed the checkout — nothing to do, payment stays PENDING */ }
+    });
+  }catch(e){
+    alert(e.message || 'Could not start checkout. Please try again.');
+  }
+}
+
+async function pollPaymentStatus(txRef, attempt = 0){
+  const token = localStorage.getItem('medai_token');
+  if(!token) return;
+
+  const statusBox = document.getElementById('premium-status-msg');
+  if(statusBox) statusBox.textContent = 'Confirming your payment...';
+
+  try{
+    const res = await fetch(`${API_BASE_URL}/api/payments/status/${txRef}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const data = await res.json();
+
+    if(data.status === 'SUCCESSFUL'){
+      const u = getCurrentUser();
+      u.plan = data.plan;
+      u.premiumExpiresAt = data.premiumExpiresAt;
+      setCurrentUser(u);
+      updatePremiumDisplay(u);
+      if(statusBox) statusBox.innerHTML = '<strong style="color:var(--safe)">Premium activated! 🎉</strong>';
+      alert('Payment confirmed — your account is now on Premium!');
+      return;
+    }
+    if(data.status === 'FAILED'){
+      if(statusBox) statusBox.innerHTML = '<strong style="color:var(--danger)">Payment failed.</strong> Please try again.';
+      return;
+    }
+  }catch(e){ /* keep polling below on transient errors */ }
+
+  if(attempt < 10){
+    setTimeout(() => pollPaymentStatus(txRef, attempt + 1), 3000);
+  }else if(statusBox){
+    statusBox.innerHTML = '<strong style="color:var(--warning)">Still confirming...</strong> If this takes more than a couple minutes, contact support with your reference: ' + txRef;
+  }
 }
 
 function updatePremiumDisplay(user){

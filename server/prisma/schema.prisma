@@ -26,6 +26,8 @@ model User {
   emailVerified   Boolean             @default(false)
   role            Role                @default(USER)
   plan            String              @default("Free")
+  premiumActivatedAt DateTime?
+  premiumExpiresAt   DateTime?
   dob             String?
   gender          String?
   height          String?
@@ -57,6 +59,23 @@ model User {
   doctorAppointments    Appointment[]  @relation("DoctorAppointments")
   patientAppointments   Appointment[]  @relation("PatientAppointments")
   vitalReadings         VitalReading[]
+  payments              Payment[]
+}
+
+model Payment {
+  id              String    @id @default(cuid())
+  userId          String
+  txRef           String    @unique
+  amount          Float
+  currency        String
+  planType        String    // monthly | yearly
+  status          String    @default("PENDING") // PENDING | SUCCESSFUL | FAILED
+  flwTransactionId String?
+  createdAt       DateTime  @default(now())
+  verifiedAt      DateTime?
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model TriageRecord {

@@ -17,6 +17,7 @@ const panicRoutes = require('./routes/panic');
 const achievementsRoutes = require('./routes/achievements');
 const therapyRoutes = require('./routes/therapy');
 const doctorPortalRoutes = require('./routes/doctorPortal');
+const paymentsRoutes = require('./routes/payments');
 
 const { passport, configurePassport } = require('./passport');
 
@@ -55,6 +56,7 @@ app.use('/api/panic', panicRoutes);
 app.use('/api/achievements', achievementsRoutes);
 app.use('/api/therapy', therapyRoutes);
 app.use('/api/doctor-portal', doctorPortalRoutes);
+app.use('/api/payments', paymentsRoutes);
 
 // ── 404 CATCH-ALL — must always be last, after every real route ──
 app.use((req, res) => {

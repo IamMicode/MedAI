@@ -162,7 +162,7 @@ router.get('/', async (req, res, next) => {
       groundingComplete,
       accountAgeDays,
       profileComplete,
-      isPremium: user.plan !== 'FREE',
+      isPremium: user.plan !== 'Free',
       totalAIUsage,
       // individual AI type counts — approximate from total since we track combined daily
       // these will improve once we track per-type usage

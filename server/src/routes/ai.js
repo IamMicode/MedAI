@@ -121,7 +121,7 @@ router.get('/usage', async (req, res, next) => {
       where: { id: req.user.id },
       select: { plan: true }
     });
-    const isPremium = user && user.plan && user.plan !== 'FREE';
+    const isPremium = user && user.plan && user.plan !== 'Free';
     return res.json({ used: usage ? usage.count : 0, limit: isPremium ? null : 10, isPremium });
   } catch (error) {
     return next(error);

@@ -79,7 +79,8 @@ router.post('/initialize', requireAuth, async (req, res, next) => {
     if (!bachsRes.ok) {
       const errBody = await bachsRes.json().catch(() => ({}));
       await prisma.payment.update({ where: { txRef }, data: { status: 'FAILED' } });
-      return res.status(502).json({ message: errBody.message || 'Could not start checkout with payment provider.' });
+      console.error('Bachs checkout-session creation failed:', bachsRes.status, errBody);
+      return res.status(502).json({ message: errBody.detail || errBody.message || 'Could not start checkout with payment provider.' });
     }
 
     const bachsData = await bachsRes.json();

@@ -4,19 +4,27 @@ const crypto = require('crypto');
 const { requireAuth } = require('../middleware/auth');
 const prisma = require('../db');
 
+// Bachs (https://bachs.io) — hosted checkout + webhook, similar shape to Stripe/Flutterwave
+// but the customer is fully redirected to a hosted page rather than an inline widget.
+const BACHS_SECRET_KEY = process.env.BACHS_SECRET_KEY || '';
+const BACHS_BASE_URL = BACHS_SECRET_KEY.startsWith('sk_sandbox_')
+  ? 'https://sandbox-api.bachs.io'
+  : 'https://api.bachs.io';
+const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://localhost:3000';
+
 // Server-side price authority — never trust a client-submitted amount.
 // Mirrors dashboard.js's `prices` table; keep these two in sync if pricing changes.
 const PRICE_TABLE = {
-  NG: { symbol: '₦',   currency: 'NGN', monthly: 3500,  yearly: 29400 },
-  US: { symbol: '$',   currency: 'USD', monthly: 4.99,  yearly: 41.90 },
-  GB: { symbol: '£',   currency: 'GBP', monthly: 3.99,  yearly: 33.50 },
-  EU: { symbol: '€',   currency: 'EUR', monthly: 4.49,  yearly: 37.70 },
-  GH: { symbol: '₵',   currency: 'GHS', monthly: 65,    yearly: 546   },
-  KE: { symbol: 'KSh', currency: 'KES', monthly: 649,   yearly: 5452  },
-  ZA: { symbol: 'R',   currency: 'ZAR', monthly: 89,    yearly: 748   },
-  CA: { symbol: 'CA$', currency: 'CAD', monthly: 6.99,  yearly: 58.70 },
-  AU: { symbol: 'A$',  currency: 'AUD', monthly: 7.49,  yearly: 62.90 },
-  IN: { symbol: '₹',   currency: 'INR', monthly: 399,   yearly: 3350  }
+  NG: { currency: 'NGN', monthly: 3500,  yearly: 29400 },
+  US: { currency: 'USD', monthly: 4.99,  yearly: 41.90 },
+  GB: { currency: 'GBP', monthly: 3.99,  yearly: 33.50 },
+  EU: { currency: 'EUR', monthly: 4.49,  yearly: 37.70 },
+  GH: { currency: 'GHS', monthly: 65,    yearly: 546   },
+  KE: { currency: 'KES', monthly: 649,   yearly: 5452  },
+  ZA: { currency: 'ZAR', monthly: 89,    yearly: 748   },
+  CA: { currency: 'CAD', monthly: 6.99,  yearly: 58.70 },
+  AU: { currency: 'AUD', monthly: 7.49,  yearly: 62.90 },
+  IN: { currency: 'INR', monthly: 399,   yearly: 3350  }
 };
 
 // POST /api/payments/initialize — patient starts a Premium checkout
@@ -37,6 +45,7 @@ router.post('/initialize', requireAuth, async (req, res, next) => {
     await prisma.payment.create({
       data: {
         userId: req.user.id,
+        provider: 'bachs',
         txRef,
         amount,
         currency: pricing.currency,
@@ -45,20 +54,48 @@ router.post('/initialize', requireAuth, async (req, res, next) => {
       }
     });
 
-    return res.json({
-      txRef,
-      amount,
-      currency: pricing.currency,
-      email: user.email,
-      name: `${user.firstname || ''} ${user.lastname || ''}`.trim() || user.username,
-      publicKey: process.env.FLUTTERWAVE_PUBLIC_KEY || ''
+    const successUrl = `${FRONTEND_ORIGIN}/dashboard.html?payment=success&txRef=${txRef}`;
+    const cancelUrl = `${FRONTEND_ORIGIN}/dashboard.html?payment=cancelled`;
+
+    const bachsRes = await fetch(`${BACHS_BASE_URL}/v1/checkout-sessions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${BACHS_SECRET_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        pricing: { currency: pricing.currency, amount: String(amount) },
+        customer: {
+          email: user.email,
+          name: `${user.firstname || ''} ${user.lastname || ''}`.trim() || user.username
+        },
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+        reference: txRef,
+        metadata: { txRef, userId: req.user.id }
+      })
     });
+
+    if (!bachsRes.ok) {
+      const errBody = await bachsRes.json().catch(() => ({}));
+      await prisma.payment.update({ where: { txRef }, data: { status: 'FAILED' } });
+      return res.status(502).json({ message: errBody.message || 'Could not start checkout with payment provider.' });
+    }
+
+    const bachsData = await bachsRes.json();
+
+    await prisma.payment.update({
+      where: { txRef },
+      data: { checkoutId: bachsData.checkout_id }
+    });
+
+    return res.json({ checkoutUrl: bachsData.checkout_url, txRef });
   } catch (error) {
     return next(error);
   }
 });
 
-// GET /api/payments/status/:txRef — patient frontend polls this after checkout closes
+// GET /api/payments/status/:txRef — patient frontend polls this after returning from checkout
 router.get('/status/:txRef', requireAuth, async (req, res, next) => {
   try {
     const payment = await prisma.payment.findUnique({ where: { txRef: req.params.txRef } });
@@ -72,44 +109,58 @@ router.get('/status/:txRef', requireAuth, async (req, res, next) => {
   }
 });
 
-// POST /api/payments/webhook — Flutterwave calls this automatically on payment events.
-// Never trust the webhook body alone — always re-verify the transaction with Flutterwave's API
-// using the secret key before granting anything, so a spoofed webhook can't fake a payment.
+// POST /api/payments/webhook — Bachs calls this automatically on payment events.
+// Verified via HMAC-SHA256 over the raw request body (see index.js for how rawBody is captured).
 router.post('/webhook', async (req, res, next) => {
   try {
-    const signature = req.headers['verif-hash'];
-    const expectedHash = process.env.FLUTTERWAVE_WEBHOOK_HASH;
-    if (!expectedHash || !signature || signature !== expectedHash) {
+    const signature = req.headers['x-bachs-signature'];
+    const secret = process.env.BACHS_WEBHOOK_SECRET;
+
+    if (!secret || !signature || !req.rawBody) {
       return res.status(401).json({ message: 'Invalid webhook signature.' });
     }
 
-    // Acknowledge immediately per Flutterwave's guidance; do the real work after.
+    const expected = crypto.createHmac('sha256', secret).update(req.rawBody).digest('hex');
+    const signatureBuf = Buffer.from(signature);
+    const expectedBuf = Buffer.from(expected);
+    const isValidSignature = signatureBuf.length === expectedBuf.length
+      && crypto.timingSafeEqual(signatureBuf, expectedBuf);
+
+    if (!isValidSignature) {
+      return res.status(401).json({ message: 'Invalid webhook signature.' });
+    }
+
+    // Acknowledge immediately; do the real work after.
     res.status(200).json({ received: true });
 
     const event = req.body;
-    if (event?.data?.status !== 'successful') return;
+    if (event?.type !== 'collection.succeeded') return;
 
-    const flwTransactionId = event.data.id;
-    const txRef = event.data.tx_ref;
+    const data = event.data || {};
+    // Bachs is a very new provider — try every plausible location for our own reference
+    // before falling back to the checkout_id we stored ourselves at initialize time.
+    const txRef = event.metadata?.txRef || data.metadata?.txRef || data.reference || null;
 
-    const payment = await prisma.payment.findUnique({ where: { txRef } });
-    if (!payment || payment.status === 'SUCCESSFUL') return; // unknown or already processed
+    let payment = txRef
+      ? await prisma.payment.findUnique({ where: { txRef } })
+      : null;
 
-    // Re-verify directly with Flutterwave's API — the authoritative source of truth.
-    const verifyRes = await fetch(`https://api.flutterwave.com/v3/transactions/${flwTransactionId}/verify`, {
-      headers: { Authorization: `Bearer ${process.env.FLUTTERWAVE_SECRET_KEY}` }
-    });
-    const verifyData = await verifyRes.json();
-    const tx = verifyData?.data;
+    if (!payment && data.checkout_id) {
+      payment = await prisma.payment.findFirst({ where: { checkoutId: data.checkout_id } });
+    }
 
-    const isValid = tx
-      && tx.status === 'successful'
-      && tx.tx_ref === payment.txRef
-      && tx.currency === payment.currency
-      && tx.amount >= payment.amount;
+    if (!payment) {
+      console.error('Bachs webhook: could not match any payment for event', event.id);
+      return;
+    }
+    if (payment.status === 'SUCCESSFUL') return; // already processed
+
+    const isValid = data.status === 'succeeded'
+      && data.currency === payment.currency
+      && parseFloat(data.amount) >= payment.amount;
 
     if (!isValid) {
-      await prisma.payment.update({ where: { id: payment.id }, data: { status: 'FAILED', flwTransactionId: String(flwTransactionId) } });
+      await prisma.payment.update({ where: { id: payment.id }, data: { status: 'FAILED', providerRef: data.charge_id || null } });
       return;
     }
 
@@ -119,7 +170,7 @@ router.post('/webhook', async (req, res, next) => {
     await prisma.$transaction([
       prisma.payment.update({
         where: { id: payment.id },
-        data: { status: 'SUCCESSFUL', flwTransactionId: String(flwTransactionId), verifiedAt: now }
+        data: { status: 'SUCCESSFUL', providerRef: data.charge_id || null, verifiedAt: now }
       }),
       prisma.user.update({
         where: { id: payment.userId },
@@ -131,8 +182,8 @@ router.post('/webhook', async (req, res, next) => {
       })
     ]);
   } catch (error) {
-    // Already responded 200 to Flutterwave above; just log for our own visibility.
-    console.error('Flutterwave webhook processing error:', error);
+    // Already responded 200 to Bachs above; just log for our own visibility.
+    console.error('Bachs webhook processing error:', error);
   }
 });
 

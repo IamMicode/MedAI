@@ -2877,20 +2877,6 @@ function renderPrices() {
   }
 }
 
-let _flutterwaveLoadPromise = null;
-function loadFlutterwaveScript(){
-  if(_flutterwaveLoadPromise) return _flutterwaveLoadPromise;
-  _flutterwaveLoadPromise = new Promise((resolve, reject) => {
-    if(window.FlutterwaveCheckout){ resolve(); return; }
-    const script = document.createElement('script');
-    script.src = 'https://checkout.flutterwave.com/v3.js';
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error('flutterwave_script_failed'));
-    document.head.appendChild(script);
-  });
-  return _flutterwaveLoadPromise;
-}
-
 async function upgradePremium() {
   const u = getCurrentUser();
   if(!u || !u.username){
@@ -2908,6 +2894,8 @@ async function upgradePremium() {
   }
 
   const planType = currentBilling === 'yearly' ? 'yearly' : 'monthly';
+  const statusBox = document.getElementById('premium-status-msg');
+  if(statusBox) statusBox.textContent = 'Starting checkout...';
 
   try{
     const initRes = await fetch(`${API_BASE_URL}/api/payments/initialize`, {
@@ -2919,36 +2907,43 @@ async function upgradePremium() {
       const err = await initRes.json().catch(() => ({}));
       throw new Error(err.message || 'Could not start checkout.');
     }
-    const { txRef, amount, currency, email, name, publicKey } = await initRes.json();
+    const { checkoutUrl } = await initRes.json();
 
-    if(!publicKey){
+    if(!checkoutUrl){
       alert('Payments are not configured yet — please try again later.');
       return;
     }
 
-    await loadFlutterwaveScript();
-
-    FlutterwaveCheckout({
-      public_key: publicKey,
-      tx_ref: txRef,
-      amount: amount,
-      currency: currency,
-      payment_options: 'card,banktransfer,ussd,mobilemoney',
-      customer: { email, name },
-      customizations: {
-        title: 'MedAI Premium',
-        description: `${planType === 'yearly' ? 'Yearly' : 'Monthly'} Premium subscription`,
-        logo: ''
-      },
-      callback: function(response){
-        pollPaymentStatus(txRef);
-      },
-      onclose: function(){ /* user closed the checkout — nothing to do, payment stays PENDING */ }
-    });
+    // Bachs uses a hosted checkout page — send the whole browser there, then
+    // it redirects back to our success_url/cancel_url once the customer is done.
+    window.location.href = checkoutUrl;
   }catch(e){
     alert(e.message || 'Could not start checkout. Please try again.');
   }
 }
+
+// Handle returning from Bachs' hosted checkout (?payment=success&txRef=... or ?payment=cancelled)
+(function handlePaymentReturn(){
+  const params = new URLSearchParams(window.location.search);
+  const paymentResult = params.get('payment');
+  const txRef = params.get('txRef');
+
+  if(paymentResult === 'success' && txRef){
+    params.delete('payment');
+    params.delete('txRef');
+    const cleanUrl = `${window.location.pathname}${params.toString() ? '?' + params.toString() : ''}`;
+    window.history.replaceState({}, document.title, cleanUrl);
+    document.addEventListener('DOMContentLoaded', () => {
+      showTab('premium', null);
+      pollPaymentStatus(txRef);
+    });
+  } else if(paymentResult === 'cancelled'){
+    params.delete('payment');
+    const cleanUrl = `${window.location.pathname}${params.toString() ? '?' + params.toString() : ''}`;
+    window.history.replaceState({}, document.title, cleanUrl);
+    document.addEventListener('DOMContentLoaded', () => showTab('premium', null));
+  }
+})();
 
 async function pollPaymentStatus(txRef, attempt = 0){
   const token = localStorage.getItem('medai_token');

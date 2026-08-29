@@ -65,12 +65,14 @@ model User {
 model Payment {
   id              String    @id @default(cuid())
   userId          String
+  provider        String    @default("bachs") // bachs | flutterwave (legacy)
   txRef           String    @unique
+  checkoutId      String?   // provider's own session/checkout identifier
   amount          Float
   currency        String
   planType        String    // monthly | yearly
   status          String    @default("PENDING") // PENDING | SUCCESSFUL | FAILED
-  flwTransactionId String?
+  providerRef     String?   // provider's transaction/charge id, once confirmed
   createdAt       DateTime  @default(now())
   verifiedAt      DateTime?
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)

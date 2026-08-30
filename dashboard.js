@@ -2895,6 +2895,10 @@ async function upgradePremium() {
   }
 
   const planType = currentBilling === 'yearly' ? 'yearly' : 'monthly';
+  // TEMP DIAGNOSTIC: run `localStorage.setItem('medai_force_usd_test','true')` in the console
+  // to force USD (no currency conversion needed) — isolates whether the Bachs "get-quote"
+  // DNS failure is specific to cross-currency checkouts or a broader sandbox issue.
+  const testCountry = localStorage.getItem('medai_force_usd_test') === 'true' ? 'US' : currentCountry;
   const statusBox = document.getElementById('premium-status-msg');
   if(statusBox) statusBox.textContent = 'Starting checkout...';
 
@@ -2902,7 +2906,7 @@ async function upgradePremium() {
     const initRes = await fetch(`${API_BASE_URL}/api/payments/initialize`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ country: currentCountry, planType })
+      body: JSON.stringify({ country: testCountry, planType })
     });
     if(!initRes.ok){
       const err = await initRes.json().catch(() => ({}));

@@ -86,8 +86,8 @@ function toggleSidebar(){const sb=document.getElementById('sidebar');sb.classLis
 // ============================================================
 // TAB NAVIGATION
 // ============================================================
-const tabTitles={dashboard:'Dashboard',triage:'Quick Triage',chatbot:'AI Chatbot','medical-ai':'Medical Health AI','emotional-ai':'Safe Space AI','mental-ai':'Mental Health AI','physical-ai':'Physical Health AI',history:'Symptom History',vitals:'Vitals Monitor',tools:'Health Tools',reports:'Reports & OCR',appointments:'Appointments',therapy:'Therapy Finder',achievements:'Achievements',profile:'My Profile',settings:'Settings',premium:'Unlock Premium'};
-const tabBc={dashboard:'HOME / DASHBOARD',triage:'HOME / TRIAGE',chatbot:'AI / CHATBOT','medical-ai':'AI / MEDICAL','emotional-ai':'AI / SAFE SPACE','mental-ai':'AI / MENTAL','physical-ai':'AI / PHYSICAL',history:'HEALTH / HISTORY',vitals:'HEALTH / VITALS',tools:'HEALTH / TOOLS',reports:'HEALTH / REPORTS',appointments:'CARE / APPOINTMENTS',therapy:'CARE / THERAPY FINDER',achievements:'HEALTH / ACHIEVEMENTS',profile:'ACCOUNT / PROFILE',settings:'ACCOUNT / SETTINGS',premium:'ACCOUNT / PREMIUM'};
+const tabTitles={dashboard:'Dashboard',triage:'Quick Triage','emergency-contacts':'Emergency Contacts',chatbot:'AI Chatbot','medical-ai':'Medical Health AI','emotional-ai':'Safe Space AI','mental-ai':'Mental Health AI','physical-ai':'Physical Health AI',history:'Symptom History',vitals:'Vitals Monitor',tools:'Health Tools',reports:'Reports & OCR',appointments:'Appointments',therapy:'Therapy Finder',achievements:'Achievements',profile:'My Profile',settings:'Settings',premium:'Unlock Premium'};
+const tabBc={dashboard:'HOME / DASHBOARD',triage:'HOME / TRIAGE','emergency-contacts':'HOME / EMERGENCY CONTACTS',chatbot:'AI / CHATBOT','medical-ai':'AI / MEDICAL','emotional-ai':'AI / SAFE SPACE','mental-ai':'AI / MENTAL','physical-ai':'AI / PHYSICAL',history:'HEALTH / HISTORY',vitals:'HEALTH / VITALS',tools:'HEALTH / TOOLS',reports:'HEALTH / REPORTS',appointments:'CARE / APPOINTMENTS',therapy:'CARE / THERAPY FINDER',achievements:'HEALTH / ACHIEVEMENTS',profile:'ACCOUNT / PROFILE',settings:'ACCOUNT / SETTINGS',premium:'ACCOUNT / PREMIUM'};
 
 function showTab(id,el){
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
@@ -99,6 +99,7 @@ function showTab(id,el){
   document.getElementById('topbar-bc').textContent='// '+(tabBc[id]||id.toUpperCase());
   if(id === 'premium') renderPrices();
   if(id === 'therapy'){ renderTherapyFinder(); loadDoctorDirectoryMap(); }
+  if(id === 'emergency-contacts') renderEmergencyDirectory();
   if(id === 'appointments'){ loadAppointmentDoctors(); loadPatientAppointments(); }
   if(id === 'messages') loadPatientConversations();
   if(id === 'achievements') renderAchievements();
@@ -3305,6 +3306,87 @@ function testGroundingReset(){
     input.checked = false;
     toggleGrounding(input);
   });
+}
+
+// ============================================================
+// GLOBAL EMERGENCY CONTACTS DIRECTORY (standalone tab)
+// General emergency numbers are highly stable/well-documented for every entry.
+// A specific crisis line is only included where independently verified —
+// otherwise the general number is the single, safe recommendation.
+// ============================================================
+const GLOBAL_EMERGENCY_DIRECTORY = [
+  { code:'NG', flag:'🇳🇬', name:'Nigeria', general:'112', crisis:{ label:'SURPIN Crisis Line', phone:'09080217555' } },
+  { code:'US', flag:'🇺🇸', name:'United States', general:'911', crisis:{ label:'988 Lifeline', phone:'988' } },
+  { code:'GB', flag:'🇬🇧', name:'United Kingdom', general:'999', crisis:{ label:'Samaritans', phone:'116123' } },
+  { code:'ZA', flag:'🇿🇦', name:'South Africa', general:'112', crisis:{ label:'SADAG Crisis Line', phone:'0800567567' } },
+  { code:'CA', flag:'🇨🇦', name:'Canada', general:'911', crisis:{ label:'988 Lifeline', phone:'988' } },
+  { code:'AU', flag:'🇦🇺', name:'Australia', general:'000', crisis:{ label:'Lifeline', phone:'131114' } },
+  { code:'IE', flag:'🇮🇪', name:'Ireland', general:'112', crisis:{ label:'Samaritans', phone:'116123' } },
+  { code:'GH', flag:'🇬🇭', name:'Ghana', general:'999', crisis:{ label:'Mental Health Lifeline', phone:'233244471279' } },
+  { code:'KE', flag:'🇰🇪', name:'Kenya', general:'999', crisis:{ label:'Befrienders Kenya', phone:'254722178177' } },
+  { code:'IN', flag:'🇮🇳', name:'India', general:'112', crisis:{ label:'KIRAN Helpline', phone:'18005990019' } },
+  { code:'DE', flag:'🇩🇪', name:'Germany', general:'112', crisis:{ label:'Telefonseelsorge', phone:'08001110111' } },
+  { code:'FR', flag:'🇫🇷', name:'France', general:'112', crisis:{ label:'3114 (national line)', phone:'3114' } },
+  { code:'AR', flag:'🇦🇷', name:'Argentina', general:'911' },
+  { code:'AM', flag:'🇦🇲', name:'Armenia', general:'112' },
+  { code:'BH', flag:'🇧🇭', name:'Bahrain', general:'999' },
+  { code:'BD', flag:'🇧🇩', name:'Bangladesh', general:'999' },
+  { code:'BE', flag:'🇧🇪', name:'Belgium', general:'112' },
+  { code:'BR', flag:'🇧🇷', name:'Brazil', general:'192' },
+  { code:'CL', flag:'🇨🇱', name:'Chile', general:'131' },
+  { code:'CN', flag:'🇨🇳', name:'China', general:'120' },
+  { code:'CO', flag:'🇨🇴', name:'Colombia', general:'123' },
+  { code:'EG', flag:'🇪🇬', name:'Egypt', general:'123' },
+  { code:'ID', flag:'🇮🇩', name:'Indonesia', general:'112' },
+  { code:'IL', flag:'🇮🇱', name:'Israel', general:'101' },
+  { code:'IT', flag:'🇮🇹', name:'Italy', general:'112' },
+  { code:'JP', flag:'🇯🇵', name:'Japan', general:'119' },
+  { code:'MY', flag:'🇲🇾', name:'Malaysia', general:'999' },
+  { code:'MX', flag:'🇲🇽', name:'Mexico', general:'911' },
+  { code:'NL', flag:'🇳🇱', name:'Netherlands', general:'112' },
+  { code:'NZ', flag:'🇳🇿', name:'New Zealand', general:'111' },
+  { code:'PK', flag:'🇵🇰', name:'Pakistan', general:'1122' },
+  { code:'PH', flag:'🇵🇭', name:'Philippines', general:'911' },
+  { code:'PL', flag:'🇵🇱', name:'Poland', general:'112' },
+  { code:'PT', flag:'🇵🇹', name:'Portugal', general:'112' },
+  { code:'QA', flag:'🇶🇦', name:'Qatar', general:'999' },
+  { code:'RU', flag:'🇷🇺', name:'Russia', general:'112' },
+  { code:'RW', flag:'🇷🇼', name:'Rwanda', general:'112' },
+  { code:'SA', flag:'🇸🇦', name:'Saudi Arabia', general:'997' },
+  { code:'SG', flag:'🇸🇬', name:'Singapore', general:'995' },
+  { code:'KR', flag:'🇰🇷', name:'South Korea', general:'119' },
+  { code:'ES', flag:'🇪🇸', name:'Spain', general:'112' },
+  { code:'SE', flag:'🇸🇪', name:'Sweden', general:'112' },
+  { code:'CH', flag:'🇨🇭', name:'Switzerland', general:'144' },
+  { code:'TZ', flag:'🇹🇿', name:'Tanzania', general:'112' },
+  { code:'TH', flag:'🇹🇭', name:'Thailand', general:'1669' },
+  { code:'TR', flag:'🇹🇷', name:'Turkey', general:'112' },
+  { code:'UG', flag:'🇺🇬', name:'Uganda', general:'999' },
+  { code:'AE', flag:'🇦🇪', name:'United Arab Emirates', general:'998' },
+  { code:'VN', flag:'🇻🇳', name:'Vietnam', general:'115' },
+  { code:'ZW', flag:'🇿🇼', name:'Zimbabwe', general:'999' }
+];
+
+function renderEmergencyDirectory(){
+  const grid = document.getElementById('emergency-directory-grid');
+  if(!grid) return;
+  const query = (document.getElementById('emergency-directory-search')?.value || '').trim().toLowerCase();
+  const list = query
+    ? GLOBAL_EMERGENCY_DIRECTORY.filter(c => c.name.toLowerCase().includes(query))
+    : GLOBAL_EMERGENCY_DIRECTORY;
+
+  if(!list.length){
+    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--muted);padding:2rem 0;font-size:13px">No country matches your search.</div>';
+    return;
+  }
+
+  grid.innerHTML = list.map(c => `
+    <div class="glass-card" style="padding:1.1rem">
+      <div style="font-size:14px;font-weight:700;margin-bottom:.6rem">${c.flag} ${escapeHtml(c.name)}</div>
+      <a href="tel:${c.general}" class="btn btn-danger" style="justify-content:center;padding:10px;font-size:11px;text-decoration:none;margin-bottom:${c.crisis ? '8px' : '0'}">🚑 Emergency: ${c.general}</a>
+      ${c.crisis ? `<a href="tel:${c.crisis.phone}" class="btn btn-outline" style="justify-content:center;padding:10px;font-size:11px;text-decoration:none;color:var(--warning);border-color:rgba(255,170,51,0.3)">🧠 ${escapeHtml(c.crisis.label)}</a>` : ''}
+    </div>
+  `).join('');
 }
 
 const PANIC_HOTLINES = {

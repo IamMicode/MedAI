@@ -870,6 +870,10 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
       <span class="sb-item-label">Quick Triage</span>
       <span class="sb-badge">NEW</span>
     </div>
+    <div class="sb-item" onclick="showTab('emergency-contacts',this)">
+      <div class="sb-item-icon">🌍</div>
+      <span class="sb-item-label">Emergency Contacts</span>
+    </div>
 
     <!-- AI SUPPORT -->
     <div class="sb-section-label">AI Support</div>
@@ -1190,6 +1194,24 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
         <div class="btn btn-primary" onclick="startTriage()" style="justify-content:center">⚡ Analyze Symptoms</div>
         <div id="triage-result" style="margin-top:1.5rem;display:none"></div>
       </div>
+    </div>
+
+    <!-- ==================== EMERGENCY CONTACTS (GLOBAL) ==================== -->
+    <div class="tab-panel" id="tab-emergency-contacts">
+      <div class="sec-label">// Global Directory</div>
+      <h2 class="sec-title">Emergency <span class="grad">Contacts Worldwide</span></h2>
+      <p class="sec-sub">General emergency numbers and mental health crisis lines by country. In a real emergency, always call your local emergency number directly.</p>
+
+      <div class="glass-card" style="padding:1rem 1.25rem;margin-bottom:1.25rem;display:flex;align-items:center;gap:10px">
+        <span style="font-size:12px;color:var(--muted)">🔍</span>
+        <input class="tool-input" id="emergency-directory-search" placeholder="Search for a country..." oninput="renderEmergencyDirectory()" style="flex:1;background:none;border:none"/>
+      </div>
+
+      <div class="glass-card" style="padding:1rem 1.25rem;margin-bottom:1.25rem;font-size:11px;color:var(--muted);line-height:1.6">
+        📡 On most mobile phones, dialing <strong style="color:var(--text)">112</strong> will connect you to local emergency services even in countries where it isn't the official primary number — it's built into the GSM standard used worldwide.
+      </div>
+
+      <div id="emergency-directory-grid" class="grid-3"></div>
     </div>
 
     <!-- ==================== AI CHATBOT ==================== -->
@@ -1934,6 +1956,7 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
       <div class="sb-item-icon" style="background:rgba(255,77,109,0.14);color:var(--danger)">🚨</div>
       <span class="sb-item-label" style="color:var(--danger);font-weight:700">PANIC MODE</span>
     </div>
+    <div class="sb-item" onclick="showTab('emergency-contacts',null);closeMobileMore()"><div class="sb-item-icon">🌍</div><span class="sb-item-label">Emergency Contacts</span></div>
 
     <div class="sb-section-label">AI Support</div>
     <div class="sb-item" onclick="showTab('medical-ai',null);closeMobileMore()"><div class="sb-item-icon">🏥</div><span class="sb-item-label">Medical Health AI</span></div>

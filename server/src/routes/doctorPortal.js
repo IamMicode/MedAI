@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { requireAuth } = require('../middleware/auth');
 const prisma = require('../db');
+const notify = require('../utils/notify');
 
 router.use(requireAuth);
 
@@ -63,6 +64,24 @@ router.patch('/appointments/:id', async (req, res, next) => {
       where: { id: req.params.id },
       data: { status, declineReason: status === 'DECLINED' ? (declineReason || null) : null }
     });
+
+    const doctorProfile = await prisma.doctorProfile.findUnique({ where: { userId: req.user.id }, select: { fullName: true } });
+    const doctorName = doctorProfile?.fullName || 'Your doctor';
+    if (status === 'ACCEPTED') {
+      await notify(appointment.patientId, {
+        type: 'appointment_accepted',
+        title: 'Appointment accepted',
+        body: `Dr. ${doctorName} accepted your appointment for ${appointment.scheduledDate} at ${appointment.scheduledTime}.`,
+        link: 'appointments'
+      });
+    } else {
+      await notify(appointment.patientId, {
+        type: 'appointment_declined',
+        title: 'Appointment declined',
+        body: `Dr. ${doctorName} declined your appointment request${declineReason ? ': ' + declineReason : '.'}`,
+        link: 'appointments'
+      });
+    }
 
     return res.json({ appointment: updated });
   } catch (error) {
@@ -303,6 +322,14 @@ router.post('/conversations/:id/messages', async (req, res, next) => {
     await prisma.conversation.update({
       where: { id: req.params.id },
       data: { updatedAt: new Date() }
+    });
+
+    const doctorProfile = await prisma.doctorProfile.findUnique({ where: { userId: req.user.id }, select: { fullName: true } });
+    await notify(conversation.patientId, {
+      type: 'message',
+      title: `New message from Dr. ${doctorProfile?.fullName || 'your doctor'}`,
+      body: imageData ? '📷 Sent an image' : trimmedContent.slice(0, 100),
+      link: `messages:${req.params.id}`
     });
 
     return res.status(201).json({ message });

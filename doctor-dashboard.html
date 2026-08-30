@@ -160,9 +160,24 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
 <div id="shell">
   <!-- SIDEBAR -->
   <div class="dp-sidebar">
-    <div class="dp-logo">
-      <div class="dp-logo-icon">🩺</div>
-      <div class="dp-logo-text">Med<span>AI</span> Doctor</div>
+    <div class="dp-logo" style="justify-content:space-between">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div class="dp-logo-icon">🩺</div>
+        <div class="dp-logo-text">Med<span>AI</span> Doctor</div>
+      </div>
+      <div style="position:relative">
+        <div onclick="toggleNotifications()" style="cursor:pointer;width:34px;height:34px;border-radius:10px;background:rgba(0,212,255,0.08);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:15px;position:relative">
+          🔔
+          <div id="notif-dot" style="display:none;position:absolute;top:5px;right:5px;width:7px;height:7px;border-radius:50%;background:var(--danger);border:1.5px solid var(--surface)"></div>
+        </div>
+        <div id="notif-panel" style="display:none;position:absolute;top:44px;right:0;width:300px;max-height:360px;overflow-y:auto;background:var(--surface);border:1px solid var(--border2);border-radius:12px;box-shadow:0 24px 60px rgba(0,0,0,0.5);z-index:200">
+          <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;font-family:var(--mono);font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--accent)">
+            <span id="notif-head-label">Notifications</span>
+            <span onclick="markAllNotificationsRead()" style="cursor:pointer;color:var(--muted);text-transform:none;letter-spacing:0;font-size:10px">Mark all read</span>
+          </div>
+          <div id="notif-list"></div>
+        </div>
+      </div>
     </div>
     <div style="padding:10px 14px;border-bottom:1px solid var(--border)">
       <div onclick="openAppointmentsModal()" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;background:rgba(0,212,255,0.06);border:1px solid var(--border2);border-radius:8px;padding:9px 12px;font-family:var(--mono);font-size:11px;letter-spacing:.5px;color:var(--text)">
@@ -713,6 +728,91 @@ async function respondToAppointment(id, status){
     alert('Could not update this appointment. Please try again.');
   }
 }
+
+// ---------- Notifications ----------
+let _latestNotifications = [];
+
+function toggleNotifications(){
+  const panel = document.getElementById('notif-panel');
+  if(!panel) return;
+  const isOpen = panel.style.display === 'block';
+  panel.style.display = isOpen ? 'none' : 'block';
+  if(!isOpen) fetchAndRenderNotifications();
+}
+
+document.addEventListener('click', (e) => {
+  const panel = document.getElementById('notif-panel');
+  if(!panel || panel.style.display !== 'block') return;
+  if(!panel.contains(e.target) && !e.target.closest('[onclick="toggleNotifications()"]')){
+    panel.style.display = 'none';
+  }
+});
+
+function notificationIcon(type){
+  return {
+    message: '💬', appointment_request: '📅', appointment_accepted: '✅',
+    appointment_declined: '❌', review_received: '⭐', doctor_approved: '🎉',
+    doctor_rejected: 'ℹ️', payment_success: '👑'
+  }[type] || '🔔';
+}
+
+async function fetchAndRenderNotifications(){
+  try{
+    const res = await fetch(`${API_BASE_URL}/api/notifications`, { headers: authHeaders() });
+    if(!res.ok) return;
+    const data = await res.json();
+    _latestNotifications = data.notifications || [];
+    renderNotifications(data.unreadCount || 0);
+  }catch(e){ /* non-critical, retry next interval */ }
+}
+
+function renderNotifications(unreadCount){
+  const list = document.getElementById('notif-list');
+  const dot = document.getElementById('notif-dot');
+  const head = document.getElementById('notif-head-label');
+  if(!list) return;
+
+  if(head) head.textContent = unreadCount > 0 ? `Notifications (${unreadCount} new)` : 'Notifications';
+  if(dot) dot.style.display = unreadCount > 0 ? 'block' : 'none';
+
+  if(!_latestNotifications.length){
+    list.innerHTML = '<div style="padding:1rem;color:var(--muted);font-size:12px;text-align:center">No notifications yet.</div>';
+    return;
+  }
+
+  list.innerHTML = _latestNotifications.map(n => `
+    <div onclick="handleNotificationClick('${n.id}', ${JSON.stringify(n.link || '')})" style="padding:11px 14px;border-bottom:1px solid var(--border);cursor:pointer;font-size:12.5px;line-height:1.5;${n.isRead ? '' : 'background:rgba(0,212,255,0.06)'}">
+      <div>${notificationIcon(n.type)} <strong>${escapeHtml(n.title)}</strong></div>
+      <div style="color:var(--muted);margin-top:2px">${escapeHtml(n.body)}</div>
+      <div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-top:4px">${timeAgoShort(n.createdAt)}</div>
+    </div>
+  `).join('');
+}
+
+async function handleNotificationClick(id, link){
+  fetch(`${API_BASE_URL}/api/notifications/${id}/read`, {
+    method: 'PATCH', headers: authHeaders()
+  }).then(() => fetchAndRenderNotifications()).catch(() => {});
+
+  if(link && link.startsWith('messages:')){
+    const conversationId = link.split(':')[1];
+    const match = allPatients.find(p => p.conversationId === conversationId);
+    if(match) selectPatient(match.id);
+  } else if(link === 'appointments'){
+    openAppointmentsModal();
+  }
+  document.getElementById('notif-panel').style.display = 'none';
+}
+
+async function markAllNotificationsRead(){
+  try{
+    await fetch(`${API_BASE_URL}/api/notifications/read-all`, { method: 'PATCH', headers: authHeaders() });
+    await fetchAndRenderNotifications();
+  }catch(e){ /* non-critical */ }
+}
+
+setInterval(fetchAndRenderNotifications, 20000);
+fetchAndRenderNotifications();
 
 loadDoctorMe();
 loadPatients();

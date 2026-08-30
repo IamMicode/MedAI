@@ -5,6 +5,7 @@ const { z } = require('zod');
 const prisma = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const validate = require('../middleware/validate');
+const notify = require('../utils/notify');
 
 const router = express.Router();
 
@@ -276,11 +277,26 @@ router.post('/:doctorId/reviews', requireAuth, async (req, res, next) => {
       return res.status(403).json({ message: 'You can only review a doctor after chatting with them.' });
     }
 
+    const existingReview = await prisma.doctorReview.findUnique({
+      where: { doctorId_patientId: { doctorId, patientId: req.user.id } }
+    });
+
     const review = await prisma.doctorReview.upsert({
       where: { doctorId_patientId: { doctorId, patientId: req.user.id } },
       create: { doctorId, patientId: req.user.id, rating, comment: comment || null },
       update: { rating, comment: comment || null }
     });
+
+    if (!existingReview) {
+      const patientUser = await prisma.user.findUnique({ where: { id: req.user.id }, select: { firstname: true, lastname: true, username: true } });
+      const patientName = `${patientUser?.firstname || ''} ${patientUser?.lastname || ''}`.trim() || patientUser?.username || 'A patient';
+      await notify(doctorId, {
+        type: 'review_received',
+        title: `New ${rating}-star review`,
+        body: `${patientName} left you a ${rating}-star review${comment ? ': "' + comment.slice(0, 80) + '"' : '.'}`,
+        link: 'profile'
+      });
+    }
 
     return res.json({ review });
   } catch (error) {

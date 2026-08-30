@@ -2,6 +2,7 @@ const express = require('express');
 const prisma = require('../db');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const sanitizeUser = require('../utils/sanitizeUser');
+const notify = require('../utils/notify');
 
 const router = express.Router();
 
@@ -156,6 +157,22 @@ router.patch('/doctors/:id', async (req, res, next) => {
         verifiedAt: action === 'approve' ? new Date() : null
       }
     });
+
+    if (action === 'approve') {
+      await notify(profile.userId, {
+        type: 'doctor_approved',
+        title: 'Your account has been approved!',
+        body: 'Congratulations — your doctor account is now live. Patients can now find and message you.',
+        link: 'dashboard'
+      });
+    } else {
+      await notify(profile.userId, {
+        type: 'doctor_rejected',
+        title: 'Application update',
+        body: `Your doctor application was not approved${rejectionReason ? ': ' + rejectionReason : '.'}`,
+        link: null
+      });
+    }
 
     return res.json({ message: `Doctor ${action === 'approve' ? 'approved' : 'rejected'}.`, profile: updated });
   } catch (error) {

@@ -988,7 +988,10 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
     </div>
     <div class="search-pop" id="search-results"></div>
     <div class="notif-panel" id="notif-panel">
-      <div class="notif-head">Notifications</div>
+      <div class="notif-head" style="display:flex;justify-content:space-between;align-items:center">
+        <span id="notif-head-label">Notifications</span>
+        <span onclick="markAllNotificationsRead()" style="cursor:pointer;color:var(--accent);text-transform:none;letter-spacing:0;font-size:10px">Mark all read</span>
+      </div>
       <div id="notif-list"></div>
     </div>
   </div>

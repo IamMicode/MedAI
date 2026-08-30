@@ -3,6 +3,7 @@ const router = express.Router();
 const crypto = require('crypto');
 const { requireAuth } = require('../middleware/auth');
 const prisma = require('../db');
+const notify = require('../utils/notify');
 
 // Bachs (https://bachs.io) — hosted checkout + webhook, similar shape to Stripe/Flutterwave
 // but the customer is fully redirected to a hosted page rather than an inline widget.
@@ -182,6 +183,13 @@ router.post('/webhook', async (req, res, next) => {
         }
       })
     ]);
+
+    await notify(payment.userId, {
+      type: 'payment_success',
+      title: 'Premium activated! 🎉',
+      body: `Your ${payment.planType} Premium subscription is now active. Enjoy unlimited AI access.`,
+      link: 'premium'
+    });
   } catch (error) {
     // Already responded 200 to Bachs above; just log for our own visibility.
     console.error('Bachs webhook processing error:', error);

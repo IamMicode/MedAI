@@ -60,6 +60,21 @@ model User {
   patientAppointments   Appointment[]  @relation("PatientAppointments")
   vitalReadings         VitalReading[]
   payments              Payment[]
+  notifications         Notification[]
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String   // message | appointment_request | appointment_accepted | appointment_declined | review_received | doctor_approved | doctor_rejected | payment_success
+  title     String
+  body      String
+  link      String?  // a hint the frontend uses to navigate on click (tab id, conversation id, etc.)
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
 }
 
 model Payment {

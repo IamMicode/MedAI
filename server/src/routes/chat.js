@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { requireAuth } = require('../middleware/auth');
 const prisma = require('../db');
+const notify = require('../utils/notify');
 
 router.use(requireAuth);
 
@@ -28,6 +29,15 @@ router.post('/appointments', async (req, res, next) => {
         urgency: urgency || 'Routine',
         status: 'PENDING'
       }
+    });
+
+    const patientUser = await prisma.user.findUnique({ where: { id: req.user.id }, select: { firstname: true, lastname: true, username: true } });
+    const patientName = `${patientUser?.firstname || ''} ${patientUser?.lastname || ''}`.trim() || patientUser?.username || 'A patient';
+    await notify(doctorId, {
+      type: 'appointment_request',
+      title: 'New appointment request',
+      body: `${patientName} requested an appointment for ${scheduledDate} at ${scheduledTime}.`,
+      link: 'appointments'
     });
 
     return res.json({ appointment });
@@ -188,6 +198,15 @@ router.post('/conversations/:id/messages', async (req, res, next) => {
     await prisma.conversation.update({
       where: { id: req.params.id },
       data: { updatedAt: new Date() }
+    });
+
+    const senderUser = await prisma.user.findUnique({ where: { id: req.user.id }, select: { firstname: true, lastname: true, username: true } });
+    const senderName = `${senderUser?.firstname || ''} ${senderUser?.lastname || ''}`.trim() || senderUser?.username || 'A patient';
+    await notify(conversation.doctorId, {
+      type: 'message',
+      title: `New message from ${senderName}`,
+      body: imageData ? '📷 Sent an image' : trimmedContent.slice(0, 100),
+      link: `messages:${req.params.id}`
     });
 
     return res.status(201).json({ message });

@@ -2644,66 +2644,112 @@ function clearAllLocalUserData(){
   renderNotifications();
 }
 
-function renderNotifications(){
+let _latestNotifications = [];
+
+function timeAgoShort(dateStr){
+  const diffMs = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if(mins < 1) return 'just now';
+  if(mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if(hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
+async function fetchAndRenderNotifications(){
+  const token = localStorage.getItem('medai_token');
+  if(!token) return;
+  try{
+    const res = await fetch(`${API_BASE_URL}/api/notifications`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if(!res.ok) return;
+    const data = await res.json();
+    _latestNotifications = data.notifications || [];
+    renderNotifications(data.unreadCount || 0);
+  }catch(e){ /* non-critical, retry on next interval */ }
+}
+
+function notificationIcon(type){
+  return {
+    message: '💬', appointment_request: '📅', appointment_accepted: '✅',
+    appointment_declined: '❌', review_received: '⭐', doctor_approved: '🎉',
+    doctor_rejected: 'ℹ️', payment_success: '👑'
+  }[type] || '🔔';
+}
+
+function renderNotifications(unreadCount){
   const list=document.getElementById('notif-list');
   const dot=document.getElementById('notif-dot');
+  const head=document.getElementById('notif-head-label');
   if(!list) return;
+
   if(localStorage.getItem('notifications_enabled') === 'false'){
     list.innerHTML='<div class="notif-item">Notifications are turned off.<div class="notif-time">Settings</div></div>';
     if(dot) dot.style.display='none';
     return;
   }
+
   const reminders=localStorage.getItem('medicine_notifications') === 'false' ? [] : getStored('reminders', []).filter(r=>r.status!=='Taken').slice(0,3);
-  const appointmentNotifs=localStorage.getItem('appointment_notifications') === 'false' ? [] : (window._apptNotifications || []);
-  const system=localStorage.getItem('system_notifications') === 'false' ? [] : [
-    {text:'Tip: complete your profile to improve health score personalization.',time:'Profile'}
-  ];
-  const items=[
-    ...appointmentNotifs,
-    ...reminders.map(r=>({text:`Medicine reminder due: ${r.name} at ${r.time || 'now'}`,time:'Reminder'})),
-    ...system
-  ];
-  list.innerHTML = items.map(i=>`<div class="notif-item">${escapeHtml(i.text)}<div class="notif-time">${escapeHtml(i.time)}</div></div>`).join('');
-  if(dot) dot.style.display = items.length ? 'block' : 'none';
+  const reminderItems = reminders.map(r=>({text:`Medicine reminder due: ${r.name} at ${r.time || 'now'}`,time:'Reminder', isRead:true}));
+
+  const realItems = _latestNotifications.map(n => ({
+    id: n.id,
+    text: `${notificationIcon(n.type)} ${n.title}${n.body ? ' — ' + n.body : ''}`,
+    time: timeAgoShort(n.createdAt),
+    link: n.link,
+    isRead: n.isRead
+  }));
+
+  const items = [...realItems, ...reminderItems];
+
+  if(head) head.textContent = unreadCount > 0 ? `Notifications (${unreadCount} new)` : 'Notifications';
+  if(dot) dot.style.display = unreadCount > 0 ? 'block' : 'none';
+
+  if(!items.length){
+    list.innerHTML = '<div class="notif-item" style="color:var(--muted)">No notifications yet.</div>';
+    return;
+  }
+
+  list.innerHTML = items.map(i => `
+    <div class="notif-item" style="${i.isRead ? '' : 'background:rgba(0,212,255,0.06)'};cursor:${i.id ? 'pointer' : 'default'}" ${i.id ? `onclick="handleNotificationClick('${i.id}', ${JSON.stringify(i.link || '')})"` : ''}>
+      ${escapeHtml(i.text)}
+      <div class="notif-time">${escapeHtml(i.time)}</div>
+    </div>
+  `).join('');
 }
 
-// ---------- Appointment status notifications (poll for doctor accept/decline) ----------
-async function pollAppointmentStatusForNotifications(){
+async function handleNotificationClick(id, link){
+  const token = localStorage.getItem('medai_token');
+  if(token){
+    fetch(`${API_BASE_URL}/api/notifications/${id}/read`, {
+      method: 'PATCH', headers: { Authorization: `Bearer ${token}` }
+    }).then(() => fetchAndRenderNotifications()).catch(() => {});
+  }
+
+  if(!link) return;
+  if(link.startsWith('messages:')){
+    showTab('messages', null);
+    await loadPatientConversations();
+  } else if(['appointments','premium','profile','dashboard'].includes(link)){
+    showTab(link, null);
+  }
+  toggleNotifications();
+}
+
+async function markAllNotificationsRead(){
   const token = localStorage.getItem('medai_token');
   if(!token) return;
   try{
-    const res = await fetch(`${API_BASE_URL}/api/chat/appointments`, { headers: patientAuthHeaders() });
-    if(!res.ok) return;
-    const data = await res.json();
-    const appointments = data.appointments || [];
-
-    const seenKey = userStoragePrefix() + 'appt_seen_status';
-    let seen = {};
-    try{ seen = JSON.parse(localStorage.getItem(seenKey) || '{}'); }catch(e){ seen = {}; }
-
-    const newNotifs = [];
-    appointments.forEach(a => {
-      const prevStatus = seen[a.id];
-      if(a.status !== 'PENDING' && prevStatus !== a.status){
-        if(a.status === 'ACCEPTED'){
-          newNotifs.push({ text: `Dr. ${a.doctorName} accepted your appointment for ${a.scheduledDate} at ${a.scheduledTime}.`, time: 'Appointment' });
-        } else if(a.status === 'DECLINED'){
-          newNotifs.push({ text: `Dr. ${a.doctorName} declined your appointment request${a.declineReason ? ': ' + a.declineReason : '.'}`, time: 'Appointment' });
-        }
-      }
-      seen[a.id] = a.status;
+    await fetch(`${API_BASE_URL}/api/notifications/read-all`, {
+      method: 'PATCH', headers: { Authorization: `Bearer ${token}` }
     });
-
-    localStorage.setItem(seenKey, JSON.stringify(seen));
-
-    if(newNotifs.length){
-      window._apptNotifications = [...newNotifs, ...(window._apptNotifications || [])].slice(0, 10);
-      renderNotifications();
-    }
-  }catch(e){ /* non-critical, retry on next interval */ }
+    await fetchAndRenderNotifications();
+  }catch(e){ /* non-critical */ }
 }
-setInterval(pollAppointmentStatusForNotifications, 30000);
-pollAppointmentStatusForNotifications();
+
+setInterval(fetchAndRenderNotifications, 20000);
+fetchAndRenderNotifications();
 
 function toggleNotifications(){
   const panel=document.getElementById('notif-panel');

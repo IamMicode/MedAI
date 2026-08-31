@@ -2958,16 +2958,27 @@ async function upgradePremium() {
       const err = await initRes.json().catch(() => ({}));
       throw new Error(err.message || 'Could not start checkout.');
     }
-    const { checkoutUrl } = await initRes.json();
+    const initData = await initRes.json();
 
-    if(!checkoutUrl){
-      alert('Payments are not configured yet — please try again later.');
+    if (initData.status === 'FAILED') {
+      // A genuine failure (charge_status === 'failed') — show Bachs' real reason if given.
+      if(statusBox) statusBox.innerHTML = `<strong style="color:var(--danger)">Payment failed.</strong> ${escapeHtmlChat(initData.message || '')}`;
+      alert(initData.message || 'Payment failed. Please try again.');
       return;
     }
 
-    // Bachs uses a hosted checkout page — send the whole browser there, then
-    // it redirects back to our success_url/cancel_url once the customer is done.
-    window.location.href = checkoutUrl;
+    if (initData.redirectUrl) {
+      // Bachs uses a hosted checkout page — send the whole browser there, then
+      // it redirects back to our success_url/cancel_url once the customer is done.
+      window.location.href = initData.redirectUrl;
+      return;
+    }
+
+    // status is PENDING (or SUCCESSFUL without a redirect) with no redirect URL yet —
+    // this is not a failure, the checkout session just hasn't produced a redirect target
+    // yet. Poll for the outcome instead of showing an error.
+    if(statusBox) statusBox.textContent = 'Preparing your checkout...';
+    pollPaymentStatus(initData.txRef);
   }catch(e){
     alert(e.message || 'Could not start checkout. Please try again.');
   }

@@ -86,12 +86,56 @@ router.post('/initialize', requireAuth, async (req, res, next) => {
 
     const bachsData = await bachsRes.json();
 
+    if (process.env.NODE_ENV !== 'production') {
+      // Dev-only visibility into Bachs' response shape. Never log secret keys or card data.
+      console.log('[Bachs] checkout-session response:', {
+        checkout_id: bachsData.checkout_id,
+        charge_status: bachsData.charge_status,
+        attempt_status: bachsData.attempt_status,
+        checkout_status: bachsData.checkout_status,
+        failure_message: bachsData.failure_message,
+        amount_paid: bachsData.amount_paid,
+        amount_remaining: bachsData.amount_remaining,
+        redirect_url: bachsData.redirect_url
+      });
+    }
+
     await prisma.payment.update({
       where: { txRef },
-      data: { checkoutId: bachsData.checkout_id }
+      data: { checkoutId: bachsData.checkout_id || null }
     });
 
-    return res.json({ checkoutUrl: bachsData.checkout_url, txRef });
+    // Bachs' checkout-session response reports state via charge_status/checkout_status,
+    // NOT via HTTP status — a 200 here does not mean the payment succeeded, and a
+    // missing redirect_url does not mean it failed. Only charge_status === 'failed'
+    // is a real failure; 'processing' + checkout_status 'open' is a normal pending
+    // state (the session exists but hasn't been redirected to / completed yet).
+    if (bachsData.charge_status === 'failed') {
+      await prisma.payment.update({ where: { txRef }, data: { status: 'FAILED' } });
+      return res.status(200).json({
+        status: 'FAILED',
+        message: bachsData.failure_message || 'Payment failed.',
+        txRef
+      });
+    }
+
+    if (bachsData.charge_status === 'succeeded') {
+      // Rare at initialize time, but handle it rather than assume it can't happen —
+      // the webhook remains the authoritative source of truth for actually granting Premium.
+      return res.json({
+        status: 'SUCCESSFUL',
+        redirectUrl: bachsData.redirect_url || null,
+        txRef
+      });
+    }
+
+    // charge_status is 'processing' (or similar in-flight state) and checkout_status is
+    // 'open' — this is pending, not a failure, whether or not redirect_url is populated yet.
+    return res.json({
+      status: 'PENDING',
+      redirectUrl: bachsData.redirect_url || null,
+      txRef
+    });
   } catch (error) {
     return next(error);
   }

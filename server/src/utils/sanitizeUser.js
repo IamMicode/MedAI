@@ -1,6 +1,6 @@
 function sanitizeUser(user) {
   if (!user) return null;
-  const { password, googleId, ...safeUser } = user;
+  const { password, googleId, twoFactorSecret, twoFactorPendingSecret, twoFactorBackupCodes, ...safeUser } = user;
   return safeUser;
 }
 

@@ -1711,7 +1711,7 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
         <div class="glass-card">
           <div style="padding:1rem 1.25rem;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:2px">// PRIVACY & SECURITY</div>
           <div class="settings-item" onclick="showSettingsPanel('password-panel')"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(0,255,136,0.1)">🔒</div><div><div class="settings-label">Change Password</div><div class="settings-desc" id="password-desc">Local account password</div></div></div><span class="settings-arrow">›</span></div>
-          <div class="settings-item"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(0,212,255,0.1)">🛡️</div><div><div class="settings-label">Two-Factor Auth</div><div class="settings-desc">Frontend demo flag</div></div></div><div class="toggle" id="twofa-toggle" onclick="toggleSettingFlag('twofa_enabled',this)"></div></div>
+          <div class="settings-item" onclick="showSettingsPanel('twofa-panel')"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(0,212,255,0.1)">🛡️</div><div><div class="settings-label">Two-Factor Auth</div><div class="settings-desc" id="twofa-status-desc">Checking status...</div></div></div><span class="settings-arrow">›</span></div>
           <div class="settings-item" onclick="showSettingsPanel('privacy-panel')"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(0,212,255,0.1)">📊</div><div><div class="settings-label">Data & Privacy</div><div class="settings-desc">Manage your data</div></div></div><span class="settings-arrow">›</span></div>
           <div class="settings-item" onclick="exportHealthData()"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(0,212,255,0.1)">🗂️</div><div><div class="settings-label">Export Health Data</div><div class="settings-desc">Download your records</div></div></div><span class="settings-arrow">›</span></div>
           <div class="settings-item" onclick="clearLocalHistory()"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(255,170,51,0.1)">⚠️</div><div><div class="settings-label">Clear History</div><div class="settings-desc">Remove all triage records</div></div></div><span class="settings-arrow" style="color:var(--warning)">›</span></div>
@@ -1756,6 +1756,44 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
           </div>
           <div class="settings-actions"><button class="btn btn-primary" onclick="changeLocalPassword()">Update Password</button></div>
           <div class="mini-result" id="password-status">Use at least 8 characters for the new password.</div>
+        </div>
+
+        <div class="glass-card settings-panel" id="twofa-panel">
+          <div class="settings-panel-title">Two-Factor Authentication</div>
+          <p class="settings-panel-copy" id="twofa-panel-copy">Add an extra layer of security — after entering your password, you'll also need a code from an authenticator app (Google Authenticator, Authy, etc.) to log in.</p>
+
+          <div id="twofa-disabled-view">
+            <div class="settings-actions"><button class="btn btn-primary" onclick="start2FASetup()">Enable Two-Factor Auth</button></div>
+          </div>
+
+          <div id="twofa-setup-view" style="display:none">
+            <div style="text-align:center;margin:1rem 0">
+              <img id="twofa-qr-code" style="width:200px;height:200px;border-radius:10px;border:1px solid var(--border2)" alt="2FA QR code"/>
+            </div>
+            <p class="settings-panel-copy">Scan this with your authenticator app, or enter this key manually:</p>
+            <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 14px;font-family:var(--mono);font-size:13px;text-align:center;letter-spacing:1px;margin-bottom:1rem;word-break:break-all" id="twofa-manual-key"></div>
+            <div class="grid-2">
+              <input class="tool-input" id="twofa-setup-code" placeholder="Enter 6-digit code" autocomplete="one-time-code"/>
+            </div>
+            <div class="settings-actions">
+              <button class="btn btn-primary" onclick="confirm2FASetup()">Confirm & Enable</button>
+              <button class="btn btn-outline" onclick="cancel2FASetup()">Cancel</button>
+            </div>
+            <div class="mini-result" id="twofa-setup-status"></div>
+          </div>
+
+          <div id="twofa-backup-codes-view" style="display:none">
+            <div class="mini-result" style="color:var(--safe);margin-bottom:.75rem"><strong>2FA is now enabled.</strong> Save these backup codes somewhere safe — each can be used once if you lose access to your authenticator app. They won't be shown again.</div>
+            <div id="twofa-backup-codes-list" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;font-family:var(--mono);font-size:13px;line-height:2;text-align:center"></div>
+            <div class="settings-actions"><button class="btn btn-primary" onclick="document.getElementById('twofa-backup-codes-view').style.display='none';loadTwoFactorStatus();">Done</button></div>
+          </div>
+
+          <div id="twofa-enabled-view" style="display:none">
+            <div class="mini-result" style="color:var(--safe)"><strong>✓ Two-Factor Auth is enabled</strong> on your account.</div>
+            <input class="tool-input" id="twofa-disable-password" type="password" placeholder="Enter your password to disable" style="margin-top:.75rem"/>
+            <div class="settings-actions"><button class="btn btn-danger" onclick="disable2FA()">Disable Two-Factor Auth</button></div>
+            <div class="mini-result" id="twofa-disable-status"></div>
+          </div>
         </div>
 
         <div class="glass-card settings-panel" id="privacy-panel">

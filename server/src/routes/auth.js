@@ -1,5 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const speakeasy = require('speakeasy');
 const { Resend } = require('resend');
 const { passport } = require('../passport');
 const prisma = require('../db');
@@ -71,10 +73,78 @@ router.post('/login', authLimiter, validate(loginSchema), async (req, res, next)
       return res.status(401).json({ message: 'Invalid username/email or password.' });
     }
 
+    if (user.twoFactorEnabled) {
+      // Password is correct, but don't issue a real session token yet — require
+      // the 6-digit authenticator code (or a backup code) first. This pre-auth
+      // token is short-lived and only proves "password already verified", it
+      // carries no role/plan trust and can't be used to call any real API route.
+      const pendingToken = jwt.sign(
+        { id: user.id, pending2FA: true },
+        process.env.JWT_SECRET,
+        { expiresIn: '5m' }
+      );
+      return res.json({ requires2FA: true, pendingToken });
+    }
+
     return res.json({
       token: createToken(user),
       user: sanitizeUser(user)
     });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// POST /api/auth/2fa/verify-login — second step of login when 2FA is enabled.
+router.post('/2fa/verify-login', authLimiter, async (req, res, next) => {
+  try {
+    const { pendingToken, code } = req.body;
+    if (!pendingToken || !code) {
+      return res.status(400).json({ message: 'pendingToken and code are required.' });
+    }
+
+    let payload;
+    try {
+      payload = jwt.verify(pendingToken, process.env.JWT_SECRET);
+    } catch (e) {
+      return res.status(401).json({ message: 'Your login session expired. Please log in again.' });
+    }
+    if (!payload.pending2FA) {
+      return res.status(401).json({ message: 'Invalid login session.' });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: payload.id } });
+    if (!user?.twoFactorEnabled) {
+      return res.status(400).json({ message: '2FA is not enabled on this account.' });
+    }
+
+    const trimmedCode = String(code).trim();
+    const isTotpValid = speakeasy.totp.verify({
+      secret: user.twoFactorSecret,
+      encoding: 'base32',
+      token: trimmedCode,
+      window: 1
+    });
+
+    if (isTotpValid) {
+      return res.json({ token: createToken(user), user: sanitizeUser(user) });
+    }
+
+    // Not a valid TOTP code — check if it matches (and consumes) a backup code instead.
+    for (let i = 0; i < user.twoFactorBackupCodes.length; i++) {
+      const matches = await bcrypt.compare(trimmedCode, user.twoFactorBackupCodes[i]);
+      if (matches) {
+        const remaining = [...user.twoFactorBackupCodes];
+        remaining.splice(i, 1);
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { twoFactorBackupCodes: remaining }
+        });
+        return res.json({ token: createToken(user), user: sanitizeUser(user) });
+      }
+    }
+
+    return res.status(401).json({ message: 'Incorrect code. Please try again.' });
   } catch (error) {
     return next(error);
   }

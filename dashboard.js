@@ -103,6 +103,7 @@ function showTab(id,el){
   if(id === 'appointments'){ loadAppointmentDoctors(); loadPatientAppointments(); }
   if(id === 'messages') loadPatientConversations();
   if(id === 'achievements') renderAchievements();
+  if(id === 'settings') loadTwoFactorStatus();
 }
 
 function setMobActive(el){document.querySelectorAll('.mob-item').forEach(i=>i.classList.remove('active'));el.classList.add('active')}
@@ -1970,6 +1971,111 @@ function showSettingsPanel(id){
   if(panel){
     panel.classList.add('open');
     panel.scrollIntoView({behavior:'smooth',block:'center'});
+    if(id === 'twofa-panel') loadTwoFactorStatus();
+  }
+}
+
+// ============================================================
+// TWO-FACTOR AUTHENTICATION
+// ============================================================
+async function loadTwoFactorStatus(){
+  const token = localStorage.getItem('medai_token');
+  const descEl = document.getElementById('twofa-status-desc');
+  if(!token) return;
+  try{
+    const res = await fetch(`${API_BASE_URL}/api/2fa/status`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if(descEl) descEl.textContent = data.enabled ? 'Enabled' : 'Not enabled';
+
+    document.getElementById('twofa-disabled-view').style.display = data.enabled ? 'none' : 'block';
+    document.getElementById('twofa-enabled-view').style.display = data.enabled ? 'block' : 'none';
+    document.getElementById('twofa-setup-view').style.display = 'none';
+  }catch(e){
+    if(descEl) descEl.textContent = 'Could not load status';
+  }
+}
+
+async function start2FASetup(){
+  const token = localStorage.getItem('medai_token');
+  if(!token) return;
+  try{
+    const res = await fetch(`${API_BASE_URL}/api/2fa/setup`, {
+      method: 'POST', headers: { Authorization: `Bearer ${token}` }
+    });
+    if(!res.ok) throw new Error('Could not start 2FA setup.');
+    const data = await res.json();
+    document.getElementById('twofa-qr-code').src = data.qrCodeDataUrl;
+    document.getElementById('twofa-manual-key').textContent = data.manualEntryKey;
+    document.getElementById('twofa-disabled-view').style.display = 'none';
+    document.getElementById('twofa-setup-view').style.display = 'block';
+  }catch(e){
+    alert(e.message || 'Could not start 2FA setup. Please try again.');
+  }
+}
+
+function cancel2FASetup(){
+  document.getElementById('twofa-setup-view').style.display = 'none';
+  document.getElementById('twofa-disabled-view').style.display = 'block';
+  document.getElementById('twofa-setup-code').value = '';
+  document.getElementById('twofa-setup-status').textContent = '';
+}
+
+async function confirm2FASetup(){
+  const token = localStorage.getItem('medai_token');
+  const code = document.getElementById('twofa-setup-code').value.trim();
+  const status = document.getElementById('twofa-setup-status');
+  if(!code){
+    status.innerHTML = '<strong style="color:var(--danger)">Please enter the 6-digit code.</strong>';
+    return;
+  }
+  try{
+    const res = await fetch(`${API_BASE_URL}/api/2fa/verify-setup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ code })
+    });
+    const data = await res.json();
+    if(!res.ok){
+      status.innerHTML = `<strong style="color:var(--danger)">${escapeHtml(data.message || 'Incorrect code.')}</strong>`;
+      return;
+    }
+    document.getElementById('twofa-setup-view').style.display = 'none';
+    document.getElementById('twofa-backup-codes-list').innerHTML = data.backupCodes.map(c => escapeHtml(c)).join('<br>');
+    document.getElementById('twofa-backup-codes-view').style.display = 'block';
+    document.getElementById('twofa-setup-code').value = '';
+    status.textContent = '';
+  }catch(e){
+    status.innerHTML = '<strong style="color:var(--danger)">Could not verify code. Check your connection and try again.</strong>';
+  }
+}
+
+async function disable2FA(){
+  const token = localStorage.getItem('medai_token');
+  const password = document.getElementById('twofa-disable-password').value;
+  const status = document.getElementById('twofa-disable-status');
+  if(!password){
+    status.innerHTML = '<strong style="color:var(--danger)">Please enter your password.</strong>';
+    return;
+  }
+  if(!confirm('Are you sure you want to disable Two-Factor Auth? This will make your account less secure.')) return;
+  try{
+    const res = await fetch(`${API_BASE_URL}/api/2fa/disable`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ password })
+    });
+    const data = await res.json();
+    if(!res.ok){
+      status.innerHTML = `<strong style="color:var(--danger)">${escapeHtml(data.message || 'Could not disable 2FA.')}</strong>`;
+      return;
+    }
+    document.getElementById('twofa-disable-password').value = '';
+    status.innerHTML = '<strong style="color:var(--safe)">2FA disabled.</strong>';
+    await loadTwoFactorStatus();
+  }catch(e){
+    status.innerHTML = '<strong style="color:var(--danger)">Could not reach server. Please try again.</strong>';
   }
 }
 
@@ -2049,7 +2155,6 @@ function loadSettingsControls(){
   if(geminiInput) geminiInput.value = geminiKey;
   if(geminiStatus) geminiStatus.textContent = geminiKey ? 'Custom API key saved.' : 'Using default system key.';
 
-  setToggleFromFlag('twofa_enabled','twofa-toggle');
   setToggleFromFlag('notifications_enabled','settings-notif-toggle',true);
   setToggleFromFlag('medicine_notifications','medicine-notif-toggle',true);
   setToggleFromFlag('appointment_notifications','appointment-notif-toggle',true);

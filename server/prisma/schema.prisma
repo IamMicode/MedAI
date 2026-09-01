@@ -28,6 +28,10 @@ model User {
   plan            String              @default("Free")
   premiumActivatedAt DateTime?
   premiumExpiresAt   DateTime?
+  twoFactorEnabled       Boolean  @default(false)
+  twoFactorSecret        String?
+  twoFactorPendingSecret String?
+  twoFactorBackupCodes   String[] @default([])
   dob             String?
   gender          String?
   height          String?

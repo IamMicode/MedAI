@@ -18,6 +18,8 @@ const achievementsRoutes = require('./routes/achievements');
 const therapyRoutes = require('./routes/therapy');
 const doctorPortalRoutes = require('./routes/doctorPortal');
 const paymentsRoutes = require('./routes/payments');
+const notificationsRoutes = require('./routes/notifications');
+const twoFactorRoutes = require('./routes/twoFactor');
 
 const { passport, configurePassport } = require('./passport');
 
@@ -31,7 +33,10 @@ app.use(cors({
   origin: process.env.FRONTEND_ORIGIN || true,
   credentials: true
 }));
-app.use(express.json({ limit: '8mb' }));
+app.use(express.json({
+  limit: '8mb',
+  verify: (req, res, buf) => { req.rawBody = buf; }
+}));
 app.use(passport.initialize());
 
 app.get('/api/health', async (req, res, next) => {
@@ -57,6 +62,8 @@ app.use('/api/achievements', achievementsRoutes);
 app.use('/api/therapy', therapyRoutes);
 app.use('/api/doctor-portal', doctorPortalRoutes);
 app.use('/api/payments', paymentsRoutes);
+app.use('/api/notifications', notificationsRoutes);
+app.use('/api/2fa', twoFactorRoutes);
 
 // ── 404 CATCH-ALL — must always be last, after every real route ──
 app.use((req, res) => {

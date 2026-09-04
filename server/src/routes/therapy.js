@@ -4,79 +4,79 @@ const { requireAuth } = require('../middleware/auth');
 
 router.use(requireAuth);
 
-// Search for therapists/mental health clinics near a location
+// Search for therapists/mental health clinics/counsellors near a location using
+// OpenStreetMap's Overpass API — free, no API key required (matches the rest of
+// the app's map stack, which moved off Google Maps/Places for the same reason).
 router.get('/search', async (req, res, next) => {
   try {
-    const { query, location, lat, lng, radius = 10000 } = req.query;
-    const PLACES_KEY = process.env.GOOGLE_PLACES_API_KEY;
-    if (!PLACES_KEY) return res.status(503).json({ message: 'Search service unavailable.' });
-
-    let searchUrl;
-
-    if (lat && lng) {
-      const searchQuery = encodeURIComponent(query || 'therapist mental health counselor psychologist');
-      searchUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${searchQuery}&location=${lat},${lng}&radius=${radius}&type=health&key=${PLACES_KEY}`;
-    } else if (location) {
-      const searchQuery = encodeURIComponent(`therapist mental health counselor ${location}`);
-      searchUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${searchQuery}&type=health&key=${PLACES_KEY}`;
-    } else {
-      return res.status(400).json({ message: 'Provide location or lat/lng coordinates.' });
+    const { lat, lng, radius = 20000 } = req.query;
+    if (!lat || !lng) {
+      return res.status(400).json({ message: 'lat and lng are required.' });
     }
 
-    const response = await fetch(searchUrl);
-    const data = await response.json();
+    const r = Math.min(Number(radius) || 20000, 50000); // cap at 50km to keep queries reasonable
 
-    if (!response.ok || data.status === 'REQUEST_DENIED') {
-      return res.status(502).json({ message: 'Places search failed.', detail: data.error_message });
-    }
+    const query = `[out:json][timeout:20];
+(
+  node["healthcare"~"psychotherapist|counselling|counseling|psychiatrist"](around:${r},${lat},${lng});
+  way["healthcare"~"psychotherapist|counselling|counseling|psychiatrist"](around:${r},${lat},${lng});
+  node["office"="therapist"](around:${r},${lat},${lng});
+  node["amenity"="clinic"]["healthcare:speciality"~"psychiatry|psychotherapy"](around:${r},${lat},${lng});
+);
+out center tags;`;
 
-    const results = (data.results || []).slice(0, 12).map(place => ({
-      id: place.place_id,
-      name: place.name,
-      address: place.formatted_address || place.vicinity || '',
-      lat: place.geometry?.location?.lat,
-      lng: place.geometry?.location?.lng,
-      rating: place.rating || null,
-      totalRatings: place.user_ratings_total || 0,
-      open: place.opening_hours?.open_now ?? null,
-      types: place.types || [],
-      mapsUrl: `https://www.google.com/maps/place/?q=place_id:${place.place_id}`
-    }));
-
-    return res.json({ results, total: results.length, status: data.status });
-  } catch (error) {
-    return next(error);
-  }
-});
-
-// Get place details (phone number, website, hours)
-router.get('/details/:placeId', async (req, res, next) => {
-  try {
-    const { placeId } = req.params;
-    const PLACES_KEY = process.env.GOOGLE_PLACES_API_KEY;
-    if (!PLACES_KEY) return res.status(503).json({ message: 'Search service unavailable.' });
-
-    const fields = 'name,formatted_phone_number,website,opening_hours,formatted_address,rating,url';
-    const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=${fields}&key=${PLACES_KEY}`;
-
-    const response = await fetch(url);
-    const data = await response.json();
-
-    if (!response.ok || data.status === 'REQUEST_DENIED') {
-      return res.status(502).json({ message: 'Place details failed.', detail: data.error_message });
-    }
-
-    const r = data.result || {};
-    return res.json({
-      phone: r.formatted_phone_number || null,
-      website: r.website || null,
-      hours: r.opening_hours?.weekday_text || null,
-      address: r.formatted_address || null,
-      rating: r.rating || null,
-      mapsUrl: r.url || null
+    const overpassRes = await fetch('https://overpass-api.de/api/interpreter', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'data=' + encodeURIComponent(query)
     });
+
+    if (!overpassRes.ok) {
+      // Overpass's public instance is known to be occasionally slow/unstable —
+      // degrade gracefully rather than error, so the frontend can fall back to
+      // the curated organizations list instead of showing a broken state.
+      return res.json({ results: [], degraded: true });
+    }
+
+    const data = await overpassRes.json();
+    const seen = new Set();
+
+    const results = (data.elements || [])
+      .map(el => {
+        const tags = el.tags || {};
+        const name = tags.name;
+        if (!name) return null; // skip unnamed entries — not useful to show
+
+        const elLat = el.lat ?? el.center?.lat;
+        const elLng = el.lon ?? el.center?.lon;
+        if (!elLat || !elLng) return null;
+
+        const addressParts = [tags['addr:housenumber'], tags['addr:street'], tags['addr:city']].filter(Boolean);
+        const address = tags['addr:full'] || (addressParts.length ? addressParts.join(', ') : null);
+
+        return {
+          id: `${el.type}/${el.id}`,
+          name,
+          address,
+          lat: elLat,
+          lng: elLng,
+          phone: tags.phone || tags['contact:phone'] || null,
+          website: tags.website || tags['contact:website'] || null,
+          type: tags.healthcare || tags.office || 'therapist'
+        };
+      })
+      .filter(item => {
+        if (!item) return false;
+        if (seen.has(item.name + item.lat)) return false; // de-dupe node+way pairs for the same place
+        seen.add(item.name + item.lat);
+        return true;
+      })
+      .slice(0, 30);
+
+    return res.json({ results, degraded: false });
   } catch (error) {
-    return next(error);
+    // Same graceful-degradation principle — a flaky third-party API shouldn't 500 the page.
+    return res.json({ results: [], degraded: true });
   }
 });
 

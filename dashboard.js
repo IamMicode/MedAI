@@ -98,7 +98,7 @@ function showTab(id,el){
   document.getElementById('topbar-title').textContent=tabTitles[id]||id;
   document.getElementById('topbar-bc').textContent='// '+(tabBc[id]||id.toUpperCase());
   if(id === 'premium') renderPrices();
-  if(id === 'therapy'){ renderTherapyFinder(); loadDoctorDirectoryMap(); }
+  if(id === 'therapy'){ renderTherapyDirectory(); loadDoctorDirectoryMap(); }
   if(id === 'emergency-contacts') renderEmergencyDirectory();
   if(id === 'appointments'){ loadAppointmentDoctors(); loadPatientAppointments(); }
   if(id === 'messages') loadPatientConversations();
@@ -3229,31 +3229,16 @@ function syncTherapyCountryFromProfile(user=getCurrentUser(), force=false){
   localStorage.setItem('medai_therapy_country', code);
 }
 
-function renderTherapyFinder(){
-  const list = document.getElementById('therapy-list');
+function renderTherapyDirectory(){
+  const list = document.getElementById('therapy-directory-list');
   if(!list) return;
   const countryEl = document.getElementById('therapy-country');
-  const specEl = document.getElementById('therapy-specialty');
-  const searchEl = document.getElementById('therapy-search');
   if(!countryEl.value) syncTherapyCountryFromProfile();
   const country = countryEl.value || 'NG';
   localStorage.setItem('medai_therapy_country', country);
-  const specialty = (specEl?.value || '').toLowerCase();
-  const query = (searchEl?.value || '').trim().toLowerCase();
   const all = therapyDirectory[country] || therapyDirectory.NG;
-  const filtered = all.filter(item=>{
-    const haystack = [item.name,item.city,item.address,item.notes,...item.specialties].join(' ').toLowerCase();
-    const specOk = !specialty || item.specialties.includes(specialty);
-    const queryOk = !query || haystack.includes(query);
-    return specOk && queryOk;
-  });
-  const summary = document.getElementById('therapy-summary');
-  if(summary) summary.innerHTML = `<strong style="color:var(--accent)">${filtered.length}</strong> option${filtered.length===1?'':'s'} found for ${escapeHtml(countryEl.options[countryEl.selectedIndex]?.text || country)}. Always verify availability, cost, and licensing before booking.`;
-  if(!filtered.length){
-    list.innerHTML = '<div class="glass-card therapy-card"><div class="therapy-name">No matches yet</div><div class="therapy-meta">Try a different specialty, country, or search term.</div></div>';
-    return;
-  }
-  list.innerHTML = filtered.map(item=>{
+
+  list.innerHTML = all.map(item=>{
     const tags = item.specialties.map(s=>`<span class="badge badge-blue">${escapeHtml(s.toUpperCase())}</span>`).join('');
     return `<div class="glass-card therapy-card">
       <div class="therapy-card-head">
@@ -3262,13 +3247,131 @@ function renderTherapyFinder(){
       </div>
       <div class="therapy-tags">${tags}</div>
       <div class="therapy-meta">${escapeHtml(item.notes)}</div>
-      <div class="therapy-map">MAP PREVIEW · ${escapeHtml(item.city)}</div>
       <div style="display:flex;gap:.65rem;flex-wrap:wrap;margin-top:auto">
         <a class="btn btn-outline" href="tel:${escapeHtml(item.phone)}" style="text-decoration:none">Call</a>
         <button class="btn btn-primary" onclick="selectTherapyProvider('${escapeHtml(item.name)}')">Use in Referral</button>
       </div>
     </div>`;
   }).join('');
+}
+
+// ---------- Real nearby search (OpenStreetMap Overpass API, via backend) ----------
+let _therapyMap = null;
+
+async function useMyLocationForTherapy(){
+  const summary = document.getElementById('therapy-summary');
+  if(!navigator.geolocation){
+    if(summary) summary.textContent = 'Your browser does not support location access. Try searching a city instead.';
+    return;
+  }
+  if(summary) summary.textContent = 'Requesting your location...';
+  navigator.geolocation.getCurrentPosition(
+    (pos) => searchNearbyTherapists(pos.coords.latitude, pos.coords.longitude, 'your location'),
+    () => { if(summary) summary.textContent = 'Location access denied. Try searching a city instead.'; }
+  );
+}
+
+async function geocodeAndSearchTherapy(){
+  const query = document.getElementById('therapy-location-input')?.value.trim();
+  const summary = document.getElementById('therapy-summary');
+  if(!query){
+    if(summary) summary.textContent = 'Please enter a city or address to search.';
+    return;
+  }
+  if(summary) summary.textContent = `Locating "${query}"...`;
+  try{
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(query)}&limit=1`, {
+      headers: { 'Accept-Language': 'en' }
+    });
+    const results = await res.json();
+    if(!results.length){
+      if(summary) summary.textContent = `Could not find "${query}". Try a more specific search.`;
+      return;
+    }
+    searchNearbyTherapists(parseFloat(results[0].lat), parseFloat(results[0].lon), results[0].display_name);
+  }catch(e){
+    if(summary) summary.textContent = 'Could not search that location. Check your connection and try again.';
+  }
+}
+
+async function searchNearbyTherapists(lat, lng, label){
+  const summary = document.getElementById('therapy-summary');
+  const listEl = document.getElementById('therapy-list');
+  const mapEl = document.getElementById('therapy-map');
+  if(summary) summary.textContent = `Searching near ${label}...`;
+  if(listEl) listEl.innerHTML = '';
+
+  const token = localStorage.getItem('medai_token');
+  try{
+    const res = await fetch(`${API_BASE_URL}/api/therapy/search?lat=${lat}&lng=${lng}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    });
+    const data = await res.json();
+    const results = data.results || [];
+
+    if(data.degraded){
+      if(summary) summary.textContent = 'The live search is temporarily unavailable — try again shortly, or check the trusted organizations list below.';
+      return;
+    }
+    if(!results.length){
+      if(summary) summary.textContent = `No listed therapists found near ${label}. Try a wider search or check the trusted organizations list below.`;
+      if(mapEl) mapEl.style.display = 'none';
+      return;
+    }
+
+    if(summary) summary.innerHTML = `<strong style="color:var(--accent)">${results.length}</strong> result${results.length===1?'':'s'} found near ${escapeHtml(label)}. This is live OpenStreetMap data — always verify details before visiting or calling.`;
+
+    listEl.innerHTML = results.map(item => `
+      <div class="glass-card therapy-card">
+        <div class="therapy-card-head">
+          <div><div class="therapy-name">${escapeHtml(item.name)}</div><div class="therapy-meta">${escapeHtml(item.address || 'Address not listed')}</div></div>
+        </div>
+        <div class="therapy-tags"><span class="badge badge-blue">${escapeHtml((item.type||'therapist').toUpperCase())}</span></div>
+        <div style="display:flex;gap:.65rem;flex-wrap:wrap;margin-top:auto">
+          ${item.phone ? `<a class="btn btn-outline" href="tel:${escapeHtml(item.phone)}" style="text-decoration:none">Call</a>` : ''}
+          ${item.website ? `<a class="btn btn-outline" href="${escapeHtml(item.website)}" target="_blank" rel="noopener" style="text-decoration:none">Website</a>` : ''}
+          <button class="btn btn-primary" onclick="selectTherapyProvider('${escapeHtml(item.name)}')">Use in Referral</button>
+        </div>
+      </div>
+    `).join('');
+
+    await renderTherapyResultsMap(results, lat, lng);
+  }catch(e){
+    if(summary) summary.textContent = 'Could not complete the search. Check your connection and try again.';
+  }
+}
+
+async function renderTherapyResultsMap(results, centerLat, centerLng){
+  const mapEl = document.getElementById('therapy-map');
+  if(!mapEl) return;
+  mapEl.style.display = 'flex';
+  mapEl.style.alignItems = 'center';
+  mapEl.style.justifyContent = 'center';
+
+  try{
+    await loadLeaflet();
+  }catch(e){
+    mapEl.textContent = 'Map could not be loaded — check your connection and try again.';
+    return;
+  }
+
+  mapEl.innerHTML = '';
+  mapEl.style.display = 'block';
+  if(_therapyMap){ _therapyMap.remove(); _therapyMap = null; }
+  _therapyMap = L.map(mapEl).setView([centerLat, centerLng], 12);
+  addOsmTileLayer(_therapyMap);
+
+  const bounds = [[centerLat, centerLng]];
+  L.circleMarker([centerLat, centerLng], { radius: 7, color: '#00d4ff', fillColor: '#00d4ff', fillOpacity: 0.8 })
+    .addTo(_therapyMap).bindPopup('Your search location');
+
+  results.forEach(item => {
+    const marker = L.marker([item.lat, item.lng]).addTo(_therapyMap);
+    marker.bindPopup(`<strong>${escapeHtml(item.name)}</strong>${item.address ? '<br>' + escapeHtml(item.address) : ''}`);
+    bounds.push([item.lat, item.lng]);
+  });
+  _therapyMap.fitBounds(bounds, { padding: [30,30] });
+  setTimeout(() => _therapyMap.invalidateSize(), 50);
 }
 
 function selectTherapyProvider(name){
@@ -3648,7 +3751,7 @@ function stopCalmingSound(){
 
 setTimeout(()=>{
   syncTherapyCountryFromProfile();
-  renderTherapyFinder();
+  renderTherapyDirectory();
 }, 200);
 
 setTimeout(initPricing, 100);

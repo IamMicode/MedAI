@@ -514,10 +514,27 @@ async function loadPatientProfile(patientId){
   try{
     const res = await fetch(`${API_BASE_URL}/api/doctor-portal/patients/${patientId}`, { headers: authHeaders() });
     const data = await res.json();
+    if(data.accessGranted === false){
+      renderProfileNotShared(data.patient);
+      return;
+    }
     renderProfile(data.patient, data.triageHistory || [], data.vitalReadings || []);
   }catch(e){
     body.innerHTML = '<div class="pp-empty-note">Couldn\'t load this patient\'s profile.</div>';
   }
+}
+
+function renderProfileNotShared(patient){
+  const body = document.getElementById('profile-body');
+  const name = `${patient?.firstname || ''} ${patient?.lastname || ''}`.trim() || patient?.username || 'This patient';
+  body.innerHTML = `
+    <div class="pp-name">${escapeHtml(name)}</div>
+    <div class="pp-section" style="text-align:center;padding:2rem 0">
+      <div style="font-size:32px;margin-bottom:.75rem">🔒</div>
+      <div style="font-family:var(--head);font-weight:700;font-size:15px;margin-bottom:.5rem">Profile not shared yet</div>
+      <div class="pp-empty-note" style="max-width:220px;margin:0 auto">This patient hasn't granted access to their full profile, vitals, or triage history. You can still chat with them normally.</div>
+    </div>
+  `;
 }
 
 function timeAgoShort(dateStr){
@@ -752,7 +769,7 @@ function notificationIcon(type){
   return {
     message: '💬', appointment_request: '📅', appointment_accepted: '✅',
     appointment_declined: '❌', review_received: '⭐', doctor_approved: '🎉',
-    doctor_rejected: 'ℹ️', payment_success: '👑'
+    doctor_rejected: 'ℹ️', payment_success: '👑', profile_shared: '🔓'
   }[type] || '🔔';
 }
 

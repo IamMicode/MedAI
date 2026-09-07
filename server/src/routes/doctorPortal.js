@@ -188,6 +188,23 @@ router.get('/patients/:id', async (req, res, next) => {
     });
     if (!conversation) return res.status(403).json({ message: 'You do not have a conversation with this patient.' });
 
+    if (!conversation.profileShared) {
+      const basicInfo = await prisma.user.findUnique({
+        where: { id: req.params.id },
+        select: { firstname: true, lastname: true, username: true }
+      });
+      return res.json({
+        accessGranted: false,
+        patient: {
+          firstname: basicInfo?.firstname,
+          lastname: basicInfo?.lastname,
+          username: basicInfo?.username
+        },
+        triageHistory: [],
+        vitalReadings: []
+      });
+    }
+
     const patient = await prisma.user.findUnique({
       where: { id: req.params.id },
       select: {
@@ -211,7 +228,7 @@ router.get('/patients/:id', async (req, res, next) => {
       take: 20
     });
 
-    return res.json({ patient, triageHistory, vitalReadings });
+    return res.json({ accessGranted: true, patient, triageHistory, vitalReadings });
   } catch (error) {
     return next(error);
   }

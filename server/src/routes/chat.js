@@ -133,10 +133,47 @@ router.get('/conversations', async (req, res, next) => {
       doctorSpecialty: c.doctor.doctorProfile?.specialty || null,
       lastMessage: c.messages[0]?.content || null,
       lastMessageAt: c.messages[0]?.createdAt || c.createdAt,
-      updatedAt: c.updatedAt
+      updatedAt: c.updatedAt,
+      profileShared: c.profileShared
     }));
 
     return res.json({ conversations: formatted });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// PATCH /api/chat/conversations/:id/share-profile — patient grants/revokes a doctor's
+// access to their full profile, vitals, and triage history for this conversation.
+router.patch('/conversations/:id/share-profile', async (req, res, next) => {
+  try {
+    const { shared } = req.body;
+    if (typeof shared !== 'boolean') {
+      return res.status(400).json({ message: 'shared (boolean) is required.' });
+    }
+
+    const conversation = await prisma.conversation.findUnique({ where: { id: req.params.id } });
+    if (!conversation || conversation.patientId !== req.user.id) {
+      return res.status(404).json({ message: 'Conversation not found.' });
+    }
+
+    const updated = await prisma.conversation.update({
+      where: { id: req.params.id },
+      data: { profileShared: shared }
+    });
+
+    if (shared) {
+      const patientUser = await prisma.user.findUnique({ where: { id: req.user.id }, select: { firstname: true, lastname: true, username: true } });
+      const patientName = `${patientUser?.firstname || ''} ${patientUser?.lastname || ''}`.trim() || patientUser?.username || 'A patient';
+      await notify(conversation.doctorId, {
+        type: 'profile_shared',
+        title: 'Profile access granted',
+        body: `${patientName} shared their profile, vitals, and triage history with you.`,
+        link: `messages:${conversation.id}`
+      });
+    }
+
+    return res.json({ conversation: updated });
   } catch (error) {
     return next(error);
   }

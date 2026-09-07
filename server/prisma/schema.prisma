@@ -246,14 +246,15 @@ model Appointment {
 }
 
 model Conversation {
-  id        String    @id @default(cuid())
-  doctorId  String
-  patientId String
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  doctor    User      @relation("DoctorConversations", fields: [doctorId], references: [id], onDelete: Cascade)
-  patient   User      @relation("PatientConversations", fields: [patientId], references: [id], onDelete: Cascade)
-  messages  Message[]
+  id            String    @id @default(cuid())
+  doctorId      String
+  patientId     String
+  profileShared Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  doctor        User      @relation("DoctorConversations", fields: [doctorId], references: [id], onDelete: Cascade)
+  patient       User      @relation("PatientConversations", fields: [patientId], references: [id], onDelete: Cascade)
+  messages      Message[]
 
   @@unique([doctorId, patientId])
   @@index([doctorId])

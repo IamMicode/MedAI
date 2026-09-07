@@ -2444,7 +2444,7 @@ async function loadPatientConversations(){
     }
 
     list.innerHTML = _patientConversations.map(c => `
-      <div class="history-row" style="cursor:pointer;border-radius:0" onclick="openPatientConversation('${c.id}','${escapeHtmlChat(c.doctorName)}','${escapeHtmlChat(c.doctorSpecialty||'')}','${c.doctorId}')" id="pconv-${c.id}">
+      <div class="history-row" style="cursor:pointer;border-radius:0" onclick="openPatientConversation('${c.id}','${escapeHtmlChat(c.doctorName)}','${escapeHtmlChat(c.doctorSpecialty||'')}','${c.doctorId}',${!!c.profileShared})" id="pconv-${c.id}">
         <div class="history-triage-dot home"></div>
         <div class="history-info">
           <div class="history-symptom">Dr. ${escapeHtmlChat(c.doctorName)}</div>
@@ -2458,23 +2458,56 @@ async function loadPatientConversations(){
 
 let _activePatientDoctorId = null;
 let _activePatientDoctorName = null;
+let _activePatientSpecialty = null;
+let _activeProfileShared = false;
 
-function openPatientConversation(convId, doctorName, specialty, doctorId){
+function openPatientConversation(convId, doctorName, specialty, doctorId, profileShared){
   _activePatientConversation = convId;
   _activePatientDoctorId = doctorId || _activePatientDoctorId;
   _activePatientDoctorName = doctorName;
+  _activePatientSpecialty = specialty || '';
+  _activeProfileShared = !!profileShared;
   document.querySelectorAll('#patient-conv-list .history-row').forEach(el => el.style.background = '');
   const active = document.getElementById('pconv-' + convId);
   if(active) active.style.background = 'rgba(0,212,255,0.06)';
 
-  document.getElementById('patient-chat-header').innerHTML =
-    `<span>Dr. ${escapeHtmlChat(doctorName)}${specialty ? ' — ' + escapeHtmlChat(specialty) : ''}</span>
-     <span onclick="openRateDoctorModal()" style="float:right;cursor:pointer;font-family:var(--mono);font-size:10px;letter-spacing:1px;color:var(--accent);border:1px solid var(--border2);border-radius:20px;padding:4px 10px">⭐ RATE DOCTOR</span>`;
+  renderPatientChatHeader();
   document.getElementById('patient-chat-input-row').style.display = 'flex';
 
   loadPatientMessages();
   if(_patientChatPollInterval) clearInterval(_patientChatPollInterval);
   _patientChatPollInterval = setInterval(loadPatientMessages, 4000);
+}
+
+function renderPatientChatHeader(){
+  const header = document.getElementById('patient-chat-header');
+  if(!header) return;
+  header.innerHTML =
+    `<span>Dr. ${escapeHtmlChat(_activePatientDoctorName)}${_activePatientSpecialty ? ' — ' + escapeHtmlChat(_activePatientSpecialty) : ''}</span>
+     <span onclick="togglePatientProfileShare()" style="float:right;cursor:pointer;font-family:var(--mono);font-size:10px;letter-spacing:1px;color:${_activeProfileShared ? 'var(--safe)' : 'var(--muted)'};border:1px solid var(--border2);border-radius:20px;padding:4px 10px;margin-left:8px">${_activeProfileShared ? '🔓 PROFILE SHARED' : '🔒 SHARE PROFILE'}</span>
+     <span onclick="openRateDoctorModal()" style="float:right;cursor:pointer;font-family:var(--mono);font-size:10px;letter-spacing:1px;color:var(--accent);border:1px solid var(--border2);border-radius:20px;padding:4px 10px">⭐ RATE DOCTOR</span>`;
+}
+
+async function togglePatientProfileShare(){
+  if(!_activePatientConversation) return;
+  const newState = !_activeProfileShared;
+  const verb = newState ? 'share your full profile, vitals, and triage history with' : 'revoke profile access from';
+  if(!confirm(`Are you sure you want to ${verb} Dr. ${_activePatientDoctorName}?`)) return;
+
+  try{
+    const res = await fetch(`${API_BASE_URL}/api/chat/conversations/${_activePatientConversation}/share-profile`, {
+      method: 'PATCH',
+      headers: { ...patientAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ shared: newState })
+    });
+    if(!res.ok) throw new Error('failed');
+    _activeProfileShared = newState;
+    renderPatientChatHeader();
+    const conv = _patientConversations.find(c => c.id === _activePatientConversation);
+    if(conv) conv.profileShared = newState;
+  }catch(e){
+    alert('Could not update profile sharing. Please try again.');
+  }
 }
 
 // ---------- Rate Doctor modal ----------
@@ -2779,7 +2812,7 @@ function notificationIcon(type){
   return {
     message: '💬', appointment_request: '📅', appointment_accepted: '✅',
     appointment_declined: '❌', review_received: '⭐', doctor_approved: '🎉',
-    doctor_rejected: 'ℹ️', payment_success: '👑'
+    doctor_rejected: 'ℹ️', payment_success: '👑', profile_shared: '🔓'
   }[type] || '🔔';
 }
 

@@ -2500,13 +2500,17 @@ async function togglePatientProfileShare(){
       headers: { ...patientAuthHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ shared: newState })
     });
-    if(!res.ok) throw new Error('failed');
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok){
+      console.error('share-profile failed:', res.status, data);
+      throw new Error(data.message || `Server returned ${res.status}`);
+    }
     _activeProfileShared = newState;
     renderPatientChatHeader();
     const conv = _patientConversations.find(c => c.id === _activePatientConversation);
     if(conv) conv.profileShared = newState;
   }catch(e){
-    alert('Could not update profile sharing. Please try again.');
+    alert(e.message || 'Could not update profile sharing. Please try again.');
   }
 }
 

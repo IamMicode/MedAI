@@ -21,6 +21,35 @@ const CATEGORY_FILTERS = {
   optometrist: ['node["healthcare"="optometrist"]', 'node["shop"="optician"]']
 };
 
+// Public Overpass endpoints to try in order. The primary (overpass-api.de) is the
+// biggest/most complete but can rate-limit shared cloud IPs (like Render's) under
+// load; private.coffee (formerly kumi.systems) explicitly states no rate limit.
+const OVERPASS_ENDPOINTS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter'
+];
+
+async function queryOverpass(query) {
+  for (const endpoint of OVERPASS_ENDPOINTS) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 20000);
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'data=' + encodeURIComponent(query),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      if (response.ok) return await response.json();
+      console.error(`Overpass endpoint ${endpoint} returned ${response.status}`);
+    } catch (error) {
+      console.error(`Overpass endpoint ${endpoint} failed:`, error.message);
+    }
+  }
+  return null; // every endpoint failed
+}
+
 // Search for medical facilities near a location using OpenStreetMap's Overpass
 // API — free, no API key required (matches the rest of the app's map stack,
 // which moved off Google Maps/Places for the same reason).
@@ -33,24 +62,15 @@ router.get('/search', async (req, res, next) => {
 
     const filters = CATEGORY_FILTERS[category] || CATEGORY_FILTERS.mental_health;
     const r = Math.min(Number(radius) || 20000, 50000); // cap at 50km to keep queries reasonable
-
     const clauses = filters.map(f => `${f}(around:${r},${lat},${lng});`).join('\n  ');
     const query = `[out:json][timeout:20];\n(\n  ${clauses}\n);\nout center tags;`;
 
-    const overpassRes = await fetch('https://overpass-api.de/api/interpreter', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: 'data=' + encodeURIComponent(query)
-    });
-
-    if (!overpassRes.ok) {
-      // Overpass's public instance is known to be occasionally slow/unstable —
-      // degrade gracefully rather than error, so the frontend can fall back to
-      // the curated organizations list instead of showing a broken state.
+    const data = await queryOverpass(query);
+    if (!data) {
+      // Every mirror failed — degrade gracefully rather than error, so the frontend
+      // can fall back to the curated organizations list instead of a broken state.
       return res.json({ results: [], degraded: true });
     }
-
-    const data = await overpassRes.json();
     const seen = new Set();
 
     const results = (data.elements || [])

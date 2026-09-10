@@ -1549,19 +1549,28 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
       <p class="sec-sub">Search real nearby therapists and counsellors using OpenStreetMap data, plus a curated list of trusted national organizations. Always verify details before visiting or calling.</p>
 
       <div class="glass-card" style="padding:1.5rem;margin-bottom:1.25rem">
-        <div class="sec-label" style="margin-bottom:.75rem">// Registered Doctors Near You</div>
+        <div class="sec-label" style="margin-bottom:.75rem">// Doctors You've Chatted With</div>
         <div id="doctor-directory-map" style="height:280px;border-radius:12px;border:1px solid var(--border2);background:rgba(255,255,255,0.03);display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--muted);margin-bottom:1rem">Loading map...</div>
         <div class="grid-3" id="doctor-directory-list"></div>
       </div>
 
       <div class="glass-card" style="padding:1.5rem;margin-bottom:1.25rem">
-        <div class="sec-label" style="margin-bottom:.75rem">// Nearby Therapists & Counsellors</div>
+        <div class="sec-label" style="margin-bottom:.75rem">// Nearby Medical Centers</div>
         <div class="mini-form">
+          <select class="tool-select" id="therapy-category">
+            <option value="mental_health">🧠 Mental Health / Therapy</option>
+            <option value="hospital">🏥 Hospitals</option>
+            <option value="clinic">⚕️ Clinics / General Practice</option>
+            <option value="pharmacy">💊 Pharmacies</option>
+            <option value="dentist">🦷 Dentists</option>
+            <option value="physiotherapy">🏃 Physiotherapy</option>
+            <option value="optometrist">👁️ Optometrists / Eye Care</option>
+          </select>
           <input class="tool-input" id="therapy-location-input" placeholder="Enter a city or address..." style="flex:1"/>
           <button class="btn btn-outline" onclick="geocodeAndSearchTherapy()">Search This Location</button>
           <button class="btn btn-primary" onclick="useMyLocationForTherapy()">📍 Use My Location</button>
         </div>
-        <div class="mini-result" id="therapy-summary">Share your location or search a city to find nearby therapists.</div>
+        <div class="mini-result" id="therapy-summary">Choose a specialization, then share your location or search a city to find nearby centers.</div>
         <div id="therapy-map" style="height:280px;border-radius:12px;border:1px solid var(--border2);background:rgba(255,255,255,0.03);display:none;align-items:center;justify-content:center;font-size:12px;color:var(--muted);margin:1rem 0"></div>
         <div class="grid-3" id="therapy-list" style="margin-top:1rem"></div>
       </div>

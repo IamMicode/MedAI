@@ -646,10 +646,17 @@ async function loadDoctorDirectoryMap(){
   const listEl = document.getElementById('doctor-directory-list');
   if(!mapEl || !listEl) return;
 
-  const doctors = await fetchDoctorDirectory();
+  let doctors = [];
+  try{
+    const res = await fetch(`${API_BASE_URL}/api/chat/my-doctors`, { headers: patientAuthHeaders() });
+    if(res.ok){
+      const data = await res.json();
+      doctors = data.doctors || [];
+    }
+  }catch(e){ /* fall through to empty state below */ }
 
   if(!doctors.length){
-    mapEl.innerHTML = 'No registered doctors yet.';
+    mapEl.innerHTML = 'Doctors you\'ve chatted with will show up here once they share a location.';
     listEl.innerHTML = '';
     return;
   }
@@ -3216,23 +3223,23 @@ function initPricing(){
 // ============================================================
 const therapyDirectory = {
   NG: [
-    {name:'Mentally Aware Nigeria Initiative', city:'Lagos / Abuja', address:'Community and virtual support across Nigeria', phone:'+234 806 000 6464', rating:4.8, specialties:['anxiety','depression','youth','crisis'], notes:'Mental health advocacy, referrals, support groups, and crisis education.'},
+    {name:'Mentally Aware Nigeria Initiative', city:'Lagos / Abuja', address:'Community and virtual support across Nigeria', phone:'+234 806 000 6464', email:'info@mentallyaware.org', rating:4.8, specialties:['anxiety','depression','youth','crisis'], notes:'Mental health advocacy, referrals, support groups, and crisis education.'},
     {name:'Lagos Mind Clinic', city:'Lekki, Lagos', address:'Admiralty Way, Lekki Phase 1, Lagos', phone:'+234 908 000 1122', rating:4.7, specialties:['cbt','anxiety','depression','trauma'], notes:'Private therapy sessions, CBT planning, stress and burnout support.'},
     {name:'The Olive Prime Psychological Services', city:'Abuja', address:'Wuse 2, Abuja', phone:'+234 809 000 7788', rating:4.6, specialties:['family','trauma','depression','cbt'], notes:'Psychological assessment, psychotherapy, couples and family support.'}
   ],
   US: [
-    {name:'National Alliance on Mental Illness', city:'United States', address:'Local chapters and virtual support', phone:'+1 800 950 6264', rating:4.9, specialties:['depression','family','anxiety','youth'], notes:'Education, peer support, family resources, and local chapter referrals.'},
-    {name:'Open Path Collective', city:'United States', address:'Online therapist network', phone:'+1 800 268 2833', rating:4.7, specialties:['cbt','anxiety','depression','trauma'], notes:'Affordable therapist directory with in-person and telehealth options.'},
+    {name:'National Alliance on Mental Illness', city:'United States', address:'Local chapters and virtual support', phone:'+1 800 950 6264', email:'helpline@nami.org', rating:4.9, specialties:['depression','family','anxiety','youth'], notes:'Education, peer support, family resources, and local chapter referrals.'},
+    {name:'Open Path Collective', city:'United States', address:'Online therapist network', phone:'+1 800 268 2833', email:'info@openpathcollective.org', rating:4.7, specialties:['cbt','anxiety','depression','trauma'], notes:'Affordable therapist directory with in-person and telehealth options.'},
     {name:'Crisis Text Line', city:'United States', address:'Text HOME to 741741', phone:'741741', rating:4.8, specialties:['crisis','youth','anxiety'], notes:'Free crisis text support for acute distress.'}
   ],
   GB: [
-    {name:'Mind UK', city:'United Kingdom', address:'Local Mind branches and online resources', phone:'+44 300 123 3393', rating:4.8, specialties:['anxiety','depression','family','crisis'], notes:'Mental health information, advocacy, local services, and support lines.'},
-    {name:'BACP Therapist Directory', city:'United Kingdom', address:'UK-wide counsellor directory', phone:'+44 1455 883300', rating:4.7, specialties:['cbt','trauma','family','depression'], notes:'Find registered counsellors and psychotherapists by location and specialty.'},
-    {name:'Samaritans', city:'United Kingdom', address:'24/7 listening service', phone:'116123', rating:4.9, specialties:['crisis','depression','anxiety'], notes:'Confidential emotional support for anyone in distress.'}
+    {name:'Mind UK', city:'United Kingdom', address:'Local Mind branches and online resources', phone:'+44 300 123 3393', email:'info@mind.org.uk', rating:4.8, specialties:['anxiety','depression','family','crisis'], notes:'Mental health information, advocacy, local services, and support lines.'},
+    {name:'BACP Therapist Directory', city:'United Kingdom', address:'UK-wide counsellor directory', phone:'+44 1455 883300', email:'bacp@bacp.co.uk', rating:4.7, specialties:['cbt','trauma','family','depression'], notes:'Find registered counsellors and psychotherapists by location and specialty.'},
+    {name:'Samaritans', city:'United Kingdom', address:'24/7 listening service', phone:'116123', rating:4.9, specialties:['crisis','depression','anxiety'], notes:'Confidential emotional support for anyone in distress. Note: Samaritans is phasing out email support in 2026 — call for the fastest response.'}
   ],
   ZA: [
     {name:'South African Depression and Anxiety Group', city:'South Africa', address:'National helplines and referral network', phone:'+27 800 567 567', rating:4.8, specialties:['anxiety','depression','crisis','trauma'], notes:'Helplines, therapist referrals, support groups, and mental health education.'},
-    {name:'Lifeline South Africa', city:'South Africa', address:'Community counselling network', phone:'+27 861 322 322', rating:4.6, specialties:['family','trauma','crisis','youth'], notes:'Counselling, crisis support, and community-based referrals.'},
+    {name:'Lifeline South Africa', city:'South Africa', address:'Community counselling network', phone:'+27 861 322 322', email:'info@lifeline.org.za', rating:4.6, specialties:['family','trauma','crisis','youth'], notes:'Counselling, crisis support, and community-based referrals.'},
     {name:'Cape Town Therapy Hub', city:'Cape Town', address:'Claremont, Cape Town', phone:'+27 21 000 3344', rating:4.5, specialties:['cbt','anxiety','depression','family'], notes:'Private counselling, CBT, relationship support, and stress recovery.'}
   ]
 };
@@ -3287,6 +3294,7 @@ function renderTherapyDirectory(){
       <div style="display:flex;gap:.65rem;flex-wrap:wrap;margin-top:auto">
         <a class="btn btn-outline" href="tel:${escapeHtml(item.phone)}" style="text-decoration:none">Call</a>
         <button class="btn btn-primary" onclick="selectTherapyProvider('${escapeHtml(item.name)}')">Use in Referral</button>
+        ${item.email ? `<button class="btn btn-outline" onclick="sendReferralToOrg('${escapeHtml(item.email)}','${escapeHtml(item.name)}')">📧 Send Referral</button>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -3335,12 +3343,13 @@ async function searchNearbyTherapists(lat, lng, label){
   const summary = document.getElementById('therapy-summary');
   const listEl = document.getElementById('therapy-list');
   const mapEl = document.getElementById('therapy-map');
+  const category = document.getElementById('therapy-category')?.value || 'mental_health';
   if(summary) summary.textContent = `Searching near ${label}...`;
   if(listEl) listEl.innerHTML = '';
 
   const token = localStorage.getItem('medai_token');
   try{
-    const res = await fetch(`${API_BASE_URL}/api/therapy/search?lat=${lat}&lng=${lng}`, {
+    const res = await fetch(`${API_BASE_URL}/api/therapy/search?lat=${lat}&lng=${lng}&category=${category}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {}
     });
     const data = await res.json();
@@ -3414,6 +3423,19 @@ async function renderTherapyResultsMap(results, centerLat, centerLng){
 function selectTherapyProvider(name){
   localStorage.setItem('medai_selected_therapy_provider', name);
   generateTherapyReferral();
+}
+
+function sendReferralToOrg(email, orgName){
+  // Always re-address and regenerate so the letter's "To:" line matches who it's
+  // actually being emailed to, even if a different provider was selected earlier.
+  localStorage.setItem('medai_selected_therapy_provider', orgName);
+  generateTherapyReferral();
+
+  const box = document.getElementById('therapy-referral');
+  const letter = box ? box.value : '';
+  const subject = `Referral Request — MedAI`;
+  const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(letter)}`;
+  window.open(gmailUrl, '_blank');
 }
 
 function generateTherapyReferral(){

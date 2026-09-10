@@ -143,6 +143,68 @@ router.get('/conversations', async (req, res, next) => {
   }
 });
 
+// GET /api/chat/my-doctors — only doctors this patient has an actual conversation with,
+// for the Medical Locator's "doctors near you" map (intentionally scoped, not the full
+// public directory — that's what /api/doctors/directory is for, used by Appointments).
+router.get('/my-doctors', async (req, res, next) => {
+  try {
+    const conversations = await prisma.conversation.findMany({
+      where: { patientId: req.user.id },
+      include: {
+        doctor: {
+          select: {
+            id: true,
+            doctorProfile: {
+              select: {
+                fullName: true, specialty: true, hospital: true, formattedAddress: true,
+                latitude: true, longitude: true, yearsExperience: true, isAvailable: true,
+                verificationStatus: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    const doctors = conversations
+      .map(c => c.doctor)
+      .filter(d => d.doctorProfile?.verificationStatus === 'APPROVED'
+        && d.doctorProfile?.latitude != null
+        && d.doctorProfile?.longitude != null);
+
+    if (!doctors.length) return res.json({ doctors: [] });
+
+    const doctorIds = doctors.map(d => d.id);
+    const ratingRows = await prisma.doctorReview.groupBy({
+      by: ['doctorId'],
+      where: { doctorId: { in: doctorIds } },
+      _avg: { rating: true },
+      _count: { rating: true }
+    });
+    const ratingMap = Object.fromEntries(
+      ratingRows.map(r => [r.doctorId, { avgRating: Math.round(r._avg.rating * 10) / 10, reviewCount: r._count.rating }])
+    );
+
+    const result = doctors.map(d => ({
+      userId: d.id,
+      fullName: d.doctorProfile.fullName,
+      specialty: d.doctorProfile.specialty,
+      hospital: d.doctorProfile.hospital,
+      formattedAddress: d.doctorProfile.formattedAddress,
+      latitude: d.doctorProfile.latitude,
+      longitude: d.doctorProfile.longitude,
+      yearsExperience: d.doctorProfile.yearsExperience,
+      isAvailable: d.doctorProfile.isAvailable,
+      avgRating: ratingMap[d.id]?.avgRating ?? null,
+      reviewCount: ratingMap[d.id]?.reviewCount ?? 0
+    }));
+
+    return res.json({ doctors: result });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 // PATCH /api/chat/conversations/:id/share-profile — patient grants/revokes a doctor's
 // access to their full profile, vitals, and triage history for this conversation.
 router.patch('/conversations/:id/share-profile', async (req, res, next) => {

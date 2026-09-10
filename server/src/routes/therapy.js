@@ -4,26 +4,38 @@ const { requireAuth } = require('../middleware/auth');
 
 router.use(requireAuth);
 
-// Search for therapists/mental health clinics/counsellors near a location using
-// OpenStreetMap's Overpass API — free, no API key required (matches the rest of
-// the app's map stack, which moved off Google Maps/Places for the same reason).
+// Category → Overpass OSM tag filters. Only categories with well-established,
+// reliable OSM tagging conventions are included — accuracy over coverage.
+const CATEGORY_FILTERS = {
+  hospital: ['node["amenity"="hospital"]', 'way["amenity"="hospital"]'],
+  clinic: ['node["amenity"="clinic"]', 'way["amenity"="clinic"]', 'node["amenity"="doctors"]'],
+  pharmacy: ['node["amenity"="pharmacy"]'],
+  dentist: ['node["amenity"="dentist"]'],
+  mental_health: [
+    'node["healthcare"~"psychotherapist|counselling|counseling|psychiatrist"]',
+    'way["healthcare"~"psychotherapist|counselling|counseling|psychiatrist"]',
+    'node["office"="therapist"]',
+    'node["amenity"="clinic"]["healthcare:speciality"~"psychiatry|psychotherapy"]'
+  ],
+  physiotherapy: ['node["healthcare"="physiotherapist"]', 'way["healthcare"="physiotherapist"]'],
+  optometrist: ['node["healthcare"="optometrist"]', 'node["shop"="optician"]']
+};
+
+// Search for medical facilities near a location using OpenStreetMap's Overpass
+// API — free, no API key required (matches the rest of the app's map stack,
+// which moved off Google Maps/Places for the same reason).
 router.get('/search', async (req, res, next) => {
   try {
-    const { lat, lng, radius = 20000 } = req.query;
+    const { lat, lng, radius = 20000, category = 'mental_health' } = req.query;
     if (!lat || !lng) {
       return res.status(400).json({ message: 'lat and lng are required.' });
     }
 
+    const filters = CATEGORY_FILTERS[category] || CATEGORY_FILTERS.mental_health;
     const r = Math.min(Number(radius) || 20000, 50000); // cap at 50km to keep queries reasonable
 
-    const query = `[out:json][timeout:20];
-(
-  node["healthcare"~"psychotherapist|counselling|counseling|psychiatrist"](around:${r},${lat},${lng});
-  way["healthcare"~"psychotherapist|counselling|counseling|psychiatrist"](around:${r},${lat},${lng});
-  node["office"="therapist"](around:${r},${lat},${lng});
-  node["amenity"="clinic"]["healthcare:speciality"~"psychiatry|psychotherapy"](around:${r},${lat},${lng});
-);
-out center tags;`;
+    const clauses = filters.map(f => `${f}(around:${r},${lat},${lng});`).join('\n  ');
+    const query = `[out:json][timeout:20];\n(\n  ${clauses}\n);\nout center tags;`;
 
     const overpassRes = await fetch('https://overpass-api.de/api/interpreter', {
       method: 'POST',
@@ -62,7 +74,7 @@ out center tags;`;
           lng: elLng,
           phone: tags.phone || tags['contact:phone'] || null,
           website: tags.website || tags['contact:website'] || null,
-          type: tags.healthcare || tags.office || 'therapist'
+          type: tags.amenity || tags.healthcare || tags.office || tags.shop || category
         };
       })
       .filter(item => {

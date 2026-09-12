@@ -639,6 +639,10 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
 .chat-input:focus{border-color:var(--accent)}
 .chat-send-btn{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:#000;font-size:16px;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .chat-send-btn:hover{transform:scale(1.08);box-shadow:0 6px 20px rgba(0,212,255,0.3)}
+.mic-btn{width:40px;height:40px;border-radius:10px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-size:15px;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.mic-btn:hover{border-color:var(--accent)}
+.mic-recording{background:rgba(255,77,109,0.15)!important;border-color:var(--danger)!important;animation:mic-pulse 1.2s ease-in-out infinite}
+@keyframes mic-pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,77,109,0.4)}50%{box-shadow:0 0 0 8px rgba(255,77,109,0)}}
 
 /* Typing dots */
 .typing-dots{display:flex;gap:4px;padding:4px 0}
@@ -1228,6 +1232,7 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
         <div class="ai-usage-indicator" style="display:none;font-size:12px;text-align:center;padding:4px 0;font-family:var(--mono);letter-spacing:1px"></div>
         <div class="chat-input-row">
           <input class="chat-input" id="input-chatbot" placeholder="Ask me anything about your health..." onkeydown="if(event.key==='Enter')sendChat('chatbot','general')"/>
+          <button class="mic-btn" title="Voice input" onclick="toggleVoiceInput('input-chatbot',this)">🎤</button>
           <button class="chat-send-btn" onclick="sendChat('chatbot','general')">→</button>
         </div>
       </div>
@@ -1245,6 +1250,7 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
         <div class="ai-usage-indicator" style="display:none;font-size:12px;text-align:center;padding:4px 0;font-family:var(--mono);letter-spacing:1px"></div>
         <div class="chat-input-row">
           <input class="chat-input" id="input-medical-ai" placeholder="Ask about a condition, symptom, or medication..." onkeydown="if(event.key==='Enter')sendChat('medical-ai','medical')"/>
+          <button class="mic-btn" title="Voice input" onclick="toggleVoiceInput('input-medical-ai',this)">🎤</button>
           <button class="chat-send-btn" onclick="sendChat('medical-ai','medical')">→</button>
         </div>
       </div>
@@ -1261,6 +1267,7 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
         <div class="ai-usage-indicator" style="display:none;font-size:12px;text-align:center;padding:4px 0;font-family:var(--mono);letter-spacing:1px"></div>
         <div class="chat-input-row">
           <input class="chat-input" id="input-emotional-ai" placeholder="Share how you're feeling..." onkeydown="if(event.key==='Enter')sendChat('emotional-ai','emotional')"/>
+          <button class="mic-btn" title="Voice input" onclick="toggleVoiceInput('input-emotional-ai',this)">🎤</button>
           <button class="chat-send-btn" onclick="sendChat('emotional-ai','emotional')">→</button>
         </div>
       </div>
@@ -1277,6 +1284,7 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
         <div class="ai-usage-indicator" style="display:none;font-size:12px;text-align:center;padding:4px 0;font-family:var(--mono);letter-spacing:1px"></div>
         <div class="chat-input-row">
           <input class="chat-input" id="input-mental-ai" placeholder="Talk to me about your mental wellbeing..." onkeydown="if(event.key==='Enter')sendChat('mental-ai','mental')"/>
+          <button class="mic-btn" title="Voice input" onclick="toggleVoiceInput('input-mental-ai',this)">🎤</button>
           <button class="chat-send-btn" onclick="sendChat('mental-ai','mental')">→</button>
         </div>
       </div>
@@ -1293,6 +1301,7 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
         <div class="ai-usage-indicator" style="display:none;font-size:12px;text-align:center;padding:4px 0;font-family:var(--mono);letter-spacing:1px"></div>
         <div class="chat-input-row">
           <input class="chat-input" id="input-physical-ai" placeholder="Ask about fitness, nutrition, recovery..." onkeydown="if(event.key==='Enter')sendChat('physical-ai','physical')"/>
+          <button class="mic-btn" title="Voice input" onclick="toggleVoiceInput('input-physical-ai',this)">🎤</button>
           <button class="chat-send-btn" onclick="sendChat('physical-ai','physical')">→</button>
         </div>
       </div>
@@ -1531,6 +1540,7 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
             <input type="file" accept="image/*" id="patient-chat-image-input" style="display:none" onchange="handlePatientImageSelect(event)"/>
             <div class="btn" onclick="document.getElementById('patient-chat-image-input').click()" style="padding:0 14px;display:flex;align-items:center;cursor:pointer" title="Attach an image">📎</div>
             <input class="tool-input" id="patient-chat-input" placeholder="Type a message..." style="flex:1" onkeydown="if(event.key==='Enter')sendPatientMessage()"/>
+            <button class="btn" id="patient-mic-btn" title="Voice input" onclick="toggleVoiceInput('patient-chat-input',this)" style="padding:0 14px;display:flex;align-items:center">🎤</button>
             <div class="btn btn-primary" onclick="sendPatientMessage()" style="padding:0 18px;display:flex;align-items:center">→</div>
           </div>
           <div id="patient-chat-image-preview" style="display:none;padding:0 18px 12px;align-items:center;gap:10px">

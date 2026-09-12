@@ -254,6 +254,97 @@ async function callOpenRouter(systemPrompt, userMessage) {
 }
 
 // ---- MAIN sendChat ----
+// ============================================================
+// VOICE INPUT (Web Speech API) — transcribes to editable text, never auto-sent.
+// No speech recognition is 100% accurate, especially for distressed/shaky speech,
+// so the transcribed text always lands in the input box for the user to review
+// and correct before sending, exactly like WhatsApp/Google's voice-to-text.
+// ============================================================
+let _activeRecognition = null;
+
+function initVoiceInputSupport(){
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(SpeechRecognition) return; // supported — leave mic buttons visible
+  // Not supported (e.g. Firefox, older browsers) — hide every mic button rather
+  // than show a broken feature.
+  document.querySelectorAll('.mic-btn, #patient-mic-btn').forEach(btn => {
+    btn.style.display = 'none';
+  });
+}
+
+function toggleVoiceInput(inputId, micBtn){
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SpeechRecognition){
+    alert('Voice input is not supported in this browser. Try Chrome, Edge, or Safari.');
+    return;
+  }
+
+  // If a recording is already active, clicking (this or another) mic stops it.
+  if(_activeRecognition){
+    _activeRecognition.stop();
+    return;
+  }
+
+  const input = document.getElementById(inputId);
+  if(!input) return;
+
+  const recognition = new SpeechRecognition();
+  recognition.lang = 'en-US';
+  recognition.interimResults = true;
+  recognition.continuous = true;
+  recognition.maxAlternatives = 1;
+
+  const originalIcon = micBtn.innerHTML;
+  const baseText = input.value.trim() ? input.value.trim() + ' ' : '';
+  let finalTranscript = baseText;
+
+  micBtn.innerHTML = '⏹️';
+  micBtn.title = 'Stop recording';
+  micBtn.classList.add('mic-recording');
+  _activeRecognition = recognition;
+
+  recognition.onresult = (event) => {
+    let interim = '';
+    for(let i = event.resultIndex; i < event.results.length; i++){
+      const transcript = event.results[i][0].transcript;
+      if(event.results[i].isFinal){
+        finalTranscript += transcript + ' ';
+      } else {
+        interim += transcript;
+      }
+    }
+    input.value = (finalTranscript + interim).trim();
+  };
+
+  recognition.onerror = (event) => {
+    if(event.error === 'not-allowed' || event.error === 'permission-denied'){
+      alert('Microphone access was denied. Please allow microphone access in your browser settings to use voice input.');
+    } else if(event.error !== 'no-speech' && event.error !== 'aborted'){
+      console.error('Speech recognition error:', event.error);
+    }
+  };
+
+  recognition.onend = () => {
+    micBtn.innerHTML = originalIcon;
+    micBtn.title = 'Voice input';
+    micBtn.classList.remove('mic-recording');
+    _activeRecognition = null;
+    input.focus();
+  };
+
+  try{
+    recognition.start();
+  }catch(e){
+    micBtn.innerHTML = originalIcon;
+    micBtn.classList.remove('mic-recording');
+    _activeRecognition = null;
+    alert('Could not start voice input. Please try again.');
+  }
+}
+
+document.addEventListener('DOMContentLoaded', initVoiceInputSupport);
+if(document.readyState === 'complete' || document.readyState === 'interactive') initVoiceInputSupport();
+
 async function sendChat(panelId, type) {
   const inputEl    = document.getElementById('input-' + panelId);
   const messagesEl = document.getElementById('chat-' + panelId);

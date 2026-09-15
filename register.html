@@ -24,8 +24,6 @@ canvas{position:fixed;pointer-events:none}
 .deco-icons{position:fixed;inset:0;pointer-events:none;z-index:3}
 .deco-icon{position:absolute;opacity:0;color:rgba(0,212,255,0.5);animation:deco-float linear infinite}
 @keyframes deco-float{0%{transform:translateY(0) rotate(0deg);opacity:0}10%{opacity:.14}90%{opacity:.05}100%{transform:translateY(-100vh) rotate(360deg);opacity:0}}
-#cursor{position:fixed;width:10px;height:10px;border-radius:50%;background:var(--accent);pointer-events:none;z-index:99999;transform:translate(-50%,-50%);mix-blend-mode:screen;transition:width .15s,height .15s}
-#cursor-ring{position:fixed;width:36px;height:36px;border-radius:50%;border:1px solid rgba(0,212,255,0.5);pointer-events:none;z-index:99998;transform:translate(-50%,-50%);transition:width .25s,height .25s,border-color .2s}
 .page{position:relative;z-index:10;min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:2rem 1rem}
 .page-inner{width:100%;max-width:500px;padding-top:1rem}
 
@@ -161,7 +159,6 @@ canvas{position:fixed;pointer-events:none}
 <div class="deco-icons" id="deco-icons"></div>
 <canvas id="particle-canvas"></canvas>
 <canvas id="ecg-bg"></canvas>
-<div id="cursor"></div><div id="cursor-ring"></div>
 
 <div class="page">
 <div class="page-inner">
@@ -353,14 +350,6 @@ canvas{position:fixed;pointer-events:none}
 </div>
 
 <script>
-// ============================================================
-// CURSOR
-// ============================================================
-const cur=document.getElementById('cursor'),ring=document.getElementById('cursor-ring');
-let mx=0,my=0,rx=0,ry=0;
-document.addEventListener('mousemove',e=>{mx=e.clientX;my=e.clientY;cur.style.left=mx+'px';cur.style.top=my+'px'});
-(function ar(){rx+=(mx-rx)*.1;ry+=(my-ry)*.1;ring.style.left=rx+'px';ring.style.top=ry+'px';requestAnimationFrame(ar)})();
-
 // ============================================================
 // PARTICLES + ECG
 // ============================================================

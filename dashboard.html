@@ -340,10 +340,6 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
 @keyframes orb-a{0%,100%{transform:translate(0,0)}50%{transform:translate(-60px,50px)}}
 @keyframes orb-b{0%,100%{transform:translate(0,0)}50%{transform:translate(60px,-40px)}}
 
-/* CURSOR */
-#cursor{position:fixed;width:10px;height:10px;border-radius:50%;background:var(--accent);pointer-events:none;z-index:99999;transform:translate(-50%,-50%);mix-blend-mode:screen;transition:width .15s,height .15s}
-#cursor-ring{position:fixed;width:36px;height:36px;border-radius:50%;border:1px solid rgba(0,212,255,0.5);pointer-events:none;z-index:99998;transform:translate(-50%,-50%);transition:width .25s,height .25s}
-
 /* =============================================
    LAYOUT SHELL
    ============================================= */
@@ -843,10 +839,6 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
 <div class="orb orb-1"></div>
 <div class="orb orb-2"></div>
 <div class="deco-wrap" id="deco-wrap"></div>
-
-<!-- CURSOR -->
-<div id="cursor"></div>
-<div id="cursor-ring"></div>
 
 <div class="shell">
 

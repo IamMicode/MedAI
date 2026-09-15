@@ -116,27 +116,6 @@
     }
 
     /* =============================================
-       CUSTOM CURSOR
-       ============================================= */
-    #cursor {
-      position: fixed; width: 10px; height: 10px;
-      border-radius: 50%; background: var(--accent);
-      pointer-events: none; z-index: 99999;
-      transform: translate(-50%,-50%);
-      mix-blend-mode: screen;
-      transition: width .15s, height .15s;
-    }
-
-    #cursor-ring {
-      position: fixed; width: 36px; height: 36px;
-      border-radius: 50%;
-      border: 1px solid rgba(0,212,255,0.5);
-      pointer-events: none; z-index: 99998;
-      transform: translate(-50%,-50%);
-      transition: width .25s, height .25s, border-color .2s;
-    }
-
-    /* =============================================
        PAGE LAYOUT
        ============================================= */
     .page {
@@ -537,10 +516,6 @@
 <canvas id="particle-canvas"></canvas>
 <canvas id="ecg-bg"></canvas>
 
-<!-- Custom cursor -->
-<div id="cursor"></div>
-<div id="cursor-ring"></div>
-
 <!-- =============================================
      LOGIN PAGE
      ============================================= -->
@@ -657,45 +632,6 @@
      JAVASCRIPT — All ReactBit effects
      ============================================= -->
 <script>
-
-  // ============================================================
-  // REACTBIT 1 — CUSTOM CURSOR
-  // ============================================================
-  const cur = document.getElementById('cursor');
-  const ring = document.getElementById('cursor-ring');
-  let mx=0, my=0, rx=0, ry=0;
-
-  document.addEventListener('mousemove', e => {
-    mx = e.clientX; my = e.clientY;
-    cur.style.left = mx + 'px'; cur.style.top = my + 'px';
-  });
-
-  (function animRing(){
-    rx += (mx-rx) * 0.1;
-    ry += (my-ry) * 0.1;
-    ring.style.left = rx + 'px';
-    ring.style.top  = ry + 'px';
-    requestAnimationFrame(animRing);
-  })();
-
-  // Expand ring on interactive elements
-  document.querySelectorAll('input, button, a').forEach(el => {
-    el.addEventListener('mouseenter', () => {
-      ring.style.width = '56px';
-      ring.style.height = '56px';
-      ring.style.borderColor = 'rgba(0,212,255,0.8)';
-      cur.style.width = '6px';
-      cur.style.height = '6px';
-    });
-    el.addEventListener('mouseleave', () => {
-      ring.style.width = '36px';
-      ring.style.height = '36px';
-      ring.style.borderColor = 'rgba(0,212,255,0.5)';
-      cur.style.width = '10px';
-      cur.style.height = '10px';
-    });
-  });
-
 
   // ============================================================
   // REACTBIT 2 — MEDICAL PARTICLE CANVAS

@@ -1,16 +1,4 @@
 // ============================================================
-// CURSOR
-// ============================================================
-const cur=document.getElementById('cursor'),ring=document.getElementById('cursor-ring');
-let mx=0,my=0,rx=0,ry=0;
-document.addEventListener('mousemove',e=>{mx=e.clientX;my=e.clientY;cur.style.left=mx+'px';cur.style.top=my+'px'});
-(function ar(){rx+=(mx-rx)*.1;ry+=(my-ry)*.1;ring.style.left=rx+'px';ring.style.top=ry+'px';requestAnimationFrame(ar)})();
-document.querySelectorAll('button,.btn,.sb-item,.settings-item,.faq-q,.history-row,.ach-card,.star,.mob-item').forEach(el=>{
-  el.addEventListener('mouseenter',()=>{ring.style.width='52px';ring.style.height='52px';ring.style.borderColor='rgba(0,212,255,0.8)';cur.style.width='6px';cur.style.height='6px'});
-  el.addEventListener('mouseleave',()=>{ring.style.width='36px';ring.style.height='36px';ring.style.borderColor='rgba(0,212,255,0.5)';cur.style.width='10px';cur.style.height='10px'});
-});
-
-// ============================================================
 // PARTICLE CANVAS
 // ============================================================
 const pc=document.getElementById('particle-canvas'),px=pc.getContext('2d');

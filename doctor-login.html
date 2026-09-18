@@ -153,7 +153,7 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     }
 
     // APPROVED
-    localStorage.setItem('medai_token', data.token);
+    localStorage.setItem('medai_doctor_token', data.token);
     localStorage.setItem('medai_doctor_name', data.doctor?.fullName || '');
     window.location.href = 'doctor-dashboard.html';
 

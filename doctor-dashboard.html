@@ -9,12 +9,12 @@
   const params = new URLSearchParams(window.location.search);
   const token = params.get('token');
   if(token){
-    localStorage.setItem('medai_token', token);
+    localStorage.setItem('medai_doctor_token', token);
     params.delete('token');
     const cleanUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}${window.location.hash}`;
     window.history.replaceState({}, document.title, cleanUrl);
   }
-  if(!localStorage.getItem('medai_token')){
+  if(!localStorage.getItem('medai_doctor_token')){
     window.location.replace('doctor-login.html');
   }
 })();
@@ -268,12 +268,12 @@ const API_BASE_URL = localStorage.getItem('medai_api_base_url')
         : 'https://medai-backend-5r9o.onrender.com');
 
 function authHeaders(){
-  const token = localStorage.getItem('medai_token');
+  const token = localStorage.getItem('medai_doctor_token');
   return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
 }
 
 function doctorLogout(){
-  localStorage.removeItem('medai_token');
+  localStorage.removeItem('medai_doctor_token');
   window.location.href = 'doctor-login.html';
 }
 

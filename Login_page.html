@@ -583,7 +583,7 @@
 
         <!-- Forgot -->
         <div class="forgot-row">
-          <a href="Forget_Password.html" class="forgot-link" onclick="showPasswordHelp(event)">Forgot password?</a>
+          <a href="Forget_Password.html" class="forgot-link">Forgot password?</a>
         </div>
 
         <!-- Submit -->
@@ -868,23 +868,6 @@
       return JSON.parse(localStorage.getItem('medai_admin_creds') || 'null') || { username: ADMIN_USERNAME, password: ADMIN_PASSWORD };
     }catch(e){
       return { username: ADMIN_USERNAME, password: ADMIN_PASSWORD };
-    }
-  }
-
-  function showPasswordHelp(e){
-    e.preventDefault();
-    const errorBox = document.getElementById('login-error');
-    const usernameVal = document.getElementById('username').value.trim().toLowerCase();
-    const users = JSON.parse(localStorage.getItem('medai_users') || '[]');
-    const user = users.find(u =>
-      (u.username && u.username.toLowerCase() === usernameVal) ||
-      (u.email && u.email.toLowerCase() === usernameVal)
-    );
-    errorBox.style.display = 'block';
-    if(user){
-      errorBox.textContent = 'Password reset needs backend email later. For now, sign in if you remember it or ask the developer to reset the local test account.';
-    }else{
-      errorBox.textContent = 'Enter your username or email first. Backend email recovery will be added later.';
     }
   }
 

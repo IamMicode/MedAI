@@ -1187,7 +1187,10 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
       <div class="glass-card" style="padding:2rem;max-width:600px">
         <p style="font-size:14px;color:var(--muted);margin-bottom:1.5rem;line-height:1.7">Describe your symptoms below. Our AI will analyze them and give you an instant triage recommendation.</p>
         <div style="margin-bottom:1rem">
-          <label style="font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:2px;display:block;margin-bottom:8px">YOUR SYMPTOMS</label>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <label style="font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:2px">YOUR SYMPTOMS</label>
+            <button class="mic-btn" title="Voice input" onclick="toggleVoiceInput('triage-input',this)">🎤</button>
+          </div>
           <textarea id="triage-input" style="width:100%;background:rgba(0,212,255,0.04);border:1px solid var(--border2);border-radius:10px;color:var(--text);font-family:var(--body);font-size:14px;padding:14px;outline:none;resize:none;min-height:100px;line-height:1.6" placeholder="e.g. I have a severe headache on my left side, started 3 hours ago..."></textarea>
         </div>
         <div class="btn btn-primary" onclick="startTriage()" style="justify-content:center">⚡ Analyze Symptoms</div>

@@ -27,12 +27,19 @@ const CATEGORY_FILTERS = {
   other_healthcare: ['node["healthcare"]', 'way["healthcare"]']
 };
 
-// Public Overpass endpoints to try in order. The primary (overpass-api.de) is the
-// biggest/most complete but can rate-limit shared cloud IPs (like Render's) under
-// load; private.coffee (formerly kumi.systems) explicitly states no rate limit.
+// Public Overpass endpoints to try in order. overpass-api.de is the biggest/most
+// complete, but has been actively blocking cloud-provider IP ranges (AWS/Azure)
+// due to abuse from other users — and Render's infrastructure runs on AWS, so
+// requests from this backend can get blocked there even though nothing is wrong
+// with the query itself. private.coffee (formerly kumi.systems) is a second,
+// independent instance, but small volunteer-run mirrors like this do go down or
+// stall on their own. maps.mail.ru is a third, genuinely separate mirror run on
+// different infrastructure, added so a single provider's block/outage doesn't
+// take down both fallbacks at once.
 const OVERPASS_ENDPOINTS = [
   'https://overpass-api.de/api/interpreter',
-  'https://overpass.private.coffee/api/interpreter'
+  'https://overpass.private.coffee/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter'
 ];
 
 async function queryOverpass(query) {

@@ -18,7 +18,13 @@ const CATEGORY_FILTERS = {
     'node["amenity"="clinic"]["healthcare:speciality"~"psychiatry|psychotherapy"]'
   ],
   physiotherapy: ['node["healthcare"="physiotherapist"]', 'way["healthcare"="physiotherapist"]'],
-  optometrist: ['node["healthcare"="optometrist"]', 'node["shop"="optician"]']
+  optometrist: ['node["healthcare"="optometrist"]', 'node["shop"="optician"]'],
+  // "Diagnostic Centers" doesn't have its own widely-adopted OSM tag distinct from
+  // laboratory, so the two are combined here rather than adding a category that
+  // would reliably return nothing.
+  laboratory: ['node["healthcare"="laboratory"]', 'way["healthcare"="laboratory"]'],
+  // Broad catch-all for any other tagged healthcare facility not covered above.
+  other_healthcare: ['node["healthcare"]', 'way["healthcare"]']
 };
 
 // Public Overpass endpoints to try in order. The primary (overpass-api.de) is the

@@ -43,10 +43,16 @@ const OVERPASS_ENDPOINTS = [
 ];
 
 async function queryOverpass(query) {
+  // With 3 mirrors now in the list, a 20s timeout on each meant a worst case
+  // of ~60s before giving up — long enough to trip Render's own request
+  // timeout and fail the whole request before a slower-but-working mirror
+  // ever got a chance to respond. Trimmed per-mirror so the worst case across
+  // all three stays comfortably under typical platform timeouts.
+  const PER_ENDPOINT_TIMEOUT_MS = 8000;
   for (const endpoint of OVERPASS_ENDPOINTS) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000);
+      const timeoutId = setTimeout(() => controller.abort(), PER_ENDPOINT_TIMEOUT_MS);
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },

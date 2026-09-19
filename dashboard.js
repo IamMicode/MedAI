@@ -86,7 +86,7 @@ function showTab(id,el){
   document.getElementById('topbar-title').textContent=tabTitles[id]||id;
   document.getElementById('topbar-bc').textContent='// '+(tabBc[id]||id.toUpperCase());
   if(id === 'premium') renderPrices();
-  if(id === 'therapy'){ renderTherapyDirectory(); loadDoctorDirectoryMap(); onLocatorViewChange(); }
+  if(id === 'therapy'){ renderTherapyDirectory(); onLocatorViewChange(); }
   if(id === 'emergency-contacts') renderEmergencyDirectory();
   if(id === 'appointments'){ loadAppointmentDoctors(); loadPatientAppointments(); }
   if(id === 'messages') loadPatientConversations();
@@ -669,7 +669,6 @@ const API_BASE_URL = localStorage.getItem('medai_api_base_url')
 // ============================================================
 let _leafletLoadPromise = null;
 let _doctorDirectory = null;
-let _directoryMap = null;
 let _apptDoctorMap = null;
 let _apptDoctorMarker = null;
 
@@ -719,64 +718,62 @@ async function fetchDoctorDirectory(){
   return _doctorDirectory;
 }
 
-// ---------- Therapy Finder: live map of registered doctors ----------
-async function loadDoctorDirectoryMap(){
-  const mapEl = document.getElementById('doctor-directory-map');
-  const listEl = document.getElementById('doctor-directory-list');
-  if(!mapEl || !listEl) return;
+// ---------- Doctors you've chatted with — now folded into the single unified
+// Medical Locator map/list as the default "Doctors" view, instead of a
+// separate map+card. Also used to badge chatted-with doctors in location
+// search results so that relationship is never lost, just surfaced differently.
+let _chattedDoctorIds = null; // Set, cached after first fetch
 
-  let doctors = [];
+async function getChattedDoctors(){
   try{
     const res = await fetch(`${API_BASE_URL}/api/chat/my-doctors`, { headers: patientAuthHeaders() });
-    if(res.ok){
-      const data = await res.json();
-      doctors = data.doctors || [];
-    }
-  }catch(e){ /* fall through to empty state below */ }
+    if(!res.ok) return [];
+    const data = await res.json();
+    return data.doctors || [];
+  }catch(e){ return []; }
+}
 
-  if(!doctors.length){
-    mapEl.innerHTML = 'Doctors you\'ve chatted with will show up here once they share a location.';
-    listEl.innerHTML = '';
+async function loadDefaultDoctorsView(){
+  const summary = document.getElementById('therapy-summary');
+  const listEl = document.getElementById('therapy-list');
+  const mapEl = document.getElementById('therapy-map');
+  if(listEl) listEl.innerHTML = '';
+
+  const doctors = await getChattedDoctors();
+  _chattedDoctorIds = new Set(doctors.map(d => d.userId));
+  const withLocation = doctors.filter(d => typeof d.latitude === 'number' && typeof d.longitude === 'number');
+
+  if(!withLocation.length){
+    if(summary) summary.textContent = doctors.length
+      ? 'None of the doctors you\'ve chatted with have shared a map location yet. Search a location below to find doctors nearby.'
+      : 'Search a location below to find doctors nearby, or start a chat with a doctor to see them here.';
+    if(mapEl) mapEl.style.display = 'none';
     return;
   }
 
-  listEl.innerHTML = doctors.map(d => `
+  if(summary) summary.innerHTML = `Showing <strong style="color:var(--accent)">${withLocation.length}</strong> doctor${withLocation.length===1?'':'s'} you've chatted with. Search a location below to find more doctors nearby.`;
+
+  listEl.innerHTML = withLocation.map(d => `
     <div class="glass-card therapy-card">
       <div class="therapy-card-head">
         <div><div class="therapy-name">Dr. ${escapeHtml(d.fullName)}</div><div class="therapy-meta">${escapeHtml(d.specialty)}${d.hospital ? ' · ' + escapeHtml(d.hospital) : ''}</div></div>
       </div>
-      ${d.avgRating ? `<div class="therapy-meta" style="color:var(--warning)">${'★'.repeat(Math.round(d.avgRating))}${'☆'.repeat(5-Math.round(d.avgRating))} ${d.avgRating} (${d.reviewCount} review${d.reviewCount===1?'':'s'})</div>` : `<div class="therapy-meta">No reviews yet</div>`}
-      <div class="therapy-meta">${escapeHtml(d.formattedAddress || 'Location not shared yet')}</div>
+      <div class="therapy-tags"><span class="badge badge-blue">💬 CHATTED WITH</span>${d.avgRating ? `<span class="badge badge-blue">★ ${d.avgRating} (${d.reviewCount})</span>` : ''}</div>
+      <div class="therapy-meta">${escapeHtml(d.formattedAddress || d.hospital || 'Location not shared')}</div>
       <div class="therapy-meta">${d.yearsExperience} years experience</div>
+      <div style="display:flex;gap:.65rem;flex-wrap:wrap;margin-top:auto">
+        <button class="btn btn-outline" onclick='openDoctorProfileModal(${JSON.stringify(d).replace(/'/g, "&apos;")})'>View Profile</button>
+        <button class="btn btn-primary" onclick="startTriageDoctorChat('${d.userId}','${escapeHtml(d.fullName)}','${escapeHtml(d.specialty)}')">Message</button>
+      </div>
     </div>
   `).join('');
 
-  const withLocation = doctors.filter(d => typeof d.latitude === 'number' && typeof d.longitude === 'number');
-  if(!withLocation.length){
-    mapEl.innerHTML = 'None of these doctors have shared a map location yet.';
-    return;
-  }
-
-  try{
-    await loadLeaflet();
-  }catch(e){
-    mapEl.innerHTML = 'Map could not be loaded — check your connection and try again.';
-    return;
-  }
-
-  mapEl.innerHTML = '';
   const first = withLocation[0];
-  if(_directoryMap){ _directoryMap.remove(); _directoryMap = null; }
-  _directoryMap = L.map(mapEl).setView([first.latitude, first.longitude], 11);
-  addOsmTileLayer(_directoryMap);
-
-  const bounds = [];
-  withLocation.forEach(d => {
-    const marker = L.marker([d.latitude, d.longitude]).addTo(_directoryMap);
-    marker.bindPopup(`<strong>Dr. ${escapeHtml(d.fullName)}</strong><br>${escapeHtml(d.specialty)}${d.hospital ? '<br>' + escapeHtml(d.hospital) : ''}`);
-    bounds.push([d.latitude, d.longitude]);
-  });
-  if(withLocation.length > 1) _directoryMap.fitBounds(bounds, { padding: [30,30] });
+  await renderLocatorMap(withLocation.map(d => ({
+    lat: d.latitude, lng: d.longitude,
+    icon: divIconFor('💬', '#0077dd'),
+    popupHtml: `<strong>Dr. ${escapeHtml(d.fullName)}</strong><br>${escapeHtml(d.specialty)}${d.hospital ? '<br>' + escapeHtml(d.hospital) : ''}`
+  })), first.latitude, first.longitude);
 }
 
 // ---------- Appointments: real doctor selector + location preview ----------
@@ -3396,11 +3393,15 @@ function onLocatorViewChange(){
 
   if(_lastLocatorSearch){
     runLocatorSearch(_lastLocatorSearch.lat, _lastLocatorSearch.lng, _lastLocatorSearch.label);
+  } else if(view === 'doctors'){
+    loadDefaultDoctorsView();
   } else {
     const summary = document.getElementById('therapy-summary');
-    if(summary) summary.textContent = view === 'doctors'
-      ? 'Share your location or search a city to find nearby doctors.'
-      : 'Choose a category, then share your location or search a city to find nearby centers.';
+    if(summary) summary.textContent = 'Choose a category, then share your location or search a city to find nearby centers.';
+    const mapEl = document.getElementById('therapy-map');
+    if(mapEl) mapEl.style.display = 'none';
+    const listEl = document.getElementById('therapy-list');
+    if(listEl) listEl.innerHTML = '';
   }
 }
 
@@ -3567,6 +3568,11 @@ async function searchNearbyDoctors(lat, lng, label){
   if(summary) summary.textContent = `Searching near ${label}...`;
   if(listEl) listEl.innerHTML = '';
 
+  if(!_chattedDoctorIds){
+    const chatted = await getChattedDoctors();
+    _chattedDoctorIds = new Set(chatted.map(d => d.userId));
+  }
+
   let doctors = [];
   try{
     doctors = await fetchDoctorDirectory();
@@ -3575,7 +3581,7 @@ async function searchNearbyDoctors(lat, lng, label){
   let results = doctors
     .filter(d => typeof d.latitude === 'number' && typeof d.longitude === 'number')
     .filter(d => !specialty || d.specialty === specialty)
-    .map(d => ({ ...d, distanceKm: distanceKm(lat, lng, d.latitude, d.longitude) }))
+    .map(d => ({ ...d, distanceKm: distanceKm(lat, lng, d.latitude, d.longitude), chatted: _chattedDoctorIds.has(d.userId) }))
     .sort((a, b) => a.distanceKm - b.distanceKm);
 
   if(!results.length){
@@ -3592,6 +3598,7 @@ async function searchNearbyDoctors(lat, lng, label){
         <div><div class="therapy-name">Dr. ${escapeHtml(d.fullName)}</div><div class="therapy-meta">${escapeHtml(d.specialty)}${d.hospital ? ' · ' + escapeHtml(d.hospital) : ''}</div></div>
       </div>
       <div class="therapy-tags">
+        ${d.chatted ? '<span class="badge badge-blue">💬 CHATTED WITH</span>' : ''}
         <span class="badge ${d.isAvailable ? 'badge-blue' : ''}" ${!d.isAvailable ? 'style="opacity:.6"' : ''}>${d.isAvailable ? '● AVAILABLE' : 'UNAVAILABLE'}</span>
         ${d.avgRating ? `<span class="badge badge-blue">★ ${d.avgRating} (${d.reviewCount})</span>` : ''}
       </div>
@@ -3607,8 +3614,8 @@ async function searchNearbyDoctors(lat, lng, label){
   spreadOverlappingPoints(results.map(d => ({ ...d, lat: d.latitude, lng: d.longitude })));
   await renderLocatorMap(results.map(d => ({
     lat: d.latitude, lng: d.longitude,
-    icon: divIconFor('🩺', d.isAvailable ? '#00aa66' : '#5a7a99'),
-    popupHtml: `<strong>Dr. ${escapeHtml(d.fullName)}</strong><br>${escapeHtml(d.specialty)}${d.hospital ? '<br>' + escapeHtml(d.hospital) : ''}<br>${d.distanceKm.toFixed(1)} km away`
+    icon: divIconFor(d.chatted ? '💬' : '🩺', d.isAvailable ? '#00aa66' : '#5a7a99'),
+    popupHtml: `<strong>Dr. ${escapeHtml(d.fullName)}</strong>${d.chatted ? ' 💬' : ''}<br>${escapeHtml(d.specialty)}${d.hospital ? '<br>' + escapeHtml(d.hospital) : ''}<br>${d.distanceKm.toFixed(1)} km away`
   })), lat, lng);
 }
 

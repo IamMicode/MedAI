@@ -86,7 +86,7 @@ function showTab(id,el){
   document.getElementById('topbar-title').textContent=tabTitles[id]||id;
   document.getElementById('topbar-bc').textContent='// '+(tabBc[id]||id.toUpperCase());
   if(id === 'premium') renderPrices();
-  if(id === 'therapy'){ renderTherapyDirectory(); loadDoctorDirectoryMap(); }
+  if(id === 'therapy'){ renderTherapyDirectory(); loadDoctorDirectoryMap(); onLocatorViewChange(); }
   if(id === 'emergency-contacts') renderEmergencyDirectory();
   if(id === 'appointments'){ loadAppointmentDoctors(); loadPatientAppointments(); }
   if(id === 'messages') loadPatientConversations();
@@ -3381,6 +3381,34 @@ function renderTherapyDirectory(){
 
 // ---------- Real nearby search (OpenStreetMap Overpass API, via backend) ----------
 let _therapyMap = null;
+let _lastLocatorSearch = null; // {lat, lng, label} — shared so switching views re-uses the same location
+
+function currentLocatorView(){
+  return document.getElementById('locator-view')?.value || 'doctors';
+}
+
+function onLocatorViewChange(){
+  const view = currentLocatorView();
+  const specialtySelect = document.getElementById('locator-specialty');
+  const categorySelect = document.getElementById('therapy-category');
+  if(specialtySelect) specialtySelect.style.display = view === 'doctors' ? '' : 'none';
+  if(categorySelect) categorySelect.style.display = view === 'centers' ? '' : 'none';
+
+  if(_lastLocatorSearch){
+    runLocatorSearch(_lastLocatorSearch.lat, _lastLocatorSearch.lng, _lastLocatorSearch.label);
+  } else {
+    const summary = document.getElementById('therapy-summary');
+    if(summary) summary.textContent = view === 'doctors'
+      ? 'Share your location or search a city to find nearby doctors.'
+      : 'Choose a category, then share your location or search a city to find nearby centers.';
+  }
+}
+
+function onLocatorFilterChange(){
+  if(_lastLocatorSearch){
+    runLocatorSearch(_lastLocatorSearch.lat, _lastLocatorSearch.lng, _lastLocatorSearch.label);
+  }
+}
 
 async function useMyLocationForTherapy(){
   const summary = document.getElementById('therapy-summary');
@@ -3390,7 +3418,7 @@ async function useMyLocationForTherapy(){
   }
   if(summary) summary.textContent = 'Requesting your location...';
   navigator.geolocation.getCurrentPosition(
-    (pos) => searchNearbyTherapists(pos.coords.latitude, pos.coords.longitude, 'your location'),
+    (pos) => runLocatorSearch(pos.coords.latitude, pos.coords.longitude, 'your location'),
     () => { if(summary) summary.textContent = 'Location access denied. Try searching a city instead.'; }
   );
 }
@@ -3412,17 +3440,72 @@ async function geocodeAndSearchTherapy(){
       if(summary) summary.textContent = `Could not find "${query}". Try a more specific search.`;
       return;
     }
-    searchNearbyTherapists(parseFloat(results[0].lat), parseFloat(results[0].lon), results[0].display_name);
+    runLocatorSearch(parseFloat(results[0].lat), parseFloat(results[0].lon), results[0].display_name);
   }catch(e){
     if(summary) summary.textContent = 'Could not search that location. Check your connection and try again.';
   }
 }
 
+// Dispatches to the doctors or medical-centers search based on the current
+// dropdown, and remembers the location so switching the dropdown re-runs the
+// other view at the same spot without asking the user to search again.
+function runLocatorSearch(lat, lng, label){
+  _lastLocatorSearch = { lat, lng, label };
+  if(currentLocatorView() === 'doctors'){
+    searchNearbyDoctors(lat, lng, label);
+  } else {
+    searchNearbyTherapists(lat, lng, label);
+  }
+}
+
+function distanceKm(lat1, lng1, lat2, lng2){
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// Nudges markers that share (almost) identical coordinates into a small ring
+// around the shared point, so doctors at the same hospital — or facilities at
+// the same address — don't render as one unclickable stack.
+function spreadOverlappingPoints(items){
+  const groups = {};
+  items.forEach(item => {
+    const key = item.lat.toFixed(4) + ',' + item.lng.toFixed(4);
+    (groups[key] = groups[key] || []).push(item);
+  });
+  Object.values(groups).forEach(group => {
+    if(group.length < 2) return;
+    const offset = 0.0006; // ~65m — enough to separate pins at map zoom levels used here
+    group.forEach((item, i) => {
+      if(i === 0) return;
+      const angle = (2 * Math.PI * i) / group.length;
+      item.lat += offset * Math.cos(angle);
+      item.lng += offset * Math.sin(angle);
+    });
+  });
+  return items;
+}
+
+const FACILITY_ICONS = {
+  hospital: '🏥', clinic: '⚕️', doctors: '⚕️', pharmacy: '💊', dentist: '🦷',
+  physiotherapist: '🏃', optometrist: '👁️', optician: '👁️', laboratory: '🔬',
+  psychotherapist: '🧠', counselling: '🧠', counseling: '🧠', psychiatrist: '🧠'
+};
+
+function divIconFor(emoji, color){
+  return L.divIcon({
+    html: `<div style="width:28px;height:28px;border-radius:50%;background:${color};display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,0.4);border:2px solid rgba(255,255,255,0.25)">${emoji}</div>`,
+    className: '', iconSize: [28, 28], iconAnchor: [14, 14], popupAnchor: [0, -14]
+  });
+}
+
 async function searchNearbyTherapists(lat, lng, label){
   const summary = document.getElementById('therapy-summary');
   const listEl = document.getElementById('therapy-list');
-  const mapEl = document.getElementById('therapy-map');
   const category = document.getElementById('therapy-category')?.value || 'mental_health';
+  const categoryLabel = document.getElementById('therapy-category')?.selectedOptions?.[0]?.textContent.replace(/^\S+\s/, '') || 'centers';
   if(summary) summary.textContent = `Searching near ${label}...`;
   if(listEl) listEl.innerHTML = '';
 
@@ -3432,15 +3515,19 @@ async function searchNearbyTherapists(lat, lng, label){
       headers: token ? { Authorization: `Bearer ${token}` } : {}
     });
     const data = await res.json();
-    const results = data.results || [];
+    const results = (data.results || []).map(item => ({
+      ...item,
+      distanceKm: distanceKm(lat, lng, item.lat, item.lng)
+    })).sort((a, b) => a.distanceKm - b.distanceKm);
 
     if(data.degraded){
       if(summary) summary.textContent = 'The live search is temporarily unavailable — try again shortly, or check the trusted organizations list below.';
+      document.getElementById('therapy-map').style.display = 'none';
       return;
     }
     if(!results.length){
-      if(summary) summary.textContent = `No listed therapists found near ${label}. Try a wider search or check the trusted organizations list below.`;
-      if(mapEl) mapEl.style.display = 'none';
+      if(summary) summary.textContent = `No ${categoryLabel} found near ${label}. Try a wider search or a different category.`;
+      document.getElementById('therapy-map').style.display = 'none';
       return;
     }
 
@@ -3451,22 +3538,83 @@ async function searchNearbyTherapists(lat, lng, label){
         <div class="therapy-card-head">
           <div><div class="therapy-name">${escapeHtml(item.name)}</div><div class="therapy-meta">${escapeHtml(item.address || 'Address not listed')}</div></div>
         </div>
-        <div class="therapy-tags"><span class="badge badge-blue">${escapeHtml((item.type||'therapist').toUpperCase())}</span></div>
+        <div class="therapy-tags"><span class="badge badge-blue">${escapeHtml((item.type||'facility').toUpperCase())}</span></div>
+        <div class="therapy-meta">${item.distanceKm.toFixed(1)} km away</div>
         <div style="display:flex;gap:.65rem;flex-wrap:wrap;margin-top:auto">
           ${item.phone ? `<a class="btn btn-outline" href="tel:${escapeHtml(item.phone)}" style="text-decoration:none">Call</a>` : ''}
           ${item.website ? `<a class="btn btn-outline" href="${escapeHtml(item.website)}" target="_blank" rel="noopener" style="text-decoration:none">Website</a>` : ''}
+          <a class="btn btn-outline" href="https://www.openstreetmap.org/directions?to=${item.lat},${item.lng}" target="_blank" rel="noopener" style="text-decoration:none">Directions</a>
           <button class="btn btn-primary" onclick="selectTherapyProvider('${escapeHtml(item.name)}')">Use in Referral</button>
         </div>
       </div>
     `).join('');
 
-    await renderTherapyResultsMap(results, lat, lng);
+    spreadOverlappingPoints(results);
+    await renderLocatorMap(results.map(item => ({
+      lat: item.lat, lng: item.lng,
+      icon: divIconFor(FACILITY_ICONS[item.type] || '📍', '#0077dd'),
+      popupHtml: `<strong>${escapeHtml(item.name)}</strong>${item.address ? '<br>' + escapeHtml(item.address) : ''}<br>${item.distanceKm.toFixed(1)} km away`
+    })), lat, lng);
   }catch(e){
     if(summary) summary.textContent = 'Could not complete the search. Check your connection and try again.';
   }
 }
 
-async function renderTherapyResultsMap(results, centerLat, centerLng){
+async function searchNearbyDoctors(lat, lng, label){
+  const summary = document.getElementById('therapy-summary');
+  const listEl = document.getElementById('therapy-list');
+  const specialty = document.getElementById('locator-specialty')?.value || '';
+  if(summary) summary.textContent = `Searching near ${label}...`;
+  if(listEl) listEl.innerHTML = '';
+
+  let doctors = [];
+  try{
+    doctors = await fetchDoctorDirectory();
+  }catch(e){ doctors = []; }
+
+  let results = doctors
+    .filter(d => typeof d.latitude === 'number' && typeof d.longitude === 'number')
+    .filter(d => !specialty || d.specialty === specialty)
+    .map(d => ({ ...d, distanceKm: distanceKm(lat, lng, d.latitude, d.longitude) }))
+    .sort((a, b) => a.distanceKm - b.distanceKm);
+
+  if(!results.length){
+    if(summary) summary.textContent = `No registered doctors${specialty ? ' in ' + specialty : ''} with a shared workplace location found near ${label}. Try a different area or specialty.`;
+    document.getElementById('therapy-map').style.display = 'none';
+    return;
+  }
+
+  if(summary) summary.innerHTML = `<strong style="color:var(--accent)">${results.length}</strong> doctor${results.length===1?'':'s'} found near ${escapeHtml(label)}.`;
+
+  listEl.innerHTML = results.map(d => `
+    <div class="glass-card therapy-card">
+      <div class="therapy-card-head">
+        <div><div class="therapy-name">Dr. ${escapeHtml(d.fullName)}</div><div class="therapy-meta">${escapeHtml(d.specialty)}${d.hospital ? ' · ' + escapeHtml(d.hospital) : ''}</div></div>
+      </div>
+      <div class="therapy-tags">
+        <span class="badge ${d.isAvailable ? 'badge-blue' : ''}" ${!d.isAvailable ? 'style="opacity:.6"' : ''}>${d.isAvailable ? '● AVAILABLE' : 'UNAVAILABLE'}</span>
+        ${d.avgRating ? `<span class="badge badge-blue">★ ${d.avgRating} (${d.reviewCount})</span>` : ''}
+      </div>
+      <div class="therapy-meta">${escapeHtml(d.formattedAddress || d.hospital || 'Location not shared')}</div>
+      <div class="therapy-meta">${d.distanceKm.toFixed(1)} km away · ${d.yearsExperience} yrs experience</div>
+      <div style="display:flex;gap:.65rem;flex-wrap:wrap;margin-top:auto">
+        <button class="btn btn-outline" onclick='openDoctorProfileModal(${JSON.stringify(d).replace(/'/g, "&apos;")})'>View Profile</button>
+        <button class="btn btn-primary" onclick="startTriageDoctorChat('${d.userId}','${escapeHtml(d.fullName)}','${escapeHtml(d.specialty)}')">Connect</button>
+      </div>
+    </div>
+  `).join('');
+
+  spreadOverlappingPoints(results.map(d => ({ ...d, lat: d.latitude, lng: d.longitude })));
+  await renderLocatorMap(results.map(d => ({
+    lat: d.latitude, lng: d.longitude,
+    icon: divIconFor('🩺', d.isAvailable ? '#00aa66' : '#5a7a99'),
+    popupHtml: `<strong>Dr. ${escapeHtml(d.fullName)}</strong><br>${escapeHtml(d.specialty)}${d.hospital ? '<br>' + escapeHtml(d.hospital) : ''}<br>${d.distanceKm.toFixed(1)} km away`
+  })), lat, lng);
+}
+
+// Shared renderer for both the Doctors and Medical Centers views — one map,
+// fed a generic list of {lat, lng, icon, popupHtml} markers.
+async function renderLocatorMap(markers, centerLat, centerLng){
   const mapEl = document.getElementById('therapy-map');
   if(!mapEl) return;
   mapEl.style.display = 'flex';
@@ -3490,14 +3638,34 @@ async function renderTherapyResultsMap(results, centerLat, centerLng){
   L.circleMarker([centerLat, centerLng], { radius: 7, color: '#00d4ff', fillColor: '#00d4ff', fillOpacity: 0.8 })
     .addTo(_therapyMap).bindPopup('Your search location');
 
-  results.forEach(item => {
-    const marker = L.marker([item.lat, item.lng]).addTo(_therapyMap);
-    marker.bindPopup(`<strong>${escapeHtml(item.name)}</strong>${item.address ? '<br>' + escapeHtml(item.address) : ''}`);
-    bounds.push([item.lat, item.lng]);
+  markers.forEach(m => {
+    const marker = L.marker([m.lat, m.lng], m.icon ? { icon: m.icon } : {}).addTo(_therapyMap);
+    marker.bindPopup(m.popupHtml);
+    bounds.push([m.lat, m.lng]);
   });
   _therapyMap.fitBounds(bounds, { padding: [30,30] });
   setTimeout(() => _therapyMap.invalidateSize(), 50);
 }
+
+function openDoctorProfileModal(d){
+  const body = document.getElementById('doctor-profile-modal-body');
+  body.innerHTML = `
+    <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;margin-bottom:2px">Dr. ${escapeHtml(d.fullName)}</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:14px">${escapeHtml(d.specialty)}${d.hospital ? ' · ' + escapeHtml(d.hospital) : ''}</div>
+    ${d.avgRating ? `<div style="font-size:13px;color:var(--warning);margin-bottom:10px">${'★'.repeat(Math.round(d.avgRating))}${'☆'.repeat(5-Math.round(d.avgRating))} ${d.avgRating} (${d.reviewCount} review${d.reviewCount===1?'':'s'})</div>` : `<div style="font-size:13px;color:var(--muted);margin-bottom:10px">No reviews yet</div>`}
+    <div style="font-size:13px;color:#c4d8ec;line-height:1.7;margin-bottom:10px">${d.bio ? escapeHtml(d.bio) : 'No bio provided.'}</div>
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:4px">📍 ${escapeHtml(d.formattedAddress || d.hospital || 'Location not shared')}</div>
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:4px">🎓 ${d.yearsExperience} years experience</div>
+    <div style="font-size:12.5px;margin-bottom:18px;color:${d.isAvailable ? 'var(--safe)' : 'var(--muted)'}">${d.isAvailable ? '● Available for new patients' : '○ Currently unavailable'}</div>
+    <button class="btn btn-primary" style="width:100%" onclick="closeDoctorProfileModal();startTriageDoctorChat('${d.userId}','${escapeHtml(d.fullName)}','${escapeHtml(d.specialty)}')">Connect with Dr. ${escapeHtml(d.fullName)}</button>
+  `;
+  document.getElementById('doctor-profile-modal').style.display = 'flex';
+}
+
+function closeDoctorProfileModal(){
+  document.getElementById('doctor-profile-modal').style.display = 'none';
+}
+
 
 function selectTherapyProvider(name){
   localStorage.setItem('medai_selected_therapy_provider', name);

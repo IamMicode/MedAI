@@ -86,7 +86,7 @@ function showTab(id,el){
   document.getElementById('topbar-title').textContent=tabTitles[id]||id;
   document.getElementById('topbar-bc').textContent='// '+(tabBc[id]||id.toUpperCase());
   if(id === 'premium') renderPrices();
-  if(id === 'therapy'){ renderTherapyDirectory(); onLocatorViewChange(); }
+  if(id === 'therapy'){ renderTherapyDirectory(); initLocatorMap().then(onLocatorViewChange); }
   if(id === 'emergency-contacts') renderEmergencyDirectory();
   if(id === 'appointments'){ loadAppointmentDoctors(); loadPatientAppointments(); }
   if(id === 'messages') loadPatientConversations();
@@ -736,7 +736,6 @@ async function getChattedDoctors(){
 async function loadDefaultDoctorsView(){
   const summary = document.getElementById('therapy-summary');
   const listEl = document.getElementById('therapy-list');
-  const mapEl = document.getElementById('therapy-map');
   if(listEl) listEl.innerHTML = '';
 
   const doctors = await getChattedDoctors();
@@ -745,13 +744,13 @@ async function loadDefaultDoctorsView(){
 
   if(!withLocation.length){
     if(summary) summary.textContent = doctors.length
-      ? 'None of the doctors you\'ve chatted with have shared a map location yet. Search a location below to find doctors nearby.'
-      : 'Search a location below to find doctors nearby, or start a chat with a doctor to see them here.';
-    if(mapEl) mapEl.style.display = 'none';
+      ? 'None of the doctors you\'ve chatted with have shared a map location yet. Search a place below to find doctors nearby.'
+      : 'Search a place below to find doctors nearby, or start a chat with a doctor to see them here.';
+    await renderLocatorMap([], LOCATOR_DEFAULT_CENTER.lat, LOCATOR_DEFAULT_CENTER.lng, { zoom: 11 });
     return;
   }
 
-  if(summary) summary.innerHTML = `Showing <strong style="color:var(--accent)">${withLocation.length}</strong> doctor${withLocation.length===1?'':'s'} you've chatted with. Search a location below to find more doctors nearby.`;
+  if(summary) summary.innerHTML = `Showing <strong style="color:var(--accent)">${withLocation.length}</strong> doctor${withLocation.length===1?'':'s'} you've chatted with. Search a place below to find more doctors nearby.`;
 
   listEl.innerHTML = withLocation.map(d => `
     <div class="glass-card therapy-card">
@@ -3378,10 +3377,45 @@ function renderTherapyDirectory(){
 
 // ---------- Real nearby search (OpenStreetMap Overpass API, via backend) ----------
 let _therapyMap = null;
+let _therapyMarkersLayer = null;
 let _lastLocatorSearch = null; // {lat, lng, label} — shared so switching views re-uses the same location
+const LOCATOR_DEFAULT_CENTER = { lat: 6.5244, lng: 3.3792 }; // Lagos — map is visible/interactive from the start, before any search
 
 function currentLocatorView(){
   return document.getElementById('locator-view')?.value || 'doctors';
+}
+
+let _locatorToastTimer = null;
+function showLocatorToast(message, type){
+  const toast = document.getElementById('therapy-toast');
+  if(!toast) return;
+  clearTimeout(_locatorToastTimer);
+  toast.className = 'locator-toast ' + (type === 'error' ? 'toast-error' : 'toast-info');
+  toast.innerHTML = `<span>${escapeHtml(message)}</span><button onclick="hideLocatorToast()">×</button>`;
+  toast.style.display = 'flex';
+}
+function hideLocatorToast(){
+  const toast = document.getElementById('therapy-toast');
+  if(toast) toast.style.display = 'none';
+}
+
+// Creates the map once, immediately, so it's visible and fully interactive
+// (pan/zoom) even before the user has searched anything. Every search after
+// this just recenters/re-populates the same map instance rather than
+// creating or hiding it.
+async function initLocatorMap(){
+  if(_therapyMap) return;
+  const mapEl = document.getElementById('therapy-map');
+  if(!mapEl) return;
+  try{
+    await loadLeaflet();
+  }catch(e){
+    showLocatorToast('Map could not be loaded — check your connection and try again.', 'error');
+    return;
+  }
+  _therapyMap = L.map(mapEl).setView([LOCATOR_DEFAULT_CENTER.lat, LOCATOR_DEFAULT_CENTER.lng], 11);
+  addOsmTileLayer(_therapyMap);
+  setTimeout(() => _therapyMap.invalidateSize(), 50);
 }
 
 function onLocatorViewChange(){
@@ -3397,11 +3431,10 @@ function onLocatorViewChange(){
     loadDefaultDoctorsView();
   } else {
     const summary = document.getElementById('therapy-summary');
-    if(summary) summary.textContent = 'Choose a category, then share your location or search a city to find nearby centers.';
-    const mapEl = document.getElementById('therapy-map');
-    if(mapEl) mapEl.style.display = 'none';
+    if(summary) summary.textContent = 'Choose a category, then share your location or search a place to find nearby centers.';
     const listEl = document.getElementById('therapy-list');
     if(listEl) listEl.innerHTML = '';
+    if(_therapyMarkersLayer){ _therapyMarkersLayer.remove(); _therapyMarkersLayer = null; }
   }
 }
 
@@ -3412,38 +3445,37 @@ function onLocatorFilterChange(){
 }
 
 async function useMyLocationForTherapy(){
-  const summary = document.getElementById('therapy-summary');
   if(!navigator.geolocation){
-    if(summary) summary.textContent = 'Your browser does not support location access. Try searching a city instead.';
+    showLocatorToast('Your browser does not support location access. Try searching a place instead.', 'error');
     return;
   }
-  if(summary) summary.textContent = 'Requesting your location...';
+  showLocatorToast('Requesting your location...', 'info');
   navigator.geolocation.getCurrentPosition(
-    (pos) => runLocatorSearch(pos.coords.latitude, pos.coords.longitude, 'your location'),
-    () => { if(summary) summary.textContent = 'Location access denied. Try searching a city instead.'; }
+    (pos) => { hideLocatorToast(); runLocatorSearch(pos.coords.latitude, pos.coords.longitude, 'your location'); },
+    () => { showLocatorToast('Location access denied. Try searching a place instead.', 'error'); }
   );
 }
 
 async function geocodeAndSearchTherapy(){
   const query = document.getElementById('therapy-location-input')?.value.trim();
-  const summary = document.getElementById('therapy-summary');
   if(!query){
-    if(summary) summary.textContent = 'Please enter a city or address to search.';
+    showLocatorToast('Please enter a city, address, or place to search.', 'error');
     return;
   }
-  if(summary) summary.textContent = `Locating "${query}"...`;
+  showLocatorToast(`Locating "${query}"...`, 'info');
   try{
     const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(query)}&limit=1`, {
       headers: { 'Accept-Language': 'en' }
     });
     const results = await res.json();
     if(!results.length){
-      if(summary) summary.textContent = `Could not find "${query}". Try a more specific search.`;
+      showLocatorToast(`Could not find "${query}". Try a more specific search.`, 'error');
       return;
     }
+    hideLocatorToast();
     runLocatorSearch(parseFloat(results[0].lat), parseFloat(results[0].lon), results[0].display_name);
   }catch(e){
-    if(summary) summary.textContent = 'Could not search that location. Check your connection and try again.';
+    showLocatorToast('Could not search that location. Check your connection and try again.', 'error');
   }
 }
 
@@ -3522,13 +3554,15 @@ async function searchNearbyTherapists(lat, lng, label){
     })).sort((a, b) => a.distanceKm - b.distanceKm);
 
     if(data.degraded){
-      if(summary) summary.textContent = 'The live search is temporarily unavailable — try again shortly, or check the trusted organizations list below.';
-      document.getElementById('therapy-map').style.display = 'none';
+      showLocatorToast('The live search is temporarily unavailable — try again shortly, or check the trusted organizations list below.', 'error');
+      if(summary) summary.textContent = `Showing your searched location near ${label}. Live facility search is down right now.`;
+      await renderLocatorMap([], lat, lng, { searchLabel: label, zoom: 13 });
       return;
     }
     if(!results.length){
-      if(summary) summary.textContent = `No ${categoryLabel} found near ${label}. Try a wider search or a different category.`;
-      document.getElementById('therapy-map').style.display = 'none';
+      showLocatorToast(`No ${categoryLabel} found near ${label}. Try a wider search or a different category.`, 'info');
+      if(summary) summary.textContent = `0 results found near ${escapeHtml(label)}.`;
+      await renderLocatorMap([], lat, lng, { searchLabel: label, zoom: 13 });
       return;
     }
 
@@ -3555,9 +3589,11 @@ async function searchNearbyTherapists(lat, lng, label){
       lat: item.lat, lng: item.lng,
       icon: divIconFor(FACILITY_ICONS[item.type] || '📍', '#0077dd'),
       popupHtml: `<strong>${escapeHtml(item.name)}</strong>${item.address ? '<br>' + escapeHtml(item.address) : ''}<br>${item.distanceKm.toFixed(1)} km away`
-    })), lat, lng);
+    })), lat, lng, { searchLabel: label });
   }catch(e){
-    if(summary) summary.textContent = 'Could not complete the search. Check your connection and try again.';
+    showLocatorToast('Could not complete the search. Check your connection and try again.', 'error');
+    if(summary) summary.textContent = `Showing your searched location near ${label}.`;
+    await renderLocatorMap([], lat, lng, { searchLabel: label, zoom: 13 });
   }
 }
 
@@ -3585,8 +3621,9 @@ async function searchNearbyDoctors(lat, lng, label){
     .sort((a, b) => a.distanceKm - b.distanceKm);
 
   if(!results.length){
-    if(summary) summary.textContent = `No registered doctors${specialty ? ' in ' + specialty : ''} with a shared workplace location found near ${label}. Try a different area or specialty.`;
-    document.getElementById('therapy-map').style.display = 'none';
+    showLocatorToast(`No registered doctors${specialty ? ' in ' + specialty : ''} with a shared workplace location found near ${label}. Try a different area or specialty.`, 'info');
+    if(summary) summary.textContent = `0 doctors found near ${escapeHtml(label)}.`;
+    await renderLocatorMap([], lat, lng, { searchLabel: label, zoom: 13 });
     return;
   }
 
@@ -3606,6 +3643,7 @@ async function searchNearbyDoctors(lat, lng, label){
       <div class="therapy-meta">${d.distanceKm.toFixed(1)} km away · ${d.yearsExperience} yrs experience</div>
       <div style="display:flex;gap:.65rem;flex-wrap:wrap;margin-top:auto">
         <button class="btn btn-outline" onclick='openDoctorProfileModal(${JSON.stringify(d).replace(/'/g, "&apos;")})'>View Profile</button>
+        <a class="btn btn-outline" href="https://www.openstreetmap.org/directions?to=${d.latitude},${d.longitude}" target="_blank" rel="noopener" style="text-decoration:none">Directions</a>
         <button class="btn btn-primary" onclick="startTriageDoctorChat('${d.userId}','${escapeHtml(d.fullName)}','${escapeHtml(d.specialty)}')">Connect</button>
       </div>
     </div>
@@ -3616,41 +3654,45 @@ async function searchNearbyDoctors(lat, lng, label){
     lat: d.latitude, lng: d.longitude,
     icon: divIconFor(d.chatted ? '💬' : '🩺', d.isAvailable ? '#00aa66' : '#5a7a99'),
     popupHtml: `<strong>Dr. ${escapeHtml(d.fullName)}</strong>${d.chatted ? ' 💬' : ''}<br>${escapeHtml(d.specialty)}${d.hospital ? '<br>' + escapeHtml(d.hospital) : ''}<br>${d.distanceKm.toFixed(1)} km away`
-  })), lat, lng);
+  })), lat, lng, { searchLabel: label });
 }
 
-// Shared renderer for both the Doctors and Medical Centers views — one map,
-// fed a generic list of {lat, lng, icon, popupHtml} markers.
-async function renderLocatorMap(markers, centerLat, centerLng){
-  const mapEl = document.getElementById('therapy-map');
-  if(!mapEl) return;
-  mapEl.style.display = 'flex';
-  mapEl.style.alignItems = 'center';
-  mapEl.style.justifyContent = 'center';
-
-  try{
-    await loadLeaflet();
-  }catch(e){
-    mapEl.textContent = 'Map could not be loaded — check your connection and try again.';
-    return;
+// Shared renderer for both the Doctors and Medical Centers views — one
+// persistent map instance, fed a generic list of {lat, lng, icon, popupHtml}
+// markers. Re-used and recentered on every search rather than destroyed and
+// rebuilt, so the map is never hidden or blanked between searches.
+async function renderLocatorMap(markers, centerLat, centerLng, options){
+  options = options || {};
+  if(!_therapyMap){
+    await initLocatorMap();
+    if(!_therapyMap) return; // Leaflet failed to load — toast already shown by initLocatorMap
   }
 
-  mapEl.innerHTML = '';
-  mapEl.style.display = 'block';
-  if(_therapyMap){ _therapyMap.remove(); _therapyMap = null; }
-  _therapyMap = L.map(mapEl).setView([centerLat, centerLng], 12);
-  addOsmTileLayer(_therapyMap);
+  if(_therapyMarkersLayer) _therapyMarkersLayer.remove();
+  _therapyMarkersLayer = L.layerGroup().addTo(_therapyMap);
 
-  const bounds = [[centerLat, centerLng]];
-  L.circleMarker([centerLat, centerLng], { radius: 7, color: '#00d4ff', fillColor: '#00d4ff', fillOpacity: 0.8 })
-    .addTo(_therapyMap).bindPopup('Your search location');
+  const bounds = [];
+  if(options.searchLabel){
+    L.circleMarker([centerLat, centerLng], { radius: 7, color: '#00d4ff', fillColor: '#00d4ff', fillOpacity: 0.8 })
+      .addTo(_therapyMarkersLayer).bindPopup(`Your search location: ${escapeHtml(options.searchLabel)}`);
+    bounds.push([centerLat, centerLng]);
+  }
 
   markers.forEach(m => {
-    const marker = L.marker([m.lat, m.lng], m.icon ? { icon: m.icon } : {}).addTo(_therapyMap);
+    const marker = L.marker([m.lat, m.lng], m.icon ? { icon: m.icon } : {}).addTo(_therapyMarkersLayer);
     marker.bindPopup(m.popupHtml);
     bounds.push([m.lat, m.lng]);
   });
-  _therapyMap.fitBounds(bounds, { padding: [30,30] });
+
+  if(options.zoom !== undefined){
+    _therapyMap.setView([centerLat, centerLng], options.zoom);
+  } else if(bounds.length > 1){
+    _therapyMap.fitBounds(bounds, { padding: [30,30] });
+  } else if(bounds.length === 1){
+    _therapyMap.setView(bounds[0], 13);
+  } else {
+    _therapyMap.setView([centerLat, centerLng], 12);
+  }
   setTimeout(() => _therapyMap.invalidateSize(), 50);
 }
 

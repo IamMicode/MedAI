@@ -675,6 +675,11 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
 .tool-input:focus,.tool-select:focus,.tool-textarea:focus{border-color:var(--accent)}
 .mini-form{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}
 .mini-result{margin-top:.75rem;padding:.8rem;border:1px solid var(--border);border-radius:10px;background:rgba(0,0,0,0.22);font-size:12px;color:var(--muted);line-height:1.55}
+.locator-toast{margin-top:.65rem;padding:.7rem .9rem;border-radius:10px;font-size:12.5px;line-height:1.5;display:flex;align-items:center;justify-content:space-between;gap:.75rem}
+.locator-toast.toast-error{background:rgba(255,77,109,0.08);border:1px solid rgba(255,77,109,0.28);color:#ff8899}
+.locator-toast.toast-info{background:rgba(0,212,255,0.06);border:1px solid var(--border2);color:var(--muted)}
+.locator-toast button{background:none;border:none;color:inherit;opacity:.7;cursor:pointer;font-size:15px;line-height:1;flex-shrink:0}
+.locator-toast button:hover{opacity:1}
 .tracker-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:.75rem;border:1px solid var(--border);border-radius:10px;background:rgba(0,212,255,0.035)}
 .tracker-stepper{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:13px}
 .round-btn{width:30px;height:30px;border-radius:9px;border:1px solid var(--border2);background:rgba(0,212,255,0.06);color:var(--accent);cursor:pointer;font-family:var(--mono);font-size:16px;display:flex;align-items:center;justify-content:center}
@@ -1575,24 +1580,28 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
             <option>Other</option>
           </select>
           <select class="tool-select" id="therapy-category" onchange="onLocatorFilterChange()">
-            <option value="mental_health">🧠 Mental Health / Therapy</option>
+            <option value="other_healthcare">🏥 All Medical Centers</option>
             <option value="hospital">🏥 Hospitals</option>
             <option value="clinic">⚕️ Clinics / General Practice</option>
             <option value="pharmacy">💊 Pharmacies</option>
             <option value="laboratory">🔬 Labs / Diagnostic Centers</option>
+            <option value="mental_health">🧠 Mental Health / Therapy</option>
             <option value="dentist">🦷 Dentists</option>
             <option value="physiotherapy">🏃 Physiotherapy</option>
             <option value="optometrist">👁️ Optometrists / Eye Care</option>
-            <option value="other_healthcare">➕ Other Healthcare Facilities</option>
           </select>
         </div>
         <div class="mini-form">
-          <input class="tool-input" id="therapy-location-input" placeholder="Enter a city or address..." style="flex:1"/>
-          <button class="btn btn-outline" onclick="geocodeAndSearchTherapy()">Search This Location</button>
-          <button class="btn btn-primary" onclick="useMyLocationForTherapy()">📍 Use My Location</button>
+          <input class="tool-input" id="therapy-location-input" placeholder="Search a city, address, or place (e.g. Ikeja, or a hospital name)..." style="flex:1" onkeydown="if(event.key==='Enter')geocodeAndSearchTherapy()"/>
+          <button class="btn btn-outline" onclick="geocodeAndSearchTherapy()">🔍 Search</button>
         </div>
-        <div class="mini-result" id="therapy-summary">Choose a view above, then share your location or search a city to find nearby doctors or medical centers.</div>
-        <div id="therapy-map" style="height:280px;border-radius:12px;border:1px solid var(--border2);background:rgba(255,255,255,0.03);display:none;align-items:center;justify-content:center;font-size:12px;color:var(--muted);margin:1rem 0"></div>
+        <button class="btn btn-primary" style="width:100%;margin-top:.65rem" onclick="useMyLocationForTherapy()">📍 Use My Location</button>
+
+        <div id="therapy-toast" class="locator-toast" style="display:none"></div>
+
+        <div id="therapy-map" style="height:360px;border-radius:12px;border:1px solid var(--border2);background:rgba(255,255,255,0.03);margin:1rem 0"></div>
+
+        <div class="mini-result" id="therapy-summary">Loading map...</div>
         <div class="grid-3" id="therapy-list" style="margin-top:1rem"></div>
       </div>
 

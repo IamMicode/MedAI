@@ -42,31 +42,45 @@ const OVERPASS_ENDPOINTS = [
   'https://maps.mail.ru/osm/tools/overpass/api/interpreter'
 ];
 
-async function queryOverpass(query) {
-  // With 3 mirrors now in the list, a 20s timeout on each meant a worst case
-  // of ~60s before giving up — long enough to trip Render's own request
-  // timeout and fail the whole request before a slower-but-working mirror
-  // ever got a chance to respond. Trimmed per-mirror so the worst case across
-  // all three stays comfortably under typical platform timeouts.
-  const PER_ENDPOINT_TIMEOUT_MS = 8000;
-  for (const endpoint of OVERPASS_ENDPOINTS) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), PER_ENDPOINT_TIMEOUT_MS);
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: 'data=' + encodeURIComponent(query),
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-      if (response.ok) return await response.json();
+async function queryOverpassSingle(endpoint, query, timeoutMs) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'data=' + encodeURIComponent(query),
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    if (!response.ok) {
       console.error(`Overpass endpoint ${endpoint} returned ${response.status}`);
-    } catch (error) {
-      console.error(`Overpass endpoint ${endpoint} failed:`, error.message);
+      throw new Error(`overpass_status_${response.status}`);
     }
+    return await response.json();
+  } catch (error) {
+    clearTimeout(timeoutId);
+    console.error(`Overpass endpoint ${endpoint} failed:`, error.message);
+    throw error;
   }
-  return null; // every endpoint failed
+}
+
+async function queryOverpass(query) {
+  // Trying mirrors one after another meant the worst case was the SUM of every
+  // mirror's timeout (previously ~60s, then ~24s) — long enough that a mirror
+  // which is simply always blocked for this backend (see the AWS/Azure note
+  // below) wastes its full timeout on every single request before the next
+  // mirror even gets a chance. Racing all mirrors in parallel instead means
+  // the worst case is just ONE timeout period, and a permanently-dead mirror
+  // costs nothing beyond that — it simply loses the race every time.
+  const TIMEOUT_MS = 12000;
+  try {
+    return await Promise.any(
+      OVERPASS_ENDPOINTS.map(endpoint => queryOverpassSingle(endpoint, query, TIMEOUT_MS))
+    );
+  } catch (aggregateError) {
+    return null; // every endpoint failed
+  }
 }
 
 // Search for medical facilities near a location using OpenStreetMap's Overpass

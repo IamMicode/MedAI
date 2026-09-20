@@ -27,59 +27,115 @@ const CATEGORY_FILTERS = {
   other_healthcare: ['node["healthcare"]', 'way["healthcare"]']
 };
 
-// Public Overpass endpoints to try in order. overpass-api.de is the biggest/most
-// complete, but has been actively blocking cloud-provider IP ranges (AWS/Azure)
-// due to abuse from other users — and Render's infrastructure runs on AWS, so
-// requests from this backend can get blocked there even though nothing is wrong
-// with the query itself. private.coffee (formerly kumi.systems) is a second,
-// independent instance, but small volunteer-run mirrors like this do go down or
-// stall on their own. maps.mail.ru is a third, genuinely separate mirror run on
-// different infrastructure, added so a single provider's block/outage doesn't
-// take down both fallbacks at once.
+// Public Overpass endpoints, raced in parallel (see queryOverpass below).
+// overpass-api.de is the biggest/most complete mirror; private.coffee (formerly
+// kumi.systems) and maps.mail.ru are independent instances on separate
+// infrastructure, so a single provider's outage or policy change can't take
+// down all three at once.
 const OVERPASS_ENDPOINTS = [
   'https://overpass-api.de/api/interpreter',
   'https://overpass.private.coffee/api/interpreter',
   'https://maps.mail.ru/osm/tools/overpass/api/interpreter'
 ];
 
-async function queryOverpassSingle(endpoint, query, timeoutMs) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+// The Overpass query itself declares [timeout:20] below — the server is told
+// it has up to 20s to execute. The HTTP-level timeout here MUST be longer than
+// that, or a legitimately-slow-but-valid query gets aborted client-side before
+// the server even finishes, which then misreports as a network/timeout failure
+// rather than what it actually is. 18s (query timeout) + 7s network/queueing
+// buffer = 25s per mirror.
+const OVERPASS_QUERY_TIMEOUT_S = 18;
+const FETCH_TIMEOUT_MS = 25000;
+
+// Identify this app to a shared public resource rather than sending Node's
+// generic default (`User-Agent: node`, no Referer at all) — overpass-api.de in
+// particular has been reported (OSM community forum, 2026) to reject
+// unidentified-looking requests with HTTP 406. FRONTEND_ORIGIN is the same env
+// var already used for this exact purpose elsewhere in this codebase (see the
+// OpenRouter HTTP-Referer header in ai.js) — reused here rather than inventing
+// a new config value or a fake contact address.
+const APP_ORIGIN = process.env.FRONTEND_ORIGIN || 'https://medai.app';
+const OVERPASS_REQUEST_HEADERS = {
+  'Content-Type': 'application/x-www-form-urlencoded',
+  'User-Agent': `MedAI-Locator/1.0 (+${APP_ORIGIN})`,
+  'Referer': APP_ORIGIN,
+  'Accept': 'application/json'
+};
+
+// Classifies a failure so it can be logged and, when every mirror fails,
+// reported to the frontend distinctly rather than one generic message —
+// a 406 (request rejected), a 429 (rate-limited), a 5xx (provider failure),
+// and a genuine timeout/network error all mean different things and call for
+// different next steps.
+function classifyFailure(status, error) {
+  if (status === 406) return 'rejected';
+  if (status === 429) return 'rate_limited';
+  if (status === 400) return 'bad_query';
+  if (status >= 500) return 'provider_error';
+  if (error?.name === 'AbortError') return 'timeout';
+  return 'network_error';
+}
+
+async function queryOverpassSingle(endpoint, query, timeoutMs, sharedController) {
+  const timeoutId = setTimeout(() => sharedController.abort(), timeoutMs);
   try {
     const response = await fetch(endpoint, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: OVERPASS_REQUEST_HEADERS,
       body: 'data=' + encodeURIComponent(query),
-      signal: controller.signal
+      signal: sharedController.signal
     });
     clearTimeout(timeoutId);
     if (!response.ok) {
-      console.error(`Overpass endpoint ${endpoint} returned ${response.status}`);
-      throw new Error(`overpass_status_${response.status}`);
+      const reason = classifyFailure(response.status, null);
+      console.error(`Overpass endpoint ${endpoint} returned ${response.status} (${reason})`);
+      const err = new Error(`overpass_${reason}_${response.status}`);
+      err.reason = reason;
+      err.status = response.status;
+      err.endpoint = endpoint;
+      throw err;
     }
     return await response.json();
   } catch (error) {
     clearTimeout(timeoutId);
-    console.error(`Overpass endpoint ${endpoint} failed:`, error.message);
-    throw error;
+    if (error.reason) throw error; // already classified above
+    const reason = classifyFailure(null, error);
+    console.error(`Overpass endpoint ${endpoint} failed (${reason}):`, error.message);
+    const wrapped = new Error(`overpass_${reason}`);
+    wrapped.reason = reason;
+    wrapped.endpoint = endpoint;
+    throw wrapped;
   }
 }
 
 async function queryOverpass(query) {
-  // Trying mirrors one after another meant the worst case was the SUM of every
-  // mirror's timeout (previously ~60s, then ~24s) — long enough that a mirror
-  // which is simply always blocked for this backend (see the AWS/Azure note
-  // below) wastes its full timeout on every single request before the next
-  // mirror even gets a chance. Racing all mirrors in parallel instead means
-  // the worst case is just ONE timeout period, and a permanently-dead mirror
-  // costs nothing beyond that — it simply loses the race every time.
-  const TIMEOUT_MS = 12000;
+  // Racing all mirrors in parallel means the worst case is one timeout period
+  // total, not the sum of all three — and a mirror that's permanently
+  // unreachable for this backend costs nothing beyond that, it just loses the
+  // race every time. Each attempt shares one AbortController per *other*
+  // attempt so that once any mirror wins, the still-in-flight losers are
+  // actively cancelled instead of being left to run to completion in the
+  // background for no reason. The winning index is tracked explicitly so its
+  // own controller is never touched (aborting an already-completed request is
+  // harmless, but there's no reason to call it either).
+  const controllers = OVERPASS_ENDPOINTS.map(() => new AbortController());
+  const attempts = OVERPASS_ENDPOINTS.map((endpoint, i) =>
+    queryOverpassSingle(endpoint, query, FETCH_TIMEOUT_MS, controllers[i]).then(data => ({ i, data }))
+  );
+
   try {
-    return await Promise.any(
-      OVERPASS_ENDPOINTS.map(endpoint => queryOverpassSingle(endpoint, query, TIMEOUT_MS))
-    );
+    const { i: winnerIndex, data } = await Promise.any(attempts);
+    controllers.forEach((c, idx) => { if (idx !== winnerIndex && !c.signal.aborted) c.abort(); });
+    return { data, failures: [] };
   } catch (aggregateError) {
-    return null; // every endpoint failed
+    // Every mirror failed — collect what each one actually said, so the caller
+    // (and Render's logs) can tell a 406 apart from a timeout apart from a 5xx,
+    // instead of a single opaque "degraded" flag.
+    const failures = (aggregateError.errors || []).map(e => ({
+      endpoint: e.endpoint,
+      reason: e.reason || 'unknown'
+    }));
+    return { data: null, failures };
   }
 }
 
@@ -94,15 +150,18 @@ router.get('/search', async (req, res, next) => {
     }
 
     const filters = CATEGORY_FILTERS[category] || CATEGORY_FILTERS.mental_health;
-    const r = Math.min(Number(radius) || 20000, 50000); // cap at 50km to keep queries reasonable
+    const r = Math.min(Number(radius) || 20000, 50000); // cap at 50km to keep queries reasonable and responsible toward a shared free resource
     const clauses = filters.map(f => `${f}(around:${r},${lat},${lng});`).join('\n  ');
-    const query = `[out:json][timeout:20];\n(\n  ${clauses}\n);\nout center tags;`;
+    const query = `[out:json][timeout:${OVERPASS_QUERY_TIMEOUT_S}];\n(\n  ${clauses}\n);\nout center tags;`;
 
-    const data = await queryOverpass(query);
+    const { data, failures } = await queryOverpass(query);
     if (!data) {
-      // Every mirror failed — degrade gracefully rather than error, so the frontend
-      // can fall back to the curated organizations list instead of a broken state.
-      return res.json({ results: [], degraded: true });
+      // Every mirror failed. This is a genuine search failure, not "no
+      // facilities found" — the frontend must not present these the same way.
+      // failureReason lets the frontend show a specific message; Render's own
+      // logs already have the per-mirror detail via the console.error calls above.
+      const primaryReason = failures[0]?.reason || 'unknown';
+      return res.json({ results: [], degraded: true, failureReason: primaryReason, failures });
     }
     const seen = new Set();
 
@@ -138,11 +197,16 @@ router.get('/search', async (req, res, next) => {
       })
       .slice(0, 30);
 
+    // A successful request with zero matching facilities is NOT a failure —
+    // it's a legitimate empty result, and must be distinguishable from the
+    // degraded:true case above so the frontend never says "no hospitals here"
+    // when the real story is "the search couldn't be completed."
     return res.json({ results, degraded: false });
   } catch (error) {
-    // Same graceful-degradation principle — a flaky third-party API shouldn't 500 the page.
-    return res.json({ results: [], degraded: true });
+    console.error('Unexpected error in /therapy/search:', error.message);
+    return res.json({ results: [], degraded: true, failureReason: 'unexpected_error', failures: [] });
   }
 });
 
 module.exports = router;
+

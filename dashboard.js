@@ -3482,12 +3482,21 @@ async function geocodeAndSearchTherapy(){
 // Dispatches to the doctors or medical-centers search based on the current
 // dropdown, and remembers the location so switching the dropdown re-runs the
 // other view at the same spot without asking the user to search again.
+//
+// _locatorRequestToken guards against a race: if the user fires a second
+// search (or flips categories) before the first one's response comes back,
+// the earlier request's response must NOT be allowed to overwrite the map
+// with stale results once a newer search has already started. Each call gets
+// its own token; a response is only applied if its token still matches the
+// most recently issued one by the time it resolves.
+let _locatorRequestToken = 0;
 function runLocatorSearch(lat, lng, label){
   _lastLocatorSearch = { lat, lng, label };
+  const token = ++_locatorRequestToken;
   if(currentLocatorView() === 'doctors'){
-    searchNearbyDoctors(lat, lng, label);
+    searchNearbyDoctors(lat, lng, label, token);
   } else {
-    searchNearbyTherapists(lat, lng, label);
+    searchNearbyTherapists(lat, lng, label, token);
   }
 }
 
@@ -3534,7 +3543,19 @@ function divIconFor(emoji, color){
   });
 }
 
-async function searchNearbyTherapists(lat, lng, label){
+function describeSearchFailure(reason){
+  switch(reason){
+    case 'rejected': return 'The map data service rejected this request (a configuration issue on our end, not your connection).';
+    case 'rate_limited': return 'The map data service is rate-limiting requests right now — please wait a moment and try again.';
+    case 'bad_query': return 'There was a problem with this search. Try a different location or category.';
+    case 'provider_error': return 'The map data service is having issues right now — try again shortly.';
+    case 'timeout': return 'The map data service took too long to respond — try again shortly.';
+    case 'network_error': return 'Could not reach the map data service. Check your connection and try again.';
+    default: return 'The live search is temporarily unavailable — try again shortly, or check the trusted organizations list below.';
+  }
+}
+
+async function searchNearbyTherapists(lat, lng, label, token){
   const summary = document.getElementById('therapy-summary');
   const listEl = document.getElementById('therapy-list');
   const category = document.getElementById('therapy-category')?.value || 'mental_health';
@@ -3542,20 +3563,27 @@ async function searchNearbyTherapists(lat, lng, label){
   if(summary) summary.textContent = `Searching near ${label}...`;
   if(listEl) listEl.innerHTML = '';
 
-  const token = localStorage.getItem('medai_token');
+  // If a newer search has started since this one was issued, this response is
+  // stale and must not touch the map/list — otherwise a slow earlier request
+  // could finish after a faster later one and silently revert the results.
+  const isStale = () => token !== undefined && token !== _locatorRequestToken;
+
+  const authToken = localStorage.getItem('medai_token');
   try{
     const res = await fetch(`${API_BASE_URL}/api/therapy/search?lat=${lat}&lng=${lng}&category=${category}`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {}
+      headers: authToken ? { Authorization: `Bearer ${authToken}` } : {}
     });
     const data = await res.json();
+    if(isStale()) return;
+
     const results = (data.results || []).map(item => ({
       ...item,
       distanceKm: distanceKm(lat, lng, item.lat, item.lng)
     })).sort((a, b) => a.distanceKm - b.distanceKm);
 
     if(data.degraded){
-      showLocatorToast('The live search is temporarily unavailable — try again shortly, or check the trusted organizations list below.', 'error');
-      if(summary) summary.textContent = `Showing your searched location near ${label}. Live facility search is down right now.`;
+      showLocatorToast(describeSearchFailure(data.failureReason), 'error');
+      if(summary) summary.textContent = `Showing your searched location near ${label}. Live facility search couldn't be completed.`;
       await renderLocatorMap([], lat, lng, { searchLabel: label, zoom: 13 });
       return;
     }
@@ -3585,24 +3613,27 @@ async function searchNearbyTherapists(lat, lng, label){
     `).join('');
 
     spreadOverlappingPoints(results);
+    if(isStale()) return;
     await renderLocatorMap(results.map(item => ({
       lat: item.lat, lng: item.lng,
       icon: divIconFor(FACILITY_ICONS[item.type] || '📍', '#0077dd'),
       popupHtml: `<strong>${escapeHtml(item.name)}</strong>${item.address ? '<br>' + escapeHtml(item.address) : ''}<br>${item.distanceKm.toFixed(1)} km away`
     })), lat, lng, { searchLabel: label });
   }catch(e){
+    if(isStale()) return;
     showLocatorToast('Could not complete the search. Check your connection and try again.', 'error');
     if(summary) summary.textContent = `Showing your searched location near ${label}.`;
     await renderLocatorMap([], lat, lng, { searchLabel: label, zoom: 13 });
   }
 }
 
-async function searchNearbyDoctors(lat, lng, label){
+async function searchNearbyDoctors(lat, lng, label, token){
   const summary = document.getElementById('therapy-summary');
   const listEl = document.getElementById('therapy-list');
   const specialty = document.getElementById('locator-specialty')?.value || '';
   if(summary) summary.textContent = `Searching near ${label}...`;
   if(listEl) listEl.innerHTML = '';
+  const isStale = () => token !== undefined && token !== _locatorRequestToken;
 
   if(!_chattedDoctorIds){
     const chatted = await getChattedDoctors();
@@ -3613,6 +3644,7 @@ async function searchNearbyDoctors(lat, lng, label){
   try{
     doctors = await fetchDoctorDirectory();
   }catch(e){ doctors = []; }
+  if(isStale()) return;
 
   let results = doctors
     .filter(d => typeof d.latitude === 'number' && typeof d.longitude === 'number')
@@ -3650,6 +3682,7 @@ async function searchNearbyDoctors(lat, lng, label){
   `).join('');
 
   spreadOverlappingPoints(results.map(d => ({ ...d, lat: d.latitude, lng: d.longitude })));
+  if(isStale()) return;
   await renderLocatorMap(results.map(d => ({
     lat: d.latitude, lng: d.longitude,
     icon: divIconFor(d.chatted ? '💬' : '🩺', d.isAvailable ? '#00aa66' : '#5a7a99'),

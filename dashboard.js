@@ -865,6 +865,7 @@ async function syncUserFromBackend(){
     return;
   }
   const u=JSON.parse(raw);
+  maybeShowTourWelcome(u);
 
   document.querySelectorAll('[id="greeting-name"]').forEach(el=>el.textContent=u.firstname||u.username||'User');
   renderProfileAvatar(u);
@@ -4143,3 +4144,360 @@ setTimeout(()=>{
 }, 200);
 
 setTimeout(initPricing, 100);
+
+// ============================================================
+// INTERACTIVE DASHBOARD TOUR
+// Points at the real dashboard nav items (data-tour="nav-*") and waits for
+// real clicks on them — it never fakes or recreates the UI it's teaching.
+// ============================================================
+
+const TOUR_STEPS = [
+  {
+    id: 'overview',
+    target: '#tab-dashboard .sec-title',
+    action: 'observe',
+    title: 'Welcome to your Dashboard',
+    text: 'This is your MedAI home base. Every health tool you need lives in the menu — let\'s walk through the main ones.'
+  },
+  {
+    id: 'nav-triage',
+    target: '[data-tour="nav-triage"]',
+    action: 'click',
+    title: 'Quick Triage',
+    text: 'Describe your symptoms here and get an instant AI-powered urgency check. Go ahead — click it.'
+  },
+  {
+    id: 'nav-medical-ai',
+    target: '[data-tour="nav-medical-ai"]',
+    action: 'click',
+    title: 'AI Health Assistants',
+    text: 'MedAI has four specialized AI assistants — Medical, Safe Space, Mental, and Physical Health. Try opening one.'
+  },
+  {
+    id: 'nav-history',
+    target: '[data-tour="nav-history"]',
+    action: 'click',
+    title: 'Symptom History',
+    text: 'Every Quick Triage session is saved here automatically, building an ongoing record over time.'
+  },
+  {
+    id: 'nav-vitals',
+    target: '[data-tour="nav-vitals"]',
+    action: 'click',
+    title: 'Vitals Monitor',
+    text: 'Log heart rate, blood pressure, and more — by hand, or with a real camera-based heart-rate scan.'
+  },
+  {
+    id: 'nav-tools',
+    target: '[data-tour="nav-tools"]',
+    action: 'click',
+    title: 'Health Tools',
+    text: 'Extra everyday tools live here, including the camera heart-rate scanner and medicine reminders.'
+  },
+  {
+    id: 'nav-appointments',
+    target: '[data-tour="nav-appointments"]',
+    action: 'click',
+    title: 'Appointments',
+    text: 'Book a real appointment with a registered doctor — they can accept or decline, and you\'ll be notified.'
+  },
+  {
+    id: 'nav-messages',
+    target: '[data-tour="nav-messages"]',
+    action: 'click',
+    title: 'Messages',
+    text: 'Chat directly and in real time with doctors you\'re connected with.'
+  },
+  {
+    id: 'nav-therapy',
+    target: '[data-tour="nav-therapy"]',
+    action: 'click',
+    title: 'Medical Locator',
+    text: 'Find real nearby doctors and medical centers on an interactive map, or search any city or address.'
+  },
+  {
+    id: 'nav-achievements',
+    target: '[data-tour="nav-achievements"]',
+    action: 'click',
+    title: 'Achievements',
+    text: 'Unlock badges as you use MedAI, based on real activity like triage sessions and check-ins.'
+  },
+  {
+    id: 'nav-settings',
+    target: '[data-tour="nav-settings"]',
+    action: 'click',
+    title: 'Profile & Settings',
+    text: 'Manage your account here. You can replay this tour anytime from Settings → Take Dashboard Tour.'
+  }
+];
+
+let _tourIndex = -1;
+let _tourActive = false;
+let _tourLaunchedFromHelp = false;
+let _tourFocusReturnEl = null;
+let _tourCleanupFns = [];
+
+function getVisibleNavTarget(selector){
+  const els = document.querySelectorAll(selector);
+  for(const el of els){
+    if(el.offsetParent !== null) return el; // laid out and not display:none up the tree
+  }
+  return null;
+}
+
+async function resolveTourTarget(selector){
+  let target = getVisibleNavTarget(selector);
+  if(target) return target;
+
+  // Not visible yet — it may be inside the mobile "More" sheet, which is
+  // display:none until opened. Open it and re-check rather than giving up.
+  const sheet = document.getElementById('mobile-more-sheet');
+  const insideSheet = sheet && sheet.querySelector(selector);
+  if(insideSheet && typeof openMobileMore === 'function'){
+    openMobileMore();
+    await new Promise(r => setTimeout(r, 200));
+    target = getVisibleNavTarget(selector);
+  }
+  return target;
+}
+
+function tourOverlayEls(){
+  return {
+    top: document.getElementById('tour-dim-top'),
+    bottom: document.getElementById('tour-dim-bottom'),
+    left: document.getElementById('tour-dim-left'),
+    right: document.getElementById('tour-dim-right'),
+    tooltip: document.getElementById('tour-tooltip')
+  };
+}
+
+function ensureTourDom(){
+  if(document.getElementById('tour-dim-top')) return;
+  const bandStyle = 'position:fixed;background:rgba(3,8,15,0.72);z-index:9550;transition:all .25s ease;pointer-events:auto';
+  const bands = ['top','bottom','left','right'];
+  bands.forEach(name => {
+    const div = document.createElement('div');
+    div.id = 'tour-dim-' + name;
+    div.style.cssText = bandStyle;
+    document.body.appendChild(div);
+  });
+  const tooltip = document.createElement('div');
+  tooltip.id = 'tour-tooltip';
+  tooltip.setAttribute('role', 'dialog');
+  tooltip.setAttribute('aria-modal', 'false');
+  tooltip.tabIndex = -1;
+  tooltip.style.cssText = 'position:fixed;z-index:9560;max-width:300px;background:#0a1628;border:1px solid var(--border2);border-radius:14px;padding:1.1rem 1.25rem;box-shadow:0 24px 60px rgba(0,0,0,0.5);font-family:\'DM Sans\',sans-serif;transition:top .25s ease,left .25s ease';
+  document.body.appendChild(tooltip);
+}
+
+function removeTourDom(){
+  ['tour-dim-top','tour-dim-bottom','tour-dim-left','tour-dim-right','tour-tooltip'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.remove();
+  });
+  document.querySelectorAll('.tour-highlighted').forEach(el => {
+    el.classList.remove('tour-highlighted');
+    el.style.position = '';
+    el.style.zIndex = '';
+  });
+}
+
+// Positions 4 dark bands around the target's real bounding box, leaving the
+// target itself completely uncovered (and therefore still natively
+// clickable) rather than cloning or faking it.
+function positionTourDim(target){
+  const rect = target.getBoundingClientRect();
+  const pad = 6;
+  const r = { top: rect.top - pad, bottom: rect.bottom + pad, left: rect.left - pad, right: rect.right + pad };
+  const { top, bottom, left, right } = tourOverlayEls();
+  const vw = window.innerWidth, vh = window.innerHeight;
+  top.style.cssText += `top:0;left:0;width:${vw}px;height:${Math.max(0,r.top)}px`;
+  bottom.style.cssText += `top:${Math.min(vh,r.bottom)}px;left:0;width:${vw}px;height:${Math.max(0,vh-r.bottom)}px`;
+  left.style.cssText += `top:${r.top}px;left:0;width:${Math.max(0,r.left)}px;height:${r.bottom-r.top}px`;
+  right.style.cssText += `top:${r.top}px;left:${Math.min(vw,r.right)}px;width:${Math.max(0,vw-r.right)}px;height:${r.bottom-r.top}px`;
+
+  target.classList.add('tour-highlighted');
+  if(!document.getElementById('tour-highlight-style')){
+    const style = document.createElement('style');
+    style.id = 'tour-highlight-style';
+    style.textContent = '.tour-highlighted{outline:2px solid var(--accent) !important;outline-offset:3px;box-shadow:0 0 0 6px rgba(0,212,255,0.18) !important;border-radius:10px;position:relative;z-index:9555 !important}';
+    document.head.appendChild(style);
+  }
+}
+
+function positionTourTooltip(target, stepIndex){
+  const rect = target.getBoundingClientRect();
+  const tooltip = document.getElementById('tour-tooltip');
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const margin = 14;
+
+  // Default: place to the right of the sidebar item (desktop) or below it
+  // (narrow screens). Flip/clamp so it always stays fully on-screen.
+  let top, left;
+  const preferRight = vw > 820 && rect.right + 320 < vw;
+  if(preferRight){
+    left = rect.right + margin;
+    top = Math.min(Math.max(rect.top, margin), vh - 220);
+  } else {
+    left = Math.max(margin, Math.min(rect.left, vw - 300 - margin));
+    top = rect.bottom + margin;
+    if(top + 200 > vh) top = Math.max(margin, rect.top - 200 - margin);
+  }
+  tooltip.style.top = top + 'px';
+  tooltip.style.left = left + 'px';
+}
+
+function renderTourTooltipContent(step, stepIndex){
+  const tooltip = document.getElementById('tour-tooltip');
+  const isLast = stepIndex === TOUR_STEPS.length - 1;
+  const needsInteraction = step.action === 'click';
+  tooltip.innerHTML = `
+    <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:1.5px;margin-bottom:8px">STEP ${stepIndex+1} OF ${TOUR_STEPS.length}</div>
+    <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:800;margin-bottom:6px">${escapeHtml(step.title)}</div>
+    <div style="font-size:13px;color:rgba(150,200,230,0.8);line-height:1.55;margin-bottom:14px">${escapeHtml(step.text)}</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <button onclick="endTour('skipped')" style="background:none;border:none;color:var(--muted);font-size:11.5px;cursor:pointer;padding:4px 0">Skip Tutorial</button>
+      <div style="display:flex;gap:8px">
+        ${stepIndex > 0 ? `<button onclick="tourBack()" class="btn btn-outline" style="padding:8px 14px;font-size:12px;cursor:pointer;border:1px solid var(--border2);background:transparent;color:var(--text);border-radius:8px;font-family:inherit">Back</button>` : ''}
+        ${needsInteraction
+          ? `<span style="font-size:11.5px;color:var(--accent);align-self:center;animation:pulse-opacity 1.4s ease-in-out infinite">Try it →</span>`
+          : `<button onclick="tourNext()" class="btn btn-primary" style="padding:8px 16px;font-size:12px;cursor:pointer;border:none;border-radius:8px;font-family:inherit;font-weight:700">${isLast ? 'Finish' : 'Next →'}</button>`
+        }
+      </div>
+    </div>
+  `;
+  if(!document.getElementById('tour-pulse-style')){
+    const style = document.createElement('style');
+    style.id = 'tour-pulse-style';
+    style.textContent = '@keyframes pulse-opacity{0%,100%{opacity:1}50%{opacity:.4}}';
+    document.head.appendChild(style);
+  }
+}
+
+function tourRepositionHandler(){
+  if(!_tourActive || _tourIndex < 0) return;
+  const step = TOUR_STEPS[_tourIndex];
+  const target = getVisibleNavTarget(step.target);
+  if(target){ positionTourDim(target); positionTourTooltip(target, _tourIndex); }
+}
+
+async function renderTourStep(){
+  const step = TOUR_STEPS[_tourIndex];
+  if(!step){ endTour('completed'); return; }
+
+  // Clear any listener/highlight left over from the previous step first.
+  _tourCleanupFns.forEach(fn => fn());
+  _tourCleanupFns = [];
+
+  const target = await resolveTourTarget(step.target);
+  if(!target){
+    // The target genuinely isn't on the page right now (shouldn't normally
+    // happen for real nav items) — skip this step rather than get stuck.
+    _tourIndex++;
+    return renderTourStep();
+  }
+
+  target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  await new Promise(r => setTimeout(r, 250)); // let scroll/layout settle
+
+  positionTourDim(target);
+  positionTourTooltip(target, _tourIndex);
+  renderTourTooltipContent(step, _tourIndex);
+  document.getElementById('tour-tooltip').focus();
+
+  if(step.action === 'click'){
+    const handler = () => tourNext();
+    target.addEventListener('click', handler, { once: true });
+    _tourCleanupFns.push(() => target.removeEventListener('click', handler));
+  }
+}
+
+function tourNext(){
+  _tourIndex++;
+  renderTourStep();
+}
+function tourBack(){
+  if(_tourIndex > 0){ _tourIndex--; renderTourStep(); }
+}
+
+function startTour(fromHelp){
+  _tourActive = true;
+  _tourIndex = 0;
+  _tourLaunchedFromHelp = !!fromHelp;
+  _tourFocusReturnEl = document.activeElement;
+  ensureTourDom();
+  window.addEventListener('resize', tourRepositionHandler);
+  window.addEventListener('scroll', tourRepositionHandler, true);
+  document.addEventListener('keydown', tourKeyHandler);
+  renderTourStep();
+}
+
+function tourKeyHandler(e){
+  if(e.key === 'Escape' && _tourActive) endTour('skipped');
+}
+
+function endTour(status){
+  _tourActive = false;
+  _tourCleanupFns.forEach(fn => fn());
+  _tourCleanupFns = [];
+  window.removeEventListener('resize', tourRepositionHandler);
+  window.removeEventListener('scroll', tourRepositionHandler, true);
+  document.removeEventListener('keydown', tourKeyHandler);
+  removeTourDom();
+  persistTutorialStatus(status);
+  if(_tourFocusReturnEl && typeof _tourFocusReturnEl.focus === 'function'){
+    _tourFocusReturnEl.focus();
+  }
+  if(status === 'completed') showTourCompletion();
+}
+
+function showTourCompletion(){
+  const div = document.createElement('div');
+  div.style.cssText = 'position:fixed;inset:0;z-index:9600;background:rgba(0,0,0,0.75);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;padding:1rem';
+  div.innerHTML = `
+    <div style="background:#0a1628;border:1px solid var(--border2);border-radius:20px;padding:2rem;max-width:380px;width:100%;text-align:center;box-shadow:0 40px 80px rgba(0,0,0,0.5)">
+      <div style="font-size:40px;margin-bottom:.75rem">✅</div>
+      <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;margin-bottom:.5rem">You're all set.</div>
+      <p style="font-size:13.5px;color:rgba(150,200,230,0.7);margin-bottom:1.25rem">You've completed the MedAI dashboard tour.</p>
+      <button class="btn btn-primary" style="width:100%;justify-content:center;border:none;cursor:pointer;font-family:'Syne',sans-serif;font-weight:700" onclick="this.closest('div[style*=fixed]').remove()">Start Using MedAI</button>
+    </div>`;
+  document.body.appendChild(div);
+}
+
+async function persistTutorialStatus(status){
+  try{
+    const raw = localStorage.getItem('medai_current_user');
+    if(raw){
+      const u = JSON.parse(raw);
+      u.tutorialStatus = status;
+      localStorage.setItem('medai_current_user', JSON.stringify(u));
+    }
+  }catch(e){ /* non-critical */ }
+
+  const token = localStorage.getItem('medai_token');
+  if(!token) return;
+  try{
+    await fetch(`${API_BASE_URL}/api/profile/tutorial`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ status })
+    });
+  }catch(e){
+    console.warn('Could not sync tutorial status to backend:', e);
+  }
+}
+
+function dismissTourWelcome(choice){
+  document.getElementById('tour-welcome-modal').style.display = 'none';
+  if(choice === 'start'){
+    startTour(false);
+  } else {
+    persistTutorialStatus('skipped');
+  }
+}
+
+function maybeShowTourWelcome(user){
+  if(!user || user.tutorialStatus !== 'not_started') return;
+  const modal = document.getElementById('tour-welcome-modal');
+  if(modal) modal.style.display = 'flex';
+}

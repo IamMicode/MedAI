@@ -24,6 +24,8 @@ model User {
   authProvider    String?
   avatarUrl       String?
   emailVerified   Boolean             @default(false)
+  // Tracks dashboard-tour progress across devices: "not_started" | "skipped" | "completed"
+  tutorialStatus  String              @default("not_started")
   role            Role                @default(USER)
   plan            String              @default("Free")
   premiumActivatedAt DateTime?

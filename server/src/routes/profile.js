@@ -78,6 +78,28 @@ router.delete('/', async (req, res, next) => {
   }
 });
 
+// Dashboard-tour state — deliberately its own tiny endpoint rather than folded
+// into the general profile PUT above, since it's an unrelated concern (UI
+// state, not health data) and doesn't need the profile zod schema touched.
+// Persisted on the User row (not localStorage-only) so it follows the user
+// across devices, per the requirement that existing/returning users on a new
+// device aren't asked again if they already skipped or completed it.
+router.patch('/tutorial', async (req, res, next) => {
+  try {
+    const { status } = req.body || {};
+    if (!['not_started', 'skipped', 'completed'].includes(status)) {
+      return res.status(400).json({ message: 'status must be one of: not_started, skipped, completed.' });
+    }
+    const user = await prisma.user.update({
+      where: { id: req.user.id },
+      data: { tutorialStatus: status }
+    });
+    return res.json({ user: sanitizeUser(user) });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 router.put('/password', validate(passwordSchema), async (req, res, next) => {
   try {
     const user = await prisma.user.findUnique({ where: { id: req.user.id } });

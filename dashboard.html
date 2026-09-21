@@ -866,7 +866,7 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
       <div class="sb-item-icon">🏠</div>
       <span class="sb-item-label">Dashboard</span>
     </div>
-    <div class="sb-item" onclick="showTab('triage',this)">
+    <div class="sb-item" data-tour="nav-triage" onclick="showTab('triage',this)">
       <div class="sb-item-icon">⚡</div>
       <span class="sb-item-label">Quick Triage</span>
       <span class="sb-badge">NEW</span>
@@ -882,7 +882,7 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
       <div class="sb-item-icon">🤖</div>
       <span class="sb-item-label">AI Chatbot</span>
     </div>
-    <div class="sb-item" onclick="showTab('medical-ai',this)">
+    <div class="sb-item" data-tour="nav-medical-ai" onclick="showTab('medical-ai',this)">
       <div class="sb-item-icon">🏥</div>
       <span class="sb-item-label">Medical Health AI</span>
     </div>
@@ -901,15 +901,15 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
 
     <!-- MY HEALTH -->
     <div class="sb-section-label">My Health</div>
-    <div class="sb-item" onclick="showTab('history',this)">
+    <div class="sb-item" data-tour="nav-history" onclick="showTab('history',this)">
       <div class="sb-item-icon">📋</div>
       <span class="sb-item-label">Symptom History</span>
     </div>
-    <div class="sb-item" onclick="showTab('vitals',this)">
+    <div class="sb-item" data-tour="nav-vitals" onclick="showTab('vitals',this)">
       <div class="sb-item-icon">❤️</div>
       <span class="sb-item-label">Vitals Monitor</span>
     </div>
-    <div class="sb-item" onclick="showTab('tools',this)">
+    <div class="sb-item" data-tour="nav-tools" onclick="showTab('tools',this)">
       <div class="sb-item-icon">+</div>
       <span class="sb-item-label">Health Tools</span>
       <span class="sb-badge">NEW</span>
@@ -918,21 +918,21 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
       <div class="sb-item-icon">Rx</div>
       <span class="sb-item-label">Reports & OCR</span>
     </div>
-    <div class="sb-item" onclick="showTab('appointments',this)">
+    <div class="sb-item" data-tour="nav-appointments" onclick="showTab('appointments',this)">
       <div class="sb-item-icon">📅</div>
       <span class="sb-item-label">Appointments</span>
     </div>
-    <div class="sb-item" onclick="showTab('messages',this)">
+    <div class="sb-item" data-tour="nav-messages" onclick="showTab('messages',this)">
       <div class="sb-item-icon">💬</div>
       <span class="sb-item-label">Messages</span>
       <span class="sb-badge" id="patient-msg-badge" style="display:none">•</span>
     </div>
-    <div class="sb-item" onclick="showTab('therapy',this)">
+    <div class="sb-item" data-tour="nav-therapy" onclick="showTab('therapy',this)">
       <div class="sb-item-icon">🧘</div>
       <span class="sb-item-label">Medical Locator</span>
       <span class="sb-badge">NEW</span>
     </div>
-    <div class="sb-item" onclick="showTab('achievements',this)">
+    <div class="sb-item" data-tour="nav-achievements" onclick="showTab('achievements',this)">
       <div class="sb-item-icon">🏆</div>
       <span class="sb-item-label">Achievements</span>
       <span class="sb-badge" style="background:var(--warning);color:#000">3</span>
@@ -944,7 +944,7 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
       <div class="sb-item-icon">ID</div>
       <span class="sb-item-label">My Profile</span>
     </div>
-    <div class="sb-item" onclick="showTab('settings',this)">
+    <div class="sb-item" data-tour="nav-settings" onclick="showTab('settings',this)">
       <div class="sb-item-icon">⚙️</div>
       <span class="sb-item-label">Settings</span>
     </div>
@@ -1737,6 +1737,7 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
         <!-- General settings -->
         <div class="glass-card">
           <div style="padding:1rem 1.25rem;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:2px">// GENERAL</div>
+          <div class="settings-item" onclick="startTour(true)"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(0,212,255,0.1)">🧭</div><div><div class="settings-label">Take Dashboard Tour</div><div class="settings-desc">Replay the interactive walkthrough</div></div></div><span class="settings-arrow">›</span></div>
           <div class="settings-item" onclick="showFaq()"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(0,212,255,0.1)">❓</div><div><div class="settings-label">FAQs</div><div class="settings-desc">Frequently asked questions</div></div></div><span class="settings-arrow">›</span></div>
           <div class="settings-item" onclick="showSettingsPanel('rating-panel')"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(255,215,0,0.1)">⭐</div><div><div class="settings-label">Rate the App</div><div class="settings-desc">Share your feedback</div></div></div><span class="settings-arrow">›</span></div>
           <div class="settings-item" onclick="showSettingsPanel('language-panel')"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(0,212,255,0.1)">🌐</div><div><div class="settings-label">Language</div><div class="settings-desc" id="language-desc">English (US)</div></div></div><span class="settings-arrow">›</span></div>
@@ -2021,9 +2022,9 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
 <div class="mobile-nav">
   <div class="mobile-nav-items">
     <div class="mob-item active" onclick="showTab('dashboard',null);setMobActive(this)"><div class="mob-item-icon">🏠</div><div class="mob-item-label">Home</div></div>
-    <div class="mob-item" onclick="showTab('triage',null);setMobActive(this)"><div class="mob-item-icon">⚡</div><div class="mob-item-label">Triage</div></div>
+    <div class="mob-item" data-tour="nav-triage" onclick="showTab('triage',null);setMobActive(this)"><div class="mob-item-icon">⚡</div><div class="mob-item-label">Triage</div></div>
     <div class="mob-item" onclick="showTab('chatbot',null);setMobActive(this)"><div class="mob-item-icon">🤖</div><div class="mob-item-label">AI Chat</div></div>
-    <div class="mob-item" onclick="showTab('tools',null);setMobActive(this)"><div class="mob-item-icon">+</div><div class="mob-item-label">Tools</div></div>
+    <div class="mob-item" data-tour="nav-tools" onclick="showTab('tools',null);setMobActive(this)"><div class="mob-item-icon">+</div><div class="mob-item-label">Tools</div></div>
     <div class="mob-item" onclick="openMobileMore()"><div class="mob-item-icon">☰</div><div class="mob-item-label">More</div></div>
   </div>
 </div>
@@ -2040,23 +2041,23 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
     <div class="sb-item" onclick="showTab('emergency-contacts',null);closeMobileMore()"><div class="sb-item-icon">🌍</div><span class="sb-item-label">Emergency Contacts</span></div>
 
     <div class="sb-section-label">AI Support</div>
-    <div class="sb-item" onclick="showTab('medical-ai',null);closeMobileMore()"><div class="sb-item-icon">🏥</div><span class="sb-item-label">Medical Health AI</span></div>
+    <div class="sb-item" data-tour="nav-medical-ai" onclick="showTab('medical-ai',null);closeMobileMore()"><div class="sb-item-icon">🏥</div><span class="sb-item-label">Medical Health AI</span></div>
     <div class="sb-item" onclick="showTab('emotional-ai',null);closeMobileMore()"><div class="sb-item-icon">💭</div><span class="sb-item-label">Safe Space AI</span></div>
     <div class="sb-item" onclick="showTab('mental-ai',null);closeMobileMore()"><div class="sb-item-icon">🧠</div><span class="sb-item-label">Mental Health AI</span></div>
     <div class="sb-item" onclick="showTab('physical-ai',null);closeMobileMore()"><div class="sb-item-icon">💪</div><span class="sb-item-label">Physical Health AI</span></div>
 
     <div class="sb-section-label">My Health</div>
-    <div class="sb-item" onclick="showTab('history',null);closeMobileMore()"><div class="sb-item-icon">📋</div><span class="sb-item-label">Symptom History</span></div>
-    <div class="sb-item" onclick="showTab('vitals',null);closeMobileMore()"><div class="sb-item-icon">❤️</div><span class="sb-item-label">Vitals Monitor</span></div>
+    <div class="sb-item" data-tour="nav-history" onclick="showTab('history',null);closeMobileMore()"><div class="sb-item-icon">📋</div><span class="sb-item-label">Symptom History</span></div>
+    <div class="sb-item" data-tour="nav-vitals" onclick="showTab('vitals',null);closeMobileMore()"><div class="sb-item-icon">❤️</div><span class="sb-item-label">Vitals Monitor</span></div>
     <div class="sb-item" onclick="showTab('reports',null);closeMobileMore()"><div class="sb-item-icon">Rx</div><span class="sb-item-label">Reports & OCR</span></div>
-    <div class="sb-item" onclick="showTab('appointments',null);closeMobileMore()"><div class="sb-item-icon">📅</div><span class="sb-item-label">Appointments</span></div>
-    <div class="sb-item" onclick="showTab('therapy',null);closeMobileMore()"><div class="sb-item-icon">🧘</div><span class="sb-item-label">Medical Locator</span></div>
-    <div class="sb-item" onclick="showTab('messages',null);closeMobileMore()"><div class="sb-item-icon">💬</div><span class="sb-item-label">Messages</span></div>
-    <div class="sb-item" onclick="showTab('achievements',null);closeMobileMore()"><div class="sb-item-icon">🏆</div><span class="sb-item-label">Achievements</span></div>
+    <div class="sb-item" data-tour="nav-appointments" onclick="showTab('appointments',null);closeMobileMore()"><div class="sb-item-icon">📅</div><span class="sb-item-label">Appointments</span></div>
+    <div class="sb-item" data-tour="nav-therapy" onclick="showTab('therapy',null);closeMobileMore()"><div class="sb-item-icon">🧘</div><span class="sb-item-label">Medical Locator</span></div>
+    <div class="sb-item" data-tour="nav-messages" onclick="showTab('messages',null);closeMobileMore()"><div class="sb-item-icon">💬</div><span class="sb-item-label">Messages</span></div>
+    <div class="sb-item" data-tour="nav-achievements" onclick="showTab('achievements',null);closeMobileMore()"><div class="sb-item-icon">🏆</div><span class="sb-item-label">Achievements</span></div>
 
     <div class="sb-section-label">Account</div>
     <div class="sb-item" onclick="showTab('profile',null);closeMobileMore()"><div class="sb-item-icon">ID</div><span class="sb-item-label">My Profile</span></div>
-    <div class="sb-item" onclick="showTab('settings',null);closeMobileMore()"><div class="sb-item-icon">⚙️</div><span class="sb-item-label">Settings</span></div>
+    <div class="sb-item" data-tour="nav-settings" onclick="showTab('settings',null);closeMobileMore()"><div class="sb-item-icon">⚙️</div><span class="sb-item-label">Settings</span></div>
     <div class="sb-item" onclick="showTab('premium',null);closeMobileMore()"><div class="sb-item-icon">👑</div><span class="sb-item-label">Unlock Premium</span></div>
   </div>
 </div>
@@ -2183,6 +2184,18 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
   <div style="background:#0a1628;border:1px solid var(--border2);border-radius:20px;padding:2rem;max-width:420px;width:100%;position:relative;box-shadow:0 40px 80px rgba(0,0,0,0.5)">
     <button onclick="closeDoctorProfileModal()" style="position:absolute;top:16px;right:16px;background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;line-height:1">×</button>
     <div id="doctor-profile-modal-body"></div>
+  </div>
+</div>
+
+<div id="tour-welcome-modal" role="dialog" aria-modal="true" aria-labelledby="tour-welcome-title" style="display:none;position:fixed;inset:0;z-index:9600;background:rgba(0,0,0,0.75);backdrop-filter:blur(10px);align-items:center;justify-content:center;padding:1rem">
+  <div style="background:#0a1628;border:1px solid var(--border2);border-radius:20px;padding:2rem;max-width:420px;width:100%;text-align:center;box-shadow:0 40px 80px rgba(0,0,0,0.5)">
+    <div style="font-size:40px;margin-bottom:.75rem">🧭</div>
+    <div id="tour-welcome-title" style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;margin-bottom:.6rem">Welcome to MedAI</div>
+    <p style="font-size:13.5px;color:rgba(150,200,230,0.7);line-height:1.6;margin-bottom:1.5rem">Want a quick interactive tour of your dashboard? We'll show you what the main features do and let you try them along the way.</p>
+    <div style="display:flex;gap:10px">
+      <button onclick="dismissTourWelcome('skipped')" style="flex:1;background:transparent;border:1px solid rgba(0,212,255,0.2);border-radius:10px;color:rgba(150,200,230,0.7);font-family:'Syne',sans-serif;font-size:13px;font-weight:700;padding:12px;cursor:pointer">Skip Tutorial</button>
+      <button onclick="dismissTourWelcome('start')" class="btn btn-primary" style="flex:1;justify-content:center;border:none;cursor:pointer;font-family:'Syne',sans-serif;font-weight:700">Start Tutorial</button>
+    </div>
   </div>
 </div>
 </body>

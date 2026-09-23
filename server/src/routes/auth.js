@@ -3,7 +3,7 @@ const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const speakeasy = require('speakeasy');
-const { Resend } = require('resend');
+const nodemailer = require('nodemailer');
 const { passport } = require('../passport');
 const prisma = require('../db');
 const validate = require('../middleware/validate');
@@ -211,36 +211,45 @@ router.post('/forgot-password', authLimiter, validate(forgotPasswordSchema), asy
       }
     });
 
-    if (process.env.RESEND_API_KEY) {
-      const resend = new Resend(process.env.RESEND_API_KEY);
-      const fromAddress = process.env.PASSWORD_RESET_FROM || 'MedAI <onboarding@resend.dev>';
-      const { data, error } = await resend.emails.send({
-        from: fromAddress,
-        to: user.email,
-        subject: 'Your MedAI password reset code',
-        text: `Your MedAI password reset code is ${code}. It expires in ${RESET_CODE_TTL_MS / 60000} minutes. If you did not request this, you can safely ignore this email.`
-      });
-
-      // resend.emails.send() does NOT throw on an API-level rejection (bad
-      // sender domain, invalid key, recipient issue, etc.) — it resolves
-      // successfully with { error } populated instead. Not checking this
-      // means a failed send looks identical to a successful one: no
-      // exception, normal 200 response, nothing in the logs. That silent
-      // failure was the actual bug here.
-      if (error) {
-        console.error(`Resend rejected the password reset email for user ${user.id}. type=${error.name || 'unknown'} message=${error.message || 'no message'} from=${fromAddress}`);
-      } else {
-        console.log(`Password reset email sent for user ${user.id}. Resend message id=${data?.id || 'unknown'}`);
+    if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
+      // Gmail SMTP requires the "from" address to be the authenticated
+      // account itself (or a verified alias) — unlike Resend's model, it
+      // won't send as an arbitrary domain, so this is just the account with
+      // a friendly display name.
+      const fromAddress = `MedAI <${process.env.GMAIL_USER}>`;
+      try {
+        const transporter = nodemailer.createTransport({
+          service: 'gmail',
+          auth: {
+            user: process.env.GMAIL_USER,
+            pass: process.env.GMAIL_APP_PASSWORD
+          }
+        });
+        const info = await transporter.sendMail({
+          from: fromAddress,
+          to: user.email,
+          subject: 'Your MedAI password reset code',
+          text: `Your MedAI password reset code is ${code}. It expires in ${RESET_CODE_TTL_MS / 60000} minutes. If you did not request this, you can safely ignore this email.`
+        });
+        console.log(`Password reset email sent for user ${user.id}. Gmail message id=${info.messageId}`);
+      } catch (emailError) {
+        // Unlike Resend, nodemailer REJECTS the promise on a send failure
+        // rather than resolving with an error field — caught here
+        // specifically so a Gmail-side failure (bad app password, account
+        // locked, etc.) is logged clearly without turning into a 500 that
+        // would leak a different response than the "email doesn't exist"
+        // case and break account-enumeration protection.
+        console.error(`Gmail SMTP failed to send password reset email for user ${user.id}: ${emailError.message}`);
       }
     } else {
-      console.warn(`RESEND_API_KEY not set — password reset code for user ${user.id} was not emailed.`);
+      console.warn(`GMAIL_USER/GMAIL_APP_PASSWORD not set — password reset code for user ${user.id} was not emailed.`);
     }
 
     console.log(`Password reset requested for user ${user.id}.`);
     // The response to the CLIENT stays generic either way — this is required
     // for account-enumeration protection (Requirement 6/15) and must not
     // change based on whether the email actually sent. The distinction
-    // between "sent" and "Resend rejected it" lives only in the server logs
+    // between "sent" and "Gmail rejected it" lives only in the server logs
     // above, where a developer debugging non-delivery can actually see it.
     return res.json({ message: 'If that email exists, a reset code has been sent.' });
   } catch (error) {

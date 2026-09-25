@@ -4147,85 +4147,89 @@ setTimeout(initPricing, 100);
 
 // ============================================================
 // INTERACTIVE DASHBOARD TOUR
-// Points at the real dashboard nav items (data-tour="nav-*") and waits for
-// real clicks on them — it never fakes or recreates the UI it's teaching.
+// The tutorial drives itself: each step calls the real showTab() to navigate
+// (the same function every sidebar click uses, including each tab's own
+// normal read-only data loading), then highlights that tab's heading and
+// waits for Next. It never simulates a click on an action button (send,
+// book, upload, invite, pay) — only navigation — so it cannot trigger a real
+// side effect no matter where the tour is.
 // ============================================================
 
 const TOUR_STEPS = [
   {
     id: 'overview',
+    tabId: null,
     target: '#tab-dashboard .sec-title',
-    action: 'observe',
     title: 'Welcome to your Dashboard',
     text: 'This is your MedAI home base. Every health tool you need lives in the menu — let\'s walk through the main ones.'
   },
   {
-    id: 'nav-triage',
-    target: '[data-tour="nav-triage"]',
-    action: 'click',
+    id: 'triage',
+    tabId: 'triage',
+    target: '#tab-triage .sec-title',
     title: 'Quick Triage',
-    text: 'Describe your symptoms here and get an instant AI-powered urgency check. Go ahead — click it.'
+    text: 'Describe your symptoms here and get an instant AI-powered urgency check.'
   },
   {
-    id: 'nav-medical-ai',
-    target: '[data-tour="nav-medical-ai"]',
-    action: 'click',
+    id: 'medical-ai',
+    tabId: 'medical-ai',
+    target: '#tab-medical-ai .sec-title',
     title: 'AI Health Assistants',
-    text: 'MedAI has four specialized AI assistants — Medical, Safe Space, Mental, and Physical Health. Try opening one.'
+    text: 'MedAI has four specialized AI assistants — Medical, Safe Space, Mental, and Physical Health.'
   },
   {
-    id: 'nav-history',
-    target: '[data-tour="nav-history"]',
-    action: 'click',
+    id: 'history',
+    tabId: 'history',
+    target: '#tab-history .sec-title',
     title: 'Symptom History',
     text: 'Every Quick Triage session is saved here automatically, building an ongoing record over time.'
   },
   {
-    id: 'nav-vitals',
-    target: '[data-tour="nav-vitals"]',
-    action: 'click',
+    id: 'vitals',
+    tabId: 'vitals',
+    target: '#tab-vitals .sec-title',
     title: 'Vitals Monitor',
     text: 'Log heart rate, blood pressure, and more — by hand, or with a real camera-based heart-rate scan.'
   },
   {
-    id: 'nav-tools',
-    target: '[data-tour="nav-tools"]',
-    action: 'click',
+    id: 'tools',
+    tabId: 'tools',
+    target: '#tab-tools .sec-title',
     title: 'Health Tools',
     text: 'Extra everyday tools live here, including the camera heart-rate scanner and medicine reminders.'
   },
   {
-    id: 'nav-appointments',
-    target: '[data-tour="nav-appointments"]',
-    action: 'click',
+    id: 'appointments',
+    tabId: 'appointments',
+    target: '#tab-appointments .sec-title',
     title: 'Appointments',
     text: 'Book a real appointment with a registered doctor — they can accept or decline, and you\'ll be notified.'
   },
   {
-    id: 'nav-messages',
-    target: '[data-tour="nav-messages"]',
-    action: 'click',
+    id: 'messages',
+    tabId: 'messages',
+    target: '#tab-messages .sec-title',
     title: 'Messages',
     text: 'Chat directly and in real time with doctors you\'re connected with.'
   },
   {
-    id: 'nav-therapy',
-    target: '[data-tour="nav-therapy"]',
-    action: 'click',
+    id: 'therapy',
+    tabId: 'therapy',
+    target: '#tab-therapy .sec-title',
     title: 'Medical Locator',
     text: 'Find real nearby doctors and medical centers on an interactive map, or search any city or address.'
   },
   {
-    id: 'nav-achievements',
-    target: '[data-tour="nav-achievements"]',
-    action: 'click',
+    id: 'achievements',
+    tabId: 'achievements',
+    target: '#tab-achievements .sec-title',
     title: 'Achievements',
     text: 'Unlock badges as you use MedAI, based on real activity like triage sessions and check-ins.'
   },
   {
-    id: 'nav-settings',
-    target: '[data-tour="nav-settings"]',
-    action: 'click',
+    id: 'settings',
+    tabId: 'settings',
+    target: '#tab-settings .sec-title',
     title: 'Profile & Settings',
     text: 'Manage your account here. You can replay this tour anytime from Settings → Take Dashboard Tour.'
   }
@@ -4233,49 +4237,21 @@ const TOUR_STEPS = [
 
 let _tourIndex = -1;
 let _tourActive = false;
-let _tourLaunchedFromHelp = false;
 let _tourFocusReturnEl = null;
-let _tourCleanupFns = [];
-
-function getVisibleNavTarget(selector){
-  const els = document.querySelectorAll(selector);
-  for(const el of els){
-    if(el.offsetParent !== null) return el; // laid out and not display:none up the tree
-  }
-  return null;
-}
-
-async function resolveTourTarget(selector){
-  let target = getVisibleNavTarget(selector);
-  if(target) return target;
-
-  // Not visible yet — it may be inside the mobile "More" sheet, which is
-  // display:none until opened. Open it and re-check rather than giving up.
-  const sheet = document.getElementById('mobile-more-sheet');
-  const insideSheet = sheet && sheet.querySelector(selector);
-  if(insideSheet && typeof openMobileMore === 'function'){
-    openMobileMore();
-    await new Promise(r => setTimeout(r, 200));
-    target = getVisibleNavTarget(selector);
-  }
-  return target;
-}
 
 function tourOverlayEls(){
   return {
     top: document.getElementById('tour-dim-top'),
     bottom: document.getElementById('tour-dim-bottom'),
     left: document.getElementById('tour-dim-left'),
-    right: document.getElementById('tour-dim-right'),
-    tooltip: document.getElementById('tour-tooltip')
+    right: document.getElementById('tour-dim-right')
   };
 }
 
 function ensureTourDom(){
   if(document.getElementById('tour-dim-top')) return;
-  const bandStyle = 'position:fixed;background:rgba(3,8,15,0.72);z-index:9550;transition:all .25s ease;pointer-events:auto';
-  const bands = ['top','bottom','left','right'];
-  bands.forEach(name => {
+  const bandStyle = 'position:fixed;background:rgba(3,8,15,0.72);z-index:9550;transition:all .3s ease;pointer-events:auto';
+  ['top','bottom','left','right'].forEach(name => {
     const div = document.createElement('div');
     div.id = 'tour-dim-' + name;
     div.style.cssText = bandStyle;
@@ -4286,7 +4262,7 @@ function ensureTourDom(){
   tooltip.setAttribute('role', 'dialog');
   tooltip.setAttribute('aria-modal', 'false');
   tooltip.tabIndex = -1;
-  tooltip.style.cssText = 'position:fixed;z-index:9560;max-width:300px;background:#0a1628;border:1px solid var(--border2);border-radius:14px;padding:1.1rem 1.25rem;box-shadow:0 24px 60px rgba(0,0,0,0.5);font-family:\'DM Sans\',sans-serif;transition:top .25s ease,left .25s ease';
+  tooltip.style.cssText = 'position:fixed;z-index:9560;max-width:300px;background:#0a1628;border:1px solid var(--border2);border-radius:14px;padding:1.1rem 1.25rem;box-shadow:0 24px 60px rgba(0,0,0,0.5);font-family:\'DM Sans\',sans-serif;transition:top .3s ease,left .3s ease,opacity .2s ease';
   document.body.appendChild(tooltip);
 }
 
@@ -4295,19 +4271,15 @@ function removeTourDom(){
     const el = document.getElementById(id);
     if(el) el.remove();
   });
-  document.querySelectorAll('.tour-highlighted').forEach(el => {
-    el.classList.remove('tour-highlighted');
-    el.style.position = '';
-    el.style.zIndex = '';
-  });
+  document.querySelectorAll('.tour-highlighted').forEach(el => el.classList.remove('tour-highlighted'));
 }
 
 // Positions 4 dark bands around the target's real bounding box, leaving the
-// target itself completely uncovered (and therefore still natively
-// clickable) rather than cloning or faking it.
+// target itself completely uncovered — it's the genuine dashboard element,
+// not a clone, even though the tour no longer requires clicking it.
 function positionTourDim(target){
   const rect = target.getBoundingClientRect();
-  const pad = 6;
+  const pad = 8;
   const r = { top: rect.top - pad, bottom: rect.bottom + pad, left: rect.left - pad, right: rect.right + pad };
   const { top, bottom, left, right } = tourOverlayEls();
   const vw = window.innerWidth, vh = window.innerHeight;
@@ -4320,19 +4292,17 @@ function positionTourDim(target){
   if(!document.getElementById('tour-highlight-style')){
     const style = document.createElement('style');
     style.id = 'tour-highlight-style';
-    style.textContent = '.tour-highlighted{outline:2px solid var(--accent) !important;outline-offset:3px;box-shadow:0 0 0 6px rgba(0,212,255,0.18) !important;border-radius:10px;position:relative;z-index:9555 !important}';
+    style.textContent = '.tour-highlighted{outline:2px solid var(--accent) !important;outline-offset:4px;box-shadow:0 0 0 6px rgba(0,212,255,0.18) !important;border-radius:8px;position:relative;z-index:9555 !important;transition:outline-color .2s ease}';
     document.head.appendChild(style);
   }
 }
 
-function positionTourTooltip(target, stepIndex){
+function positionTourTooltip(target){
   const rect = target.getBoundingClientRect();
   const tooltip = document.getElementById('tour-tooltip');
   const vw = window.innerWidth, vh = window.innerHeight;
   const margin = 14;
 
-  // Default: place to the right of the sidebar item (desktop) or below it
-  // (narrow screens). Flip/clamp so it always stays fully on-screen.
   let top, left;
   const preferRight = vw > 820 && rect.right + 320 < vw;
   if(preferRight){
@@ -4350,7 +4320,6 @@ function positionTourTooltip(target, stepIndex){
 function renderTourTooltipContent(step, stepIndex){
   const tooltip = document.getElementById('tour-tooltip');
   const isLast = stepIndex === TOUR_STEPS.length - 1;
-  const needsInteraction = step.action === 'click';
   tooltip.innerHTML = `
     <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:1.5px;margin-bottom:8px">STEP ${stepIndex+1} OF ${TOUR_STEPS.length}</div>
     <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:800;margin-bottom:6px">${escapeHtml(step.title)}</div>
@@ -4358,58 +4327,53 @@ function renderTourTooltipContent(step, stepIndex){
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
       <button onclick="endTour('skipped')" style="background:none;border:none;color:var(--muted);font-size:11.5px;cursor:pointer;padding:4px 0">Skip Tutorial</button>
       <div style="display:flex;gap:8px">
-        ${stepIndex > 0 ? `<button onclick="tourBack()" class="btn btn-outline" style="padding:8px 14px;font-size:12px;cursor:pointer;border:1px solid var(--border2);background:transparent;color:var(--text);border-radius:8px;font-family:inherit">Back</button>` : ''}
-        ${needsInteraction
-          ? `<span style="font-size:11.5px;color:var(--accent);align-self:center;animation:pulse-opacity 1.4s ease-in-out infinite">Try it →</span>`
-          : `<button onclick="tourNext()" class="btn btn-primary" style="padding:8px 16px;font-size:12px;cursor:pointer;border:none;border-radius:8px;font-family:inherit;font-weight:700">${isLast ? 'Finish' : 'Next →'}</button>`
-        }
+        ${stepIndex > 0 ? `<button onclick="tourBack()" style="padding:8px 14px;font-size:12px;cursor:pointer;border:1px solid var(--border2);background:transparent;color:var(--text);border-radius:8px;font-family:inherit">Back</button>` : ''}
+        <button onclick="tourNext()" class="btn btn-primary" style="padding:8px 16px;font-size:12px;cursor:pointer;border:none;border-radius:8px;font-family:inherit;font-weight:700">${isLast ? 'Finish' : 'Next →'}</button>
       </div>
     </div>
   `;
-  if(!document.getElementById('tour-pulse-style')){
-    const style = document.createElement('style');
-    style.id = 'tour-pulse-style';
-    style.textContent = '@keyframes pulse-opacity{0%,100%{opacity:1}50%{opacity:.4}}';
-    document.head.appendChild(style);
-  }
 }
 
 function tourRepositionHandler(){
   if(!_tourActive || _tourIndex < 0) return;
   const step = TOUR_STEPS[_tourIndex];
-  const target = getVisibleNavTarget(step.target);
-  if(target){ positionTourDim(target); positionTourTooltip(target, _tourIndex); }
+  const target = document.querySelector(step.target);
+  if(target){ positionTourDim(target); positionTourTooltip(target); }
 }
 
+// The tour drives navigation itself via the real showTab() — the same
+// function every sidebar click uses, including each tab's own normal
+// (read-only) data loading. This never simulates clicking a send/book/
+// upload/invite/pay control, so it can't trigger a real side effect.
 async function renderTourStep(){
   const step = TOUR_STEPS[_tourIndex];
   if(!step){ endTour('completed'); return; }
 
-  // Clear any listener/highlight left over from the previous step first.
-  _tourCleanupFns.forEach(fn => fn());
-  _tourCleanupFns = [];
+  document.querySelectorAll('.tour-highlighted').forEach(el => el.classList.remove('tour-highlighted'));
+  const tooltip = document.getElementById('tour-tooltip');
+  if(tooltip) tooltip.style.opacity = '0';
 
-  const target = await resolveTourTarget(step.target);
+  if(step.tabId){
+    showTab(step.tabId, null);
+  }
+  await new Promise(r => setTimeout(r, 300)); // let the panel (and its own data fetches) mount
+
+  let target = document.querySelector(step.target);
   if(!target){
-    // The target genuinely isn't on the page right now (shouldn't normally
-    // happen for real nav items) — skip this step rather than get stuck.
+    // The heading genuinely isn't on the page (shouldn't normally happen for
+    // a static tab title) — skip this step rather than get stuck spotlighting
+    // nothing.
     _tourIndex++;
     return renderTourStep();
   }
 
   target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  await new Promise(r => setTimeout(r, 250)); // let scroll/layout settle
+  await new Promise(r => setTimeout(r, 250));
 
   positionTourDim(target);
-  positionTourTooltip(target, _tourIndex);
+  positionTourTooltip(target);
   renderTourTooltipContent(step, _tourIndex);
-  document.getElementById('tour-tooltip').focus();
-
-  if(step.action === 'click'){
-    const handler = () => tourNext();
-    target.addEventListener('click', handler, { once: true });
-    _tourCleanupFns.push(() => target.removeEventListener('click', handler));
-  }
+  if(tooltip){ tooltip.style.opacity = '1'; tooltip.focus(); }
 }
 
 function tourNext(){
@@ -4423,7 +4387,6 @@ function tourBack(){
 function startTour(fromHelp){
   _tourActive = true;
   _tourIndex = 0;
-  _tourLaunchedFromHelp = !!fromHelp;
   _tourFocusReturnEl = document.activeElement;
   ensureTourDom();
   window.addEventListener('resize', tourRepositionHandler);
@@ -4433,13 +4396,14 @@ function startTour(fromHelp){
 }
 
 function tourKeyHandler(e){
-  if(e.key === 'Escape' && _tourActive) endTour('skipped');
+  if(!_tourActive) return;
+  if(e.key === 'Escape') endTour('skipped');
+  if(e.key === 'ArrowRight') tourNext();
+  if(e.key === 'ArrowLeft') tourBack();
 }
 
 function endTour(status){
   _tourActive = false;
-  _tourCleanupFns.forEach(fn => fn());
-  _tourCleanupFns = [];
   window.removeEventListener('resize', tourRepositionHandler);
   window.removeEventListener('scroll', tourRepositionHandler, true);
   document.removeEventListener('keydown', tourKeyHandler);

@@ -3452,9 +3452,6 @@ async function upgradePremium() {
   }
 
   const planType = currentBilling === 'yearly' ? 'yearly' : 'monthly';
-  // TEMP DIAGNOSTIC: run `localStorage.setItem('medai_force_usd_test','true')` in the console
-  // to force USD (no currency conversion needed) — isolates whether the Bachs "get-quote"
-  // DNS failure is specific to cross-currency checkouts or a broader sandbox issue.
   const testCountry = localStorage.getItem('medai_force_usd_test') === 'true' ? 'US' : currentCountry;
   const statusBox = document.getElementById('premium-status-msg');
   if(statusBox) statusBox.textContent = 'Starting checkout...';

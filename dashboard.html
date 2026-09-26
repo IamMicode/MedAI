@@ -647,6 +647,12 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
 .typing-dots span:nth-child(3){animation-delay:.3s}
 @keyframes dot-bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-8px)}}
 
+/* Optimistic chat-send states (patient side) */
+.patient-msg-pending{opacity:.55;position:relative}
+.patient-msg-pending::after{content:'';position:absolute;right:-16px;bottom:6px;width:6px;height:6px;border-radius:50%;background:currentColor;animation:msg-pending-pulse 1s ease-in-out infinite}
+@keyframes msg-pending-pulse{0%,100%{opacity:.3}50%{opacity:1}}
+.patient-msg-failed{opacity:1!important;border:1px solid var(--danger)!important}
+
 /* Achievement card */
 .ach-card{padding:1.25rem;display:flex;align-items:center;gap:14px;position:relative;overflow:hidden}
 .ach-icon{width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;position:relative}
@@ -814,6 +820,18 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
 .history-row{display:flex;align-items:center;gap:14px;padding:1rem 1.25rem;border-bottom:1px solid var(--border);cursor:pointer;transition:background .2s}
 .history-row:hover{background:rgba(0,212,255,0.03)}
 .history-row:last-child{border-bottom:none}
+
+/* Skeleton loaders — shown while waiting on a backend response (e.g. right
+   after a Render cold start, before the keep-alive ping has had time to
+   land) so the UI reads as "loading" rather than blank or broken. */
+@keyframes skel-shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+.skel{background:linear-gradient(90deg,rgba(255,255,255,0.04) 25%,rgba(255,255,255,0.10) 37%,rgba(255,255,255,0.04) 63%);background-size:400% 100%;animation:skel-shimmer 1.4s ease infinite;border-radius:8px}
+.skel-line{height:12px;margin-bottom:8px}
+.skel-circle{border-radius:50%;flex-shrink:0}
+.skel-row{display:flex;align-items:center;gap:14px;padding:1rem 1.25rem;border-bottom:1px solid var(--border)}
+.skel-row:last-child{border-bottom:none}
+.skel-card{padding:1.25rem;display:flex;align-items:center;gap:14px}
+.skel-bubble{border-radius:12px;height:38px}
 .history-triage-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
 .history-triage-dot.home{background:var(--safe);box-shadow:0 0 8px var(--safe)}
 .history-triage-dot.soon{background:var(--warning);box-shadow:0 0 8px var(--warning)}
@@ -1563,7 +1581,11 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
       <p class="sec-sub" style="margin-bottom:1.25rem">Real-time conversations with doctors matched to your care. Start one from a doctor recommendation, or continue an existing chat below.</p>
       <div class="glass-card" style="padding:0;overflow:hidden;display:grid;grid-template-columns:260px 1fr;min-height:520px" id="patient-chat-layout">
         <div style="border-right:1px solid var(--border);overflow-y:auto" id="patient-conv-list">
-          <div style="padding:1.25rem;color:var(--muted);font-size:13px">Loading conversations...</div>
+          <div style="padding:0.5rem 0" id="patient-conv-initial-skel">
+            <div class="skel-row"><div style="flex:1"><div class="skel skel-line" style="width:45%"></div><div class="skel skel-line" style="width:75%;height:9px;margin-bottom:0"></div></div></div>
+            <div class="skel-row"><div style="flex:1"><div class="skel skel-line" style="width:55%"></div><div class="skel skel-line" style="width:65%;height:9px;margin-bottom:0"></div></div></div>
+            <div class="skel-row"><div style="flex:1"><div class="skel skel-line" style="width:40%"></div><div class="skel skel-line" style="width:80%;height:9px;margin-bottom:0"></div></div></div>
+          </div>
         </div>
         <div style="display:flex;flex-direction:column">
           <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-weight:700;font-size:14px" id="patient-chat-header">Select a conversation</div>

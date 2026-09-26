@@ -663,6 +663,17 @@ const API_BASE_URL = localStorage.getItem('medai_api_base_url')
         ? 'http://127.0.0.1:5500'
         : 'https://medai-backend-5r9o.onrender.com');
 
+// Render's free tier spins the backend down after ~15 min idle, and the
+// next request has to cold-start it — often 20-50s. That's almost always
+// what "the frontend loads before the backend does" actually is: the
+// static frontend (Vercel) renders instantly, then the FIRST real API call
+// (e.g. opening Messages) sits there waiting on a cold instance. Firing a
+// throwaway ping the moment the dashboard loads — before the user has even
+// clicked into a tab — means the backend is usually already awake by the
+// time they open a conversation, instead of them eating the cold-start
+// delay right at the worst possible moment.
+fetch(API_BASE_URL + '/api/health').catch(() => {});
+
 // ============================================================
 // REGISTERED DOCTORS DIRECTORY + MAPS (Therapy Finder / Appointments)
 // Leaflet + OpenStreetMap — no API key needed.
@@ -1433,6 +1444,49 @@ async function loadPatientAppointments(){
 
 function escapeHtml(value){
   return String(value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#039;"}[ch]));
+}
+
+// ============================================================
+// SKELETON LOADERS
+// ============================================================
+// Shared shimmer placeholders shown while a fetch is in flight — mainly a
+// safety net for the moment right after a Render cold start (before the
+// keep-alive ping has kept it warm), so a slow response reads as "loading"
+// instead of a blank panel or stale content.
+
+function skeletonRows(count, widths){
+  return Array.from({ length: count }, (_, i) => {
+    const w1 = widths?.[0] || '45%', w2 = widths?.[1] || '75%';
+    return `<div class="skel-row">
+      <div style="flex:1">
+        <div class="skel skel-line" style="width:${w1}"></div>
+        <div class="skel skel-line" style="width:${w2};height:9px;margin-bottom:0"></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function skeletonCards(count){
+  return Array.from({ length: count }, () => `
+    <div class="glass-card skel-card">
+      <div class="skel skel-circle" style="width:48px;height:48px"></div>
+      <div style="flex:1">
+        <div class="skel skel-line" style="width:55%"></div>
+        <div class="skel skel-line" style="width:85%;height:9px;margin-bottom:0"></div>
+      </div>
+    </div>`).join('');
+}
+
+function skeletonChatBubbles(){
+  const widths = [
+    { w: '52%', side: 'flex-start' },
+    { w: '38%', side: 'flex-end' },
+    { w: '62%', side: 'flex-start' },
+    { w: '30%', side: 'flex-end' }
+  ];
+  return `<div style="display:flex;flex-direction:column;gap:10px;padding:1rem">
+    ${widths.map(m => `<div class="skel skel-bubble" style="width:${m.w};align-self:${m.side}"></div>`).join('')}
+  </div>`;
 }
 
 function userStoragePrefix(){
@@ -2512,6 +2566,7 @@ function clearPatientImageAttachment(){
 async function loadPatientConversations(){
   const list = document.getElementById('patient-conv-list');
   if(!list) return;
+  list.innerHTML = skeletonRows(4);
   try{
     const res = await fetch(API_BASE_URL + '/api/chat/conversations', { headers: patientAuthHeaders() });
     if(!res.ok) throw new Error('fetch_failed');
@@ -2556,6 +2611,14 @@ function openPatientConversation(convId, doctorName, specialty, doctorId, profil
 
   renderPatientChatHeader();
   document.getElementById('patient-chat-input-row').style.display = 'flex';
+
+  // Switching conversations means the message list is starting fresh —
+  // forget which ids were rendered for whichever conversation was open
+  // before, so the append-only poll doesn't skip this one's real messages
+  // thinking it already painted them.
+  _renderedPatientMessageIds = new Set();
+  const container = document.getElementById('patient-chat-messages');
+  if(container) container.innerHTML = skeletonChatBubbles();
 
   loadPatientMessages();
   if(_patientChatPollInterval) clearInterval(_patientChatPollInterval);
@@ -2665,6 +2728,28 @@ async function submitDoctorReview(){
   }
 }
 
+// Ids already painted into #patient-chat-messages. Used so the 4s poll only
+// appends genuinely new messages instead of wiping and re-rendering the
+// entire history (every bubble, every embedded base64 image) from scratch
+// every single cycle — that full-rebuild was the other real cause of the
+// "loading" feeling, separate from the send-path bug below. Reset whenever
+// a conversation is (re)opened.
+let _renderedPatientMessageIds = new Set();
+
+function buildPatientMessageBubble(m, extraClass){
+  const isMe = m.senderRole === 'USER';
+  const imageHtml = m.imageData
+    ? `<img src="${m.imageData}" style="max-width:100%;max-height:260px;border-radius:8px;display:block;cursor:pointer;${m.content ? 'margin-bottom:6px' : ''}" onclick="window.open(this.src,'_blank')"/>`
+    : '';
+  const el = document.createElement('div');
+  if(extraClass) el.className = extraClass;
+  el.dataset.msgId = m.id;
+  el.style.cssText = `max-width:70%;padding:10px 14px;border-radius:12px;font-size:13px;line-height:1.5;${isMe ? 'background:var(--accent);color:#04121c;margin-left:auto;border-bottom-right-radius:3px' : 'background:var(--surface2);border:1px solid var(--border);margin-right:auto;border-bottom-left-radius:3px'}`;
+  el.innerHTML = `${imageHtml}${m.content ? escapeHtmlChat(m.content) : ''}
+    <div style="font-family:var(--mono);font-size:9px;opacity:.65;margin-top:4px">${new Date(m.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div>`;
+  return el;
+}
+
 async function loadPatientMessages(){
   if(!_activePatientConversation) return;
   try{
@@ -2674,18 +2759,25 @@ async function loadPatientMessages(){
     const container = document.getElementById('patient-chat-messages');
     const wasAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 60;
 
-    container.innerHTML = data.messages.map(m => {
-      const isMe = m.senderRole === 'USER';
-      const imageHtml = m.imageData
-        ? `<img src="${m.imageData}" style="max-width:100%;max-height:260px;border-radius:8px;display:block;cursor:pointer;${m.content ? 'margin-bottom:6px' : ''}" onclick="window.open(this.src,'_blank')"/>`
-        : '';
-      return `<div style="max-width:70%;padding:10px 14px;border-radius:12px;font-size:13px;line-height:1.5;${isMe ? 'background:var(--accent);color:#04121c;margin-left:auto;border-bottom-right-radius:3px' : 'background:var(--surface2);border:1px solid var(--border);margin-right:auto;border-bottom-left-radius:3px'}">
-        ${imageHtml}${m.content ? escapeHtmlChat(m.content) : ''}
-        <div style="font-family:var(--mono);font-size:9px;opacity:.65;margin-top:4px">${new Date(m.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div>
-      </div>`;
-    }).join('') || '<div style="text-align:center;color:var(--muted);font-size:13px;padding:2rem 0">No messages yet. Say hello 👋</div>';
+    if(!data.messages.length){
+      if(!_renderedPatientMessageIds.size){
+        container.innerHTML = '<div class="patient-chat-empty" style="text-align:center;color:var(--muted);font-size:13px;padding:2rem 0">No messages yet. Say hello 👋</div>';
+      }
+      return;
+    }
 
-    if(wasAtBottom) container.scrollTop = container.scrollHeight;
+    const emptyState = container.querySelector('.patient-chat-empty');
+    if(emptyState) emptyState.remove();
+
+    let appended = false;
+    data.messages.forEach(m => {
+      if(_renderedPatientMessageIds.has(m.id)) return;
+      container.appendChild(buildPatientMessageBubble(m));
+      _renderedPatientMessageIds.add(m.id);
+      appended = true;
+    });
+
+    if(appended && wasAtBottom) container.scrollTop = container.scrollHeight;
   }catch(e){}
 }
 
@@ -2697,15 +2789,47 @@ async function sendPatientMessage(){
   if(!_activePatientConversation) return;
   input.value = '';
   clearPatientImageAttachment();
+
+  const container = document.getElementById('patient-chat-messages');
+  const emptyState = container.querySelector('.patient-chat-empty');
+  if(emptyState) emptyState.remove();
+
+  // Optimistic render: paint the message the instant the user hits send.
+  // This is the actual reason sending felt slow — the old code awaited the
+  // POST, then awaited a SEPARATE full GET reload before the message ever
+  // appeared, i.e. two sequential network round trips of dead time on
+  // every single message. Now it's instant, and gets reconciled with the
+  // server's real record (real id + timestamp) once the POST resolves.
+  const tempId = 'temp-' + Date.now();
+  const bubble = buildPatientMessageBubble(
+    { id: tempId, senderRole: 'USER', content, imageData, createdAt: new Date().toISOString() },
+    'patient-msg-pending'
+  );
+  container.appendChild(bubble);
+  container.scrollTop = container.scrollHeight;
+
   try{
-    await fetch(API_BASE_URL + '/api/chat/conversations/' + _activePatientConversation + '/messages', {
+    const res = await fetch(API_BASE_URL + '/api/chat/conversations/' + _activePatientConversation + '/messages', {
       method: 'POST',
       headers: { ...patientAuthHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ content, imageData })
     });
-    await loadPatientMessages();
+    if(!res.ok) throw new Error('send_failed');
+    const data = await res.json();
+
+    // Swap the optimistic bubble for the server's real record so the next
+    // poll's id-based dedupe recognizes it and never double-renders it.
+    bubble.remove();
+    container.appendChild(buildPatientMessageBubble(data.message));
+    _renderedPatientMessageIds.add(data.message.id);
+    container.scrollTop = container.scrollHeight;
   }catch(e){
-    alert('Could not send message. Please try again.');
+    bubble.classList.add('patient-msg-failed');
+    const retry = document.createElement('div');
+    retry.style.cssText = 'font-size:10px;color:var(--danger);margin-top:4px;cursor:pointer';
+    retry.textContent = '⚠ Failed to send — tap to dismiss';
+    retry.onclick = () => bubble.remove();
+    bubble.appendChild(retry);
   }
 }
 
@@ -2719,7 +2843,7 @@ async function renderAchievements(){
   if(_achievementsLoading) return;
   _achievementsLoading = true;
 
-  container.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--muted);font-family:var(--mono);font-size:12px;letter-spacing:1px">LOADING ACHIEVEMENTS...</div>';
+  container.innerHTML = skeletonCards(4);
 
   const token = localStorage.getItem('medai_token');
   try{

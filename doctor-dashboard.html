@@ -57,6 +57,15 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
 .dp-list::-webkit-scrollbar{width:3px}
 .dp-list::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
 .dp-empty{padding:2rem 1.25rem;text-align:center;font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:1px}
+
+/* Skeleton loaders — see matching comment in dashboard.html */
+@keyframes skel-shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+.skel{background:linear-gradient(90deg,rgba(255,255,255,0.04) 25%,rgba(255,255,255,0.10) 37%,rgba(255,255,255,0.04) 63%);background-size:400% 100%;animation:skel-shimmer 1.4s ease infinite;border-radius:8px}
+.skel-line{height:12px;margin-bottom:8px}
+.skel-circle{border-radius:50%;flex-shrink:0}
+.skel-row{display:flex;align-items:center;gap:14px;padding:1rem 1.25rem;border-bottom:1px solid rgba(0,212,255,0.08)}
+.skel-row:last-child{border-bottom:none}
+.skel-bubble{border-radius:12px;height:38px}
 .pt-item{display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;border-left:3px solid transparent;transition:all .2s;position:relative}
 .pt-item:hover{background:rgba(0,212,255,0.06);border-left-color:rgba(0,212,255,0.3)}
 .pt-item.active{background:rgba(0,212,255,0.1);border-left-color:var(--accent)}
@@ -196,7 +205,9 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
       </div>
     </div>
     <div class="dp-list" id="patient-list">
-      <div class="dp-empty">Loading patients...</div>
+      <div class="skel-row"><div class="skel skel-circle" style="width:36px;height:36px"></div><div style="flex:1"><div class="skel skel-line" style="width:50%"></div><div class="skel skel-line" style="width:75%;height:9px;margin-bottom:0"></div></div></div>
+      <div class="skel-row"><div class="skel skel-circle" style="width:36px;height:36px"></div><div style="flex:1"><div class="skel skel-line" style="width:60%"></div><div class="skel skel-line" style="width:65%;height:9px;margin-bottom:0"></div></div></div>
+      <div class="skel-row"><div class="skel skel-circle" style="width:36px;height:36px"></div><div style="flex:1"><div class="skel skel-line" style="width:45%"></div><div class="skel skel-line" style="width:80%;height:9px;margin-bottom:0"></div></div></div>
     </div>
     <div class="dp-bottom">
       <div style="display:flex;flex-direction:column;gap:6px;flex:1;min-width:0">
@@ -257,7 +268,13 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
         <div class="pp-close" onclick="toggleProfilePanel()">✕</div>
       </div>
       <div id="profile-body">
-        <div class="pp-empty-note">Loading profile...</div>
+        <div style="padding:4px 0">
+          <div class="skel skel-line" style="width:60%;height:16px"></div>
+          <div class="skel skel-line" style="width:40%;height:10px"></div>
+          <div class="skel skel-line" style="width:90%;margin-top:14px"></div>
+          <div class="skel skel-line" style="width:75%"></div>
+          <div class="skel skel-line" style="width:85%"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -268,6 +285,11 @@ const API_BASE_URL = localStorage.getItem('medai_api_base_url')
   || (['localhost','127.0.0.1'].includes(window.location.hostname)
         ? 'http://127.0.0.1:5500'
         : 'https://medai-backend-5r9o.onrender.com');
+
+// See matching comment in dashboard.js — Render's free tier cold-starts
+// after idle, so warm it up the moment this page loads rather than
+// letting the doctor eat that delay the moment they open a conversation.
+fetch(API_BASE_URL + '/api/health').catch(() => {});
 
 function authHeaders(){
   const token = localStorage.getItem('medai_doctor_token');
@@ -336,6 +358,7 @@ async function toggleAvailability(isAvailable){
 
 // ---------- patient list ----------
 async function loadPatients(){
+  document.getElementById('patient-list').innerHTML = skeletonRows(3);
   try{
     const res = await fetch(`${API_BASE_URL}/api/doctor-portal/patients`, { headers: authHeaders() });
     if(res.status === 401){ doctorLogout(); return; }
@@ -392,6 +415,11 @@ async function selectPatient(patientId){
   await openConversation(patientId);
 }
 
+// Ids already painted into #chat-area — lets the 4s poll append only what's
+// new instead of wiping and rebuilding the whole thread (every bubble,
+// every embedded image) each cycle. Reset whenever a conversation opens.
+let _renderedDoctorMessageIds = new Set();
+
 async function openConversation(patientId){
   try{
     const res = await fetch(`${API_BASE_URL}/api/doctor-portal/conversations`, {
@@ -399,10 +427,28 @@ async function openConversation(patientId){
     });
     const data = await res.json();
     activeConversationId = data.conversation?.id;
+    _renderedDoctorMessageIds = new Set();
+    const area = document.getElementById('chat-area');
+    if(area) area.innerHTML = skeletonChatBubbles();
     await loadMessages();
     if(pollTimer) clearInterval(pollTimer);
     pollTimer = setInterval(loadMessages, 4000);
   }catch(e){ console.error('Failed to open conversation', e); }
+}
+
+function buildDoctorMessageBubble(m, extraClass){
+  const imageHtml = m.imageData
+    ? `<img src="${m.imageData}" style="max-width:100%;max-height:280px;border-radius:8px;display:block;cursor:pointer;${m.content ? 'margin-bottom:6px' : ''}" onclick="window.open(this.src,'_blank')"/>`
+    : '';
+  const row = document.createElement('div');
+  row.className = `msg-row ${m.senderRole === 'DOCTOR' ? 'me' : 'them'}`;
+  row.dataset.msgId = m.id;
+  row.innerHTML = `
+    <div>
+      <div class="msg-bubble${extraClass ? ' ' + extraClass : ''}">${imageHtml}${m.content ? escapeHtml(m.content) : ''}</div>
+      <div class="msg-time">${new Date(m.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div>
+    </div>`;
+  return row;
 }
 
 async function loadMessages(){
@@ -410,32 +456,56 @@ async function loadMessages(){
   try{
     const res = await fetch(`${API_BASE_URL}/api/doctor-portal/conversations/${activeConversationId}/messages`, { headers: authHeaders() });
     const data = await res.json();
-    renderMessages(data.messages || []);
-  }catch(e){ console.error('Failed to load messages', e); }
-}
+    const messages = data.messages || [];
+    const area = document.getElementById('chat-area');
+    const wasAtBottom = area.scrollTop + area.clientHeight >= area.scrollHeight - 40;
 
-function renderMessages(messages){
-  const area = document.getElementById('chat-area');
-  const wasAtBottom = area.scrollTop + area.clientHeight >= area.scrollHeight - 40;
-  area.innerHTML = messages.map(m => {
-    const imageHtml = m.imageData
-      ? `<img src="${m.imageData}" style="max-width:100%;max-height:280px;border-radius:8px;display:block;cursor:pointer;${m.content ? 'margin-bottom:6px' : ''}" onclick="window.open(this.src,'_blank')"/>`
-      : '';
-    return `
-    <div class="msg-row ${m.senderRole === 'DOCTOR' ? 'me' : 'them'}">
-      <div>
-        <div class="msg-bubble">${imageHtml}${m.content ? escapeHtml(m.content) : ''}</div>
-        <div class="msg-time">${new Date(m.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div>
-      </div>
-    </div>`;
-  }).join('');
-  if(wasAtBottom || messages.length <= 1) area.scrollTop = area.scrollHeight;
+    if(!messages.length){
+      if(!_renderedDoctorMessageIds.size){
+        area.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:13px;padding:2rem 0">No messages yet.</div>';
+      }
+      return;
+    }
+    if(!_renderedDoctorMessageIds.size) area.innerHTML = '';
+
+    let appended = false;
+    messages.forEach(m => {
+      if(_renderedDoctorMessageIds.has(m.id)) return;
+      area.appendChild(buildDoctorMessageBubble(m));
+      _renderedDoctorMessageIds.add(m.id);
+      appended = true;
+    });
+
+    if((appended && wasAtBottom) || messages.length <= 1) area.scrollTop = area.scrollHeight;
+  }catch(e){ console.error('Failed to load messages', e); }
 }
 
 function escapeHtml(str){
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
+}
+
+function skeletonRows(count){
+  return Array.from({ length: count }, () => `
+    <div class="skel-row">
+      <div class="skel skel-circle" style="width:36px;height:36px"></div>
+      <div style="flex:1">
+        <div class="skel skel-line" style="width:50%"></div>
+        <div class="skel skel-line" style="width:75%;height:9px;margin-bottom:0"></div>
+      </div>
+    </div>`).join('');
+}
+
+function skeletonChatBubbles(){
+  const widths = [
+    { w: '50%', side: 'flex-start' },
+    { w: '35%', side: 'flex-end' },
+    { w: '60%', side: 'flex-start' }
+  ];
+  return `<div style="display:flex;flex-direction:column;gap:10px;padding:1rem">
+    ${widths.map(m => `<div class="skel skel-bubble" style="width:${m.w};align-self:${m.side}"></div>`).join('')}
+  </div>`;
 }
 
 // ============================================================
@@ -580,12 +650,40 @@ async function sendMessage(){
   clearComposerImage();
   const btn = document.getElementById('send-btn');
   btn.disabled = true;
+
+  const area = document.getElementById('chat-area');
+  // Optimistic render — same fix as the patient side: the old code awaited
+  // the POST, then awaited a separate full GET reload before the message
+  // ever appeared. That double round trip was the actual cause of "sending
+  // feels slow." Now it paints instantly and reconciles with the server's
+  // real record once the POST resolves.
+  const tempId = 'temp-' + Date.now();
+  const bubble = buildDoctorMessageBubble(
+    { id: tempId, senderRole: 'DOCTOR', content, imageData, createdAt: new Date().toISOString() },
+    'msg-pending'
+  );
+  area.appendChild(bubble);
+  area.scrollTop = area.scrollHeight;
+
   try{
-    await fetch(`${API_BASE_URL}/api/doctor-portal/conversations/${activeConversationId}/messages`, {
+    const res = await fetch(`${API_BASE_URL}/api/doctor-portal/conversations/${activeConversationId}/messages`, {
       method: 'POST', headers: authHeaders(), body: JSON.stringify({ content, imageData })
     });
-    await loadMessages();
-  }catch(e){ console.error('Failed to send message', e); }
+    if(!res.ok) throw new Error('send_failed');
+    const data = await res.json();
+    bubble.remove();
+    area.appendChild(buildDoctorMessageBubble(data.message));
+    _renderedDoctorMessageIds.add(data.message.id);
+    area.scrollTop = area.scrollHeight;
+  }catch(e){
+    console.error('Failed to send message', e);
+    bubble.querySelector('.msg-bubble')?.classList.add('msg-failed');
+    const retry = document.createElement('div');
+    retry.style.cssText = 'font-size:10px;color:var(--danger);margin-top:2px;cursor:pointer';
+    retry.textContent = '⚠ Failed to send — tap to dismiss';
+    retry.onclick = () => bubble.remove();
+    bubble.appendChild(retry);
+  }
   finally{ btn.disabled = false; }
 }
 
@@ -599,7 +697,13 @@ function toggleProfilePanel(){
 
 async function loadPatientProfile(patientId){
   const body = document.getElementById('profile-body');
-  body.innerHTML = '<div class="pp-empty-note">Loading profile...</div>';
+  body.innerHTML = `<div style="padding:4px 0">
+    <div class="skel skel-line" style="width:60%;height:16px"></div>
+    <div class="skel skel-line" style="width:40%;height:10px"></div>
+    <div class="skel skel-line" style="width:90%;margin-top:14px"></div>
+    <div class="skel skel-line" style="width:75%"></div>
+    <div class="skel skel-line" style="width:85%"></div>
+  </div>`;
   try{
     const res = await fetch(`${API_BASE_URL}/api/doctor-portal/patients/${patientId}`, { headers: authHeaders() });
     const data = await res.json();

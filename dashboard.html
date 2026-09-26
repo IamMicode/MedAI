@@ -755,12 +755,6 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
 .profile-section-title{font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:2px;text-transform:uppercase;margin:1.2rem 0 .8rem}
 .profile-section-title:first-child{margin-top:0}
 .profile-note{margin-top:1rem;border:1px solid var(--border);border-radius:12px;background:rgba(0,0,0,.2);padding:.85rem;font-size:12px;color:var(--muted);line-height:1.6}
-.tour-overlay{position:fixed;inset:0;z-index:8000;background:rgba(0,0,0,.55);backdrop-filter:blur(5px);display:none;align-items:center;justify-content:center;padding:1rem}
-.tour-overlay.open{display:flex}
-.tour-card{max-width:460px;width:100%;border:1px solid var(--border2);border-radius:16px;background:#0a1828;padding:1.5rem;box-shadow:0 30px 90px rgba(0,0,0,.55)}
-.tour-step{font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:2px;text-transform:uppercase;margin-bottom:.5rem}
-.tour-card h3{font-family:var(--head);font-size:20px;margin-bottom:.5rem}
-.tour-card p{font-size:14px;color:var(--muted);line-height:1.7}
 .settings-panel{grid-column:1/-1;padding:1.5rem;display:none}
 .settings-panel.open{display:block}
 .settings-panel-title{font-family:var(--head);font-size:18px;font-weight:800;margin-bottom:.5rem}
@@ -1067,7 +1061,7 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
           <div class="sec-label" style="margin-bottom:.4rem">// Daily Health Tip</div>
           <div id="daily-tip" style="font-size:14px;color:var(--text);line-height:1.6">Loading today's tip...</div>
         </div>
-        <button class="btn btn-outline" onclick="startOnboardingTour()">Show Tour</button>
+        <button class="btn btn-outline" onclick="startTour(true)" title="Replay the interactive dashboard walkthrough">🧭 Replay Tutorial</button>
       </div>
 
       <!-- Stats row -->

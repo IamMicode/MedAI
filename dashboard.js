@@ -923,7 +923,6 @@ Patient Health Profile (use this to personalize responses):
   renderNotifications();
   renderDailyTip();
   loadSettingsControls();
-  maybeShowOnboarding();
   refreshDailyScore();
   syncTherapyCountryFromProfile(u);
 })();
@@ -3334,47 +3333,6 @@ function renderDailyTip(){
   ];
   const el=document.getElementById('daily-tip');
   if(el) el.textContent=tips[new Date().getDate()%tips.length];
-}
-
-const tourSteps=[
-  ['Start with triage','Use Quick Triage when symptoms appear. Results now save into your Symptom History automatically.'],
-  ['Complete your profile','My Profile controls the data used for personalization, emergency contacts, and health score.'],
-  ['Use health tools','Camera heart rate, reminders, water, sleep, calories, BMI, and stress checks all work locally.'],
-  ['Export your data','Settings can export your local health profile, triage history, vitals, and tracker data.']
-];
-let tourIndex=0;
-function maybeShowOnboarding(){
-  if(localStorage.getItem('medai_seen_tour')) return;
-  setTimeout(startOnboardingTour,600);
-}
-function startOnboardingTour(){
-  tourIndex=0;
-  renderTour();
-}
-function renderTour(){
-  let overlay=document.getElementById('tour-overlay');
-  if(!overlay){
-    overlay=document.createElement('div');
-    overlay.id='tour-overlay';
-    overlay.className='tour-overlay';
-    overlay.innerHTML='<div class="tour-card"><div class="tour-step" id="tour-step"></div><h3 id="tour-title"></h3><p id="tour-copy"></p><div style="display:flex;gap:.75rem;justify-content:flex-end;margin-top:1rem"><button class="btn btn-outline" onclick="endTour()">Skip</button><button class="btn btn-primary" onclick="nextTour()">Next</button></div></div>';
-    document.body.appendChild(overlay);
-  }
-  const step=tourSteps[tourIndex];
-  document.getElementById('tour-step').textContent=`Step ${tourIndex+1} of ${tourSteps.length}`;
-  document.getElementById('tour-title').textContent=step[0];
-  document.getElementById('tour-copy').textContent=step[1];
-  overlay.classList.add('open');
-}
-function nextTour(){
-  tourIndex++;
-  if(tourIndex>=tourSteps.length){endTour();return}
-  renderTour();
-}
-function endTour(){
-  localStorage.setItem('medai_seen_tour','1');
-  const overlay=document.getElementById('tour-overlay');
-  if(overlay) overlay.classList.remove('open');
 }
 
 // ============================================================

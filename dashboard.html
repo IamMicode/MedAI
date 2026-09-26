@@ -1115,7 +1115,7 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
         <div class="glass-card feature-card">
           <div class="feature-head"><div class="feature-icon">OCR</div><span class="badge badge-purple">New</span></div>
           <div class="feature-title">Reports & Lab AI</div>
-          <div class="feature-copy">Upload or paste report text, then generate a plain-English explanation preview.</div>
+          <div class="feature-copy">Snap a photo of a lab result or prescription — or paste the text — for a real AI-read plain-English explanation.</div>
           <div class="btn btn-outline" onclick="showTab('reports',null)">Analyze</div>
         </div>
       </div>
@@ -1506,15 +1506,15 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
     <div class="tab-panel" id="tab-reports">
       <div class="sec-label">// Reports</div>
       <h2 class="sec-title">Medical Reports <span class="grad">& Lab AI</span></h2>
-      <p class="sec-sub">OCR upload placeholders and AI explanations are prepared for the frontend. Backend OCR or API integration can come later.</p>
+      <p class="sec-sub">Upload a photo of a lab result, prescription, or report — or paste the text — and get a plain-English explanation.</p>
 
       <div class="grid-2" style="margin-bottom:1.25rem">
         <div class="glass-card" style="padding:1.5rem">
-          <div class="sec-label" style="margin-bottom:.75rem">// OCR Intake</div>
-          <input class="tool-input" id="report-file" type="file" accept="image/*,.pdf" onchange="fakeOcrFileName()"/>
-          <textarea class="tool-textarea" id="report-text" style="margin-top:.75rem" placeholder="Paste prescription, lab result, or report text here..."></textarea>
+          <div class="sec-label" style="margin-bottom:.75rem">// Scan or Paste</div>
+          <input class="tool-input" id="report-file" type="file" accept="image/*" onchange="fakeOcrFileName()"/>
+          <textarea class="tool-textarea" id="report-text" style="margin-top:.75rem" placeholder="Or paste prescription, lab result, or report text here..."></textarea>
           <div style="display:flex;gap:.75rem;flex-wrap:wrap;margin-top:.75rem">
-            <div class="btn btn-primary" onclick="explainLabReport()">Explain Results</div>
+            <div class="btn btn-primary" onclick="explainLabReport()">Scan &amp; Explain</div>
             <div class="btn btn-outline" onclick="fillSampleReport()">Use Sample</div>
           </div>
           <div class="mini-result" id="ocr-status">No file selected yet.</div>
@@ -1522,7 +1522,7 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
 
         <div class="glass-card" style="padding:1.5rem">
           <div class="sec-label" style="margin-bottom:.75rem">// AI Explanation</div>
-          <div class="mini-result" id="lab-explanation" style="min-height:250px">Upload or paste a result, then tap Explain Results. The explanation will summarize normal values, possible concerns, and next questions for a doctor.</div>
+          <div class="mini-result" id="lab-explanation" style="min-height:250px">Upload a photo or paste a result, then tap Scan &amp; Explain. You'll see exactly what was read from it, followed by a plain-English summary of normal values, possible concerns, and questions for a doctor.</div>
         </div>
       </div>
 

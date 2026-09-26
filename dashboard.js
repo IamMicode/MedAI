@@ -2743,10 +2743,21 @@ function renderAchievementsUI(data){
   const statsEl = document.getElementById('achievements-stats');
   if(!container) return;
 
+  // Closest-to-unlocking locked achievement, so there's always a visible
+  // "next goal" instead of just a grid to browse — real progression games
+  // always show you the next rung, not just the ladder.
+  const locked = data.achievements.filter(a => !a.unlocked && a.total > 1);
+  const nextUp = locked.sort((a,b) => (b.progress/b.total) - (a.progress/a.total))[0];
+  const nextUpHtml = nextUp ? `
+    <div class="ach-next-up">
+      <div class="ach-next-up-icon">${nextUp.icon}</div>
+      <div class="ach-next-up-text">Next up: <b>${escapeHtml(nextUp.name)}</b> — ${nextUp.progress}/${nextUp.total} (${Math.round((nextUp.progress/nextUp.total)*100)}%)</div>
+    </div>` : '';
+
   if(statsEl){
     const pct = Math.round((data.stats.unlocked / data.stats.total) * 100);
     statsEl.innerHTML = `
-      <div style="display:flex;gap:24px;align-items:center;flex-wrap:wrap;margin-bottom:24px">
+      <div style="display:flex;gap:24px;align-items:center;flex-wrap:wrap">
         <div style="flex:1;min-width:200px">
           <div style="font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:1px;margin-bottom:6px">PROGRESS</div>
           <div style="font-family:var(--head);font-size:28px;font-weight:800;color:var(--accent)">${data.stats.unlocked}<span style="font-size:16px;color:var(--muted)">/${data.stats.total}</span></div>
@@ -2760,7 +2771,8 @@ function renderAchievementsUI(data){
           <div style="text-align:center"><div style="font-family:var(--head);font-size:20px;font-weight:700;color:var(--accent)">${data.stats.accountAgeDays}</div><div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px">DAYS</div></div>
           <div style="text-align:center"><div style="font-family:var(--head);font-size:20px;font-weight:700;color:var(--purple)">${data.stats.totalAIMessages}</div><div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px">AI MSGS</div></div>
         </div>
-      </div>`;
+      </div>
+      ${nextUpHtml}`;
   }
 
   // sort: unlocked first, then by progress
@@ -2784,7 +2796,12 @@ function renderAchievementsUI(data){
         <div style="height:100%;width:${pct}%;background:var(--accent);border-radius:99px;transition:width 1s ease"></div>
       </div>` : '';
 
-    return `<div class="glass-card ach-card" style="opacity:${ach.unlocked?'1':'0.65'};transition:all .2s" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='${ach.unlocked?'1':'0.65'}'">
+    // Cards the user hasn't seen in-tab yet since unlocking get the NEW
+    // ribbon. Read (not cleared) here — cleared once below, after the whole
+    // grid has actually been painted.
+    const isNew = ach.unlocked && _pendingNewAchievementIds.has(ach.id);
+
+    return `<div class="glass-card ach-card${isNew ? ' ach-is-new' : ''}" style="opacity:${ach.unlocked?'1':'0.65'};transition:all .2s" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='${ach.unlocked?'1':'0.65'}'">
       <div class="ach-icon ${ach.unlocked?'unlocked':'locked'}" style="background:${ach.color};border:1px solid ${ach.border}">${ach.icon}</div>
       <div>
         <div class="ach-name">${ach.name}</div>
@@ -2794,12 +2811,199 @@ function renderAchievementsUI(data){
       </div>
     </div>`;
   }).join('');
+
+  // The grid has now actually shown the NEW ribbons — the reward has been
+  // seen, so it stops being "new" until the next fresh unlock adds to the set.
+  _pendingNewAchievementIds.clear();
 }
 
 function renderAchievementsLocal(){
   // fallback — just show locked state for all
   const container = document.getElementById('achievements-grid');
   if(container) container.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--muted);font-size:14px">Could not load achievements. Please check your connection and try again.</div>';
+}
+
+// ============================================================
+// ACHIEVEMENT UNLOCK CELEBRATIONS
+// ============================================================
+// Achievements used to update silently — a badge only flipped from locked
+// to unlocked whenever the user happened to reopen the tab, with zero
+// feedback at the actual moment it was earned. This runs a lightweight
+// background poll (same pattern as the 20s notification poll below) so an
+// unlock gets celebrated the instant it happens, wherever the user
+// currently is in the dashboard — not buried in a tab they have to
+// remember to check.
+
+function achievementsSeenKey(){
+  const u = getCurrentUser();
+  return `medai_achievements_seen_${u.username || u.email || 'guest'}`;
+}
+
+function getSeenAchievementIds(){
+  try { return new Set(JSON.parse(localStorage.getItem(achievementsSeenKey()) || '[]')); }
+  catch(e){ return new Set(); }
+}
+
+function saveSeenAchievementIds(set){
+  localStorage.setItem(achievementsSeenKey(), JSON.stringify([...set]));
+}
+
+// Ids celebrated this session but not yet reviewed in the Achievements tab —
+// drives the NEW ribbon until the user actually looks at the tab.
+let _pendingNewAchievementIds = new Set();
+
+async function checkForNewAchievements(){
+  const token = localStorage.getItem('medai_token');
+  if(!token) return;
+  try{
+    const res = await fetch(API_BASE_URL + '/api/achievements', {
+      headers: { Authorization: 'Bearer ' + token }
+    });
+    if(!res.ok) return;
+    const data = await res.json();
+    _achievementsCache = data;
+
+    const seenKeyRaw = localStorage.getItem(achievementsSeenKey());
+    const seen = getSeenAchievementIds();
+    const unlockedNow = data.achievements.filter(a => a.unlocked);
+
+    // First time this ever runs for this user: baseline whatever they've
+    // already earned, silently. Otherwise every pre-existing achievement
+    // would fire a toast the moment this feature ships — a wall of
+    // confetti for things they actually earned days or weeks ago.
+    if(seenKeyRaw === null){
+      unlockedNow.forEach(a => seen.add(a.id));
+      saveSeenAchievementIds(seen);
+      return;
+    }
+
+    const freshlyUnlocked = unlockedNow.filter(a => !seen.has(a.id));
+    if(freshlyUnlocked.length){
+      freshlyUnlocked.forEach(a => {
+        seen.add(a.id);
+        _pendingNewAchievementIds.add(a.id);
+        queueAchievementToast(a);
+      });
+      saveSeenAchievementIds(seen);
+
+      // If the Achievements tab happens to already be open, refresh it now
+      // so the unlocked state and NEW ribbon show up live instead of
+      // waiting for the next tab switch.
+      if(document.getElementById('tab-achievements')?.classList.contains('active')){
+        renderAchievementsUI(data);
+      }
+    }
+  }catch(e){ /* silent — background nicety, not a critical path */ }
+}
+
+setInterval(checkForNewAchievements, 30000);
+checkForNewAchievements();
+
+let _achToastQueue = [];
+let _achToastShowing = false;
+
+function queueAchievementToast(ach){
+  _achToastQueue.push(ach);
+  if(!_achToastShowing) showNextAchievementToast();
+}
+
+function showNextAchievementToast(){
+  if(!_achToastQueue.length){ _achToastShowing = false; return; }
+  _achToastShowing = true;
+  const ach = _achToastQueue.shift();
+
+  let stack = document.getElementById('ach-toast-stack');
+  if(!stack){
+    stack = document.createElement('div');
+    stack.id = 'ach-toast-stack';
+    stack.className = 'ach-toast-stack';
+    document.body.appendChild(stack);
+  }
+
+  const toastId = 'ach-toast-' + ach.id + '-' + Date.now();
+  const el = document.createElement('div');
+  el.className = 'ach-toast';
+  el.id = toastId;
+  el.innerHTML = `
+    <div class="ach-toast-icon" style="background:${ach.color};border:1px solid ${ach.border}">${ach.icon}</div>
+    <div style="flex:1;min-width:0">
+      <div class="ach-toast-label">🏆 Achievement Unlocked</div>
+      <div class="ach-toast-name">${escapeHtml(ach.name)}</div>
+      <div class="ach-toast-desc">${escapeHtml(ach.desc)}</div>
+    </div>
+    <button class="ach-toast-close" onclick="dismissAchievementToast('${toastId}')">×</button>
+    <div class="ach-toast-bar"></div>
+  `;
+  stack.appendChild(el);
+  fireAchievementConfetti();
+
+  const timer = setTimeout(() => dismissAchievementToast(toastId), 5000);
+  el.dataset.timer = timer;
+}
+
+function dismissAchievementToast(id){
+  const el = document.getElementById(id);
+  if(!el){ showNextAchievementToast(); return; }
+  clearTimeout(Number(el.dataset.timer));
+  el.classList.add('ach-toast-out');
+  setTimeout(() => {
+    el.remove();
+    showNextAchievementToast();
+  }, 320);
+}
+
+function fireAchievementConfetti(){
+  const canvas = document.createElement('canvas');
+  canvas.style.cssText = 'position:fixed;inset:0;z-index:399;pointer-events:none';
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  document.body.appendChild(canvas);
+  const ctx = canvas.getContext('2d');
+
+  const colors = ['#ffd700', '#00d4ff', '#00ff88', '#ff4d6d', '#a855f7'];
+  const originX = canvas.width - 160;
+  const originY = 100;
+  const pieces = Array.from({ length: 60 }, () => ({
+    x: originX, y: originY,
+    vx: (Math.random() - 0.5) * 10,
+    vy: Math.random() * -8 - 2,
+    size: Math.random() * 6 + 3,
+    color: colors[Math.floor(Math.random() * colors.length)],
+    rot: Math.random() * Math.PI * 2,
+    vr: (Math.random() - 0.5) * 0.3,
+    life: 1
+  }));
+
+  let frame = 0;
+  function tick(){
+    frame++;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    let alive = false;
+    pieces.forEach(p => {
+      if(p.life <= 0) return;
+      p.vy += 0.25; // gravity
+      p.x += p.vx;
+      p.y += p.vy;
+      p.rot += p.vr;
+      p.life -= 0.012;
+      if(p.life > 0){
+        alive = true;
+        ctx.save();
+        ctx.globalAlpha = Math.max(p.life, 0);
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+        ctx.restore();
+      }
+    });
+    if(alive && frame < 200){
+      requestAnimationFrame(tick);
+    } else {
+      canvas.remove();
+    }
+  }
+  requestAnimationFrame(tick);
 }
 
 function saveLanguage(){

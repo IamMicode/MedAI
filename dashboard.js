@@ -1273,90 +1273,101 @@ function refreshDailyScore(){
   if(profileScoreEl) profileScoreEl.textContent = `${calculated}/100`;
 }
 
+let _pendingReportImage = null; // { dataUri, name } — set once a file is chosen, cleared after analysis or removal
+
 function fakeOcrFileName(){
   const input=document.getElementById('report-file');
   const status=document.getElementById('ocr-status');
-  if(status) status.textContent=input?.files?.[0] ? `Selected: ${input.files[0].name}. OCR extraction will connect here later.` : 'No file selected yet.';
+  const file = input?.files?.[0];
+  if(!file){
+    _pendingReportImage = null;
+    if(status) status.textContent = 'No file selected yet.';
+    return;
+  }
+  if(!file.type.startsWith('image/')){
+    _pendingReportImage = null;
+    if(status) status.innerHTML = '<span style="color:var(--danger)">PDF isn\'t supported for scanning yet — please upload a photo/screenshot instead.</span>';
+    input.value = '';
+    return;
+  }
+  if(file.size > 5 * 1024 * 1024){
+    _pendingReportImage = null;
+    if(status) status.innerHTML = '<span style="color:var(--danger)">Image is too large — please use one under 5MB.</span>';
+    input.value = '';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    _pendingReportImage = { dataUri: reader.result, name: file.name };
+    if(status) status.textContent = `Selected: ${file.name} — ready to scan.`;
+  };
+  reader.onerror = () => {
+    _pendingReportImage = null;
+    if(status) status.innerHTML = '<span style="color:var(--danger)">Could not read that file. Please try again.</span>';
+  };
+  reader.readAsDataURL(file);
 }
 
 function fillSampleReport(){
   const text=document.getElementById('report-text');
   if(text) text.value='Hemoglobin: 13.8 g/dL\nWBC: 6.4 x10^9/L\nFasting blood glucose: 112 mg/dL\nLDL cholesterol: 142 mg/dL\nVitamin D: 18 ng/mL';
+  clearReportImage();
   const status=document.getElementById('ocr-status');
   if(status) status.textContent='Sample lab values loaded.';
 }
 
-function explainLabReport(){
-  const text=document.getElementById('report-text')?.value.trim();
-  const out=document.getElementById('lab-explanation');
-  if(!out) return;
-  if(!text){out.textContent='Paste report text or use the sample first.';return}
-  const findings = analyzeLabReportText(text);
-  if(!findings.length){
-    out.innerHTML = `<strong style="color:var(--accent)">Plain-English summary</strong><br><br>
-    I captured the report text, but I could not confidently detect common numeric labs yet. Check the lab reference ranges printed beside each result and ask a clinician to interpret anything marked high, low, or abnormal.<br><br>
-    <span class="history-meta">Frontend parser: paste clearer text like "LDL 142 mg/dL" or "Vitamin D: 18 ng/mL" for a more specific summary.</span>`;
-    return;
-  }
-  out.innerHTML = `<strong style="color:var(--accent)">Plain-English summary</strong><br><br>` +
-    findings.map(f=>`<div class="privacy-row"><div><strong>${escapeHtml(f.name)}: ${escapeHtml(f.value)} ${escapeHtml(f.unit)}</strong><br><span>${escapeHtml(f.note)}</span></div><span class="badge ${f.badge}">${escapeHtml(f.status)}</span></div>`).join('') +
-    `<br><span class="history-meta">Use this as a reading aid only. Lab interpretation depends on age, symptoms, medications, and the lab's own reference range.</span>`;
+function clearReportImage(){
+  _pendingReportImage = null;
+  const input = document.getElementById('report-file');
+  if(input) input.value = '';
 }
 
-function analyzeLabReportText(text){
-  const checks = [
-    {
-      name: 'Hemoglobin',
-      unit: 'g/dL',
-      rx: /hemoglobin\D{0,20}(\d+(?:\.\d+)?)/i,
-      read: v => v < 12 ? ['Low','Ask about anemia, bleeding, iron/B12, or chronic illness.','badge-warn']
-             : v > 17.5 ? ['High','May need clinical review, especially with dehydration or breathing conditions.','badge-warn']
-             : ['Normal','Within a common adult reference range.','badge-green']
-    },
-    {
-      name: 'WBC',
-      unit: 'x10^9/L',
-      rx: /\b(?:wbc|white blood cells?)\D{0,20}(\d+(?:\.\d+)?)/i,
-      read: v => v < 4 ? ['Low','Can occur with some infections, medicines, or bone marrow issues.','badge-warn']
-             : v > 11 ? ['High','Can rise with infection, inflammation, stress, or steroid use.','badge-warn']
-             : ['Normal','Within a common adult reference range.','badge-green']
-    },
-    {
-      name: 'Fasting glucose',
-      unit: 'mg/dL',
-      rx: /(?:fasting blood glucose|fasting glucose|glucose)\D{0,20}(\d+(?:\.\d+)?)/i,
-      read: v => v >= 126 ? ['High','Diabetes-range if fasting and confirmed on repeat testing.','badge-danger']
-             : v >= 100 ? ['Borderline','Prediabetes-range if fasting; discuss trend and lifestyle follow-up.','badge-warn']
-             : v < 70 ? ['Low','Low glucose can cause sweating, shaking, confusion, or fainting.','badge-danger']
-             : ['Normal','Within a common fasting range.','badge-green']
-    },
-    {
-      name: 'LDL cholesterol',
-      unit: 'mg/dL',
-      rx: /\bldl\D{0,20}(\d+(?:\.\d+)?)/i,
-      read: v => v >= 190 ? ['Very high','Usually needs prompt clinician review for cardiovascular risk.','badge-danger']
-             : v >= 130 ? ['High','Above common targets; ask about heart-risk reduction.','badge-warn']
-             : v >= 100 ? ['Borderline','May be acceptable or high depending on your risk profile.','badge-warn']
-             : ['Good','Often considered near optimal for many adults.','badge-green']
-    },
-    {
-      name: 'Vitamin D',
-      unit: 'ng/mL',
-      rx: /vitamin\s*d\D{0,20}(\d+(?:\.\d+)?)/i,
-      read: v => v < 20 ? ['Low','Commonly treated with supplementation after clinician guidance.','badge-warn']
-             : v < 30 ? ['Insufficient','May need diet, sunlight, or supplement follow-up.','badge-warn']
-             : ['Adequate','Within a commonly accepted adequate range.','badge-green']
-    }
-  ];
+async function explainLabReport(){
+  const textInput = document.getElementById('report-text');
+  const text = textInput?.value.trim();
+  const out = document.getElementById('lab-explanation');
+  const status = document.getElementById('ocr-status');
+  if(!out) return;
 
-  return checks.map(check => {
-    const match = text.match(check.rx);
-    if(!match) return null;
-    const value = Number(match[1]);
-    if(!Number.isFinite(value)) return null;
-    const [status, note, badge] = check.read(value);
-    return {name: check.name, value: String(value), unit: check.unit, status, note, badge};
-  }).filter(Boolean);
+  if(!text && !_pendingReportImage){
+    out.textContent = 'Paste report text, upload a photo, or use the sample first.';
+    return;
+  }
+
+  out.innerHTML = skeletonRows(3);
+  if(status) status.textContent = _pendingReportImage ? 'Reading the image and analyzing...' : 'Analyzing...';
+
+  try{
+    const token = localStorage.getItem('medai_token');
+    const res = await fetch(`${API_BASE_URL}/api/ai/analyze-report`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(_pendingReportImage
+        ? { imageData: _pendingReportImage.dataUri }
+        : { text })
+    });
+
+    if(!res.ok){
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || 'Could not analyze that report.');
+    }
+
+    const data = await res.json();
+
+    out.innerHTML = `
+      ${data.extractedText ? `<div style="margin-bottom:1rem;padding-bottom:1rem;border-bottom:1px solid var(--border)">
+        <strong style="color:var(--muted);font-family:var(--mono);font-size:10px;letter-spacing:1px">// WHAT WE READ</strong>
+        <div style="white-space:pre-wrap;font-size:12.5px;color:var(--muted);margin-top:6px;line-height:1.6">${escapeHtml(data.extractedText)}</div>
+      </div>` : ''}
+      <strong style="color:var(--accent)">Plain-English summary</strong><br><br>
+      <div style="white-space:pre-wrap;line-height:1.7">${escapeHtml(data.explanation)}</div>
+      <br><span class="history-meta">This is a reading aid, not a diagnosis — always confirm with a clinician, especially anything flagged as high, low, or urgent.</span>`;
+
+    if(status) status.textContent = _pendingReportImage ? `Scanned: ${_pendingReportImage.name}` : 'Analysis complete.';
+  }catch(e){
+    out.innerHTML = `<span style="color:var(--danger)">${escapeHtml(e.message || 'Could not analyze that report. Please try again.')}</span>`;
+    if(status) status.textContent = 'Something went wrong — please try again.';
+  }
 }
 
 async function bookAppointment(){

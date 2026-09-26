@@ -65,7 +65,10 @@ router.post('/initialize', requireAuth, async (req, res, next) => {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        pricing: { currency: pricing.currency, amount: String(amount) },
+        // Bachs requires money as a decimal string at the currency's precision
+        // (e.g. "3500.00", never a bare integer or minor units) — see
+        // https://docs.bachs.io/guides/checkout/checkout-sessions
+        pricing: { currency: pricing.currency, amount: amount.toFixed(2) },
         customer: {
           email: user.email,
           name: `${user.firstname || ''} ${user.lastname || ''}`.trim() || user.username
@@ -87,16 +90,15 @@ router.post('/initialize', requireAuth, async (req, res, next) => {
     const bachsData = await bachsRes.json();
 
     if (process.env.NODE_ENV !== 'production') {
-      // Dev-only visibility into Bachs' response shape. Never log secret keys or card data.
+      // Dev-only visibility into Bachs' real response shape (per docs.bachs.io):
+      // checkout_id, checkout_url, status ("open"), expires_at, created_at — nothing
+      // else. There is no charge_status/redirect_url on this endpoint; completion
+      // only ever arrives later via the collection.succeeded webhook.
       console.log('[Bachs] checkout-session response:', {
         checkout_id: bachsData.checkout_id,
-        charge_status: bachsData.charge_status,
-        attempt_status: bachsData.attempt_status,
-        checkout_status: bachsData.checkout_status,
-        failure_message: bachsData.failure_message,
-        amount_paid: bachsData.amount_paid,
-        amount_remaining: bachsData.amount_remaining,
-        redirect_url: bachsData.redirect_url
+        checkout_url: bachsData.checkout_url,
+        status: bachsData.status,
+        expires_at: bachsData.expires_at
       });
     }
 
@@ -105,35 +107,20 @@ router.post('/initialize', requireAuth, async (req, res, next) => {
       data: { checkoutId: bachsData.checkout_id || null }
     });
 
-    // Bachs' checkout-session response reports state via charge_status/checkout_status,
-    // NOT via HTTP status — a 200 here does not mean the payment succeeded, and a
-    // missing redirect_url does not mean it failed. Only charge_status === 'failed'
-    // is a real failure; 'processing' + checkout_status 'open' is a normal pending
-    // state (the session exists but hasn't been redirected to / completed yet).
-    if (bachsData.charge_status === 'failed') {
+    if (!bachsData.checkout_url) {
+      // Bachs returned 2xx but no URL to send the customer to — treat this as a
+      // real failure rather than silently handing the frontend a dead end.
       await prisma.payment.update({ where: { txRef }, data: { status: 'FAILED' } });
-      return res.status(200).json({
-        status: 'FAILED',
-        message: bachsData.failure_message || 'Payment failed.',
-        txRef
-      });
+      console.error('Bachs checkout-session response had no checkout_url:', bachsData);
+      return res.status(502).json({ message: 'Payment provider did not return a checkout link. Please try again.' });
     }
 
-    if (bachsData.charge_status === 'succeeded') {
-      // Rare at initialize time, but handle it rather than assume it can't happen —
-      // the webhook remains the authoritative source of truth for actually granting Premium.
-      return res.json({
-        status: 'SUCCESSFUL',
-        redirectUrl: bachsData.redirect_url || null,
-        txRef
-      });
-    }
-
-    // charge_status is 'processing' (or similar in-flight state) and checkout_status is
-    // 'open' — this is pending, not a failure, whether or not redirect_url is populated yet.
+    // A freshly created checkout session is always just "open" — Bachs has no
+    // instant success/failure state at creation time. The webhook is the only
+    // source of truth for the actual payment outcome (see /webhook below).
     return res.json({
       status: 'PENDING',
-      redirectUrl: bachsData.redirect_url || null,
+      redirectUrl: bachsData.checkout_url,
       txRef
     });
   } catch (error) {
@@ -156,21 +143,63 @@ router.get('/status/:txRef', requireAuth, async (req, res, next) => {
 });
 
 // POST /api/payments/webhook — Bachs calls this automatically on payment events.
-// Verified via HMAC-SHA256 over the raw request body (see index.js for how rawBody is captured).
+//
+// Verification implements Bachs' REAL signing scheme (docs.bachs.io/guides/webhooks/overview):
+// the signature is HMAC-SHA256 of "{timestamp}.{raw_body}", NOT of the raw body alone.
+// Prefers the newer X-Bachs-Signature-V2 header (format: "t=<ts>,v1=<sig>[,v1=<sig>...]",
+// carrying one v1= per currently-valid secret during a rotation — any match is accepted),
+// falling back to the legacy X-Bachs-Timestamp + X-Bachs-Signature pair for older setups.
+// A 5-minute tolerance window on the timestamp guards against replay of a captured payload.
 router.post('/webhook', async (req, res, next) => {
   try {
-    const signature = req.headers['x-bachs-signature'];
     const secret = process.env.BACHS_WEBHOOK_SECRET;
-
-    if (!secret || !signature || !req.rawBody) {
+    if (!secret || !req.rawBody) {
       return res.status(401).json({ message: 'Invalid webhook signature.' });
     }
 
-    const expected = crypto.createHmac('sha256', secret).update(req.rawBody).digest('hex');
-    const signatureBuf = Buffer.from(signature);
+    let timestamp = null;
+    let candidateSignatures = [];
+
+    const v2Header = req.headers['x-bachs-signature-v2'];
+    if (v2Header) {
+      const parts = Object.fromEntries(
+        v2Header.split(',').filter(p => p.includes('=')).map(p => {
+          const idx = p.indexOf('=');
+          return [p.slice(0, idx), p.slice(idx + 1)];
+        })
+      );
+      timestamp = parts.t ? parseInt(parts.t, 10) : null;
+      candidateSignatures = v2Header.split(',')
+        .filter(p => p.startsWith('v1='))
+        .map(p => p.slice(3));
+    } else {
+      const legacySig = req.headers['x-bachs-signature'];
+      const legacyTs = req.headers['x-bachs-timestamp'];
+      if (legacySig && legacyTs) {
+        timestamp = parseInt(legacyTs, 10);
+        candidateSignatures = [legacySig];
+      }
+    }
+
+    if (!timestamp || !candidateSignatures.length) {
+      return res.status(401).json({ message: 'Invalid webhook signature.' });
+    }
+
+    // Reject stale/replayed deliveries — 5 minutes, matching Bachs' own reference implementation.
+    if (Math.abs(Date.now() / 1000 - timestamp) > 300) {
+      return res.status(401).json({ message: 'Invalid webhook signature.' });
+    }
+
+    const expected = crypto.createHmac('sha256', secret)
+      .update(`${timestamp}.`)
+      .update(req.rawBody)
+      .digest('hex');
     const expectedBuf = Buffer.from(expected);
-    const isValidSignature = signatureBuf.length === expectedBuf.length
-      && crypto.timingSafeEqual(signatureBuf, expectedBuf);
+
+    const isValidSignature = candidateSignatures.some(sig => {
+      const sigBuf = Buffer.from(sig);
+      return sigBuf.length === expectedBuf.length && crypto.timingSafeEqual(sigBuf, expectedBuf);
+    });
 
     if (!isValidSignature) {
       return res.status(401).json({ message: 'Invalid webhook signature.' });
@@ -180,11 +209,24 @@ router.post('/webhook', async (req, res, next) => {
     res.status(200).json({ received: true });
 
     const event = req.body;
+    const data = event?.data || {};
+
+    if (event?.type === 'collection.failed') {
+      const txRef = event.metadata?.txRef || data.metadata?.txRef || null;
+      const payment = txRef
+        ? await prisma.payment.findUnique({ where: { txRef } })
+        : (data.checkout_id ? await prisma.payment.findFirst({ where: { checkoutId: data.checkout_id } }) : null);
+      if (payment && payment.status !== 'SUCCESSFUL') {
+        await prisma.payment.update({ where: { id: payment.id }, data: { status: 'FAILED', providerRef: data.charge_id || null } });
+      }
+      return;
+    }
+
     if (event?.type !== 'collection.succeeded') return;
 
-    const data = event.data || {};
-    // Bachs is a very new provider — try every plausible location for our own reference
-    // before falling back to the checkout_id we stored ourselves at initialize time.
+    // Bachs is a fairly new provider — try every plausible location for our own
+    // reference before falling back to the checkout_id we stored ourselves at
+    // initialize time (checkout_id is the one field guaranteed present per docs).
     const txRef = event.metadata?.txRef || data.metadata?.txRef || data.reference || null;
 
     let payment = txRef
@@ -199,9 +241,11 @@ router.post('/webhook', async (req, res, next) => {
       console.error('Bachs webhook: could not match any payment for event', event.id);
       return;
     }
-    if (payment.status === 'SUCCESSFUL') return; // already processed
+    if (payment.status === 'SUCCESSFUL') return; // already processed (at-least-once delivery)
 
-    const isValid = data.status === 'succeeded'
+    // Bachs sends status in caps ("SUCCEEDED") per docs.bachs.io — compare
+    // case-insensitively rather than assuming a casing that isn't guaranteed.
+    const isValid = String(data.status).toUpperCase() === 'SUCCEEDED'
       && data.currency === payment.currency
       && parseFloat(data.amount) >= payment.amount;
 

@@ -26,6 +26,15 @@ const { passport, configurePassport } = require('./passport');
 const app = express();
 const port = process.env.PORT || 5000;
 
+// Render (and most cloud hosts) sit behind a reverse proxy, which sets
+// X-Forwarded-For on every request. Without this, Express's req.ip is just
+// the proxy's own IP for every user, and express-rate-limit refuses to trust
+// that header at all — throwing ERR_ERL_UNEXPECTED_X_FORWARDED_FOR instead of
+// rate-limiting correctly. `1` means "trust exactly one hop" (Render's edge
+// proxy), which is correct here and avoids the security risk of trusting an
+// attacker-spoofable X-Forwarded-For chain of arbitrary length.
+app.set('trust proxy', 1);
+
 configurePassport();
 
 app.use(helmet());

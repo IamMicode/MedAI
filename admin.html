@@ -131,6 +131,12 @@ body::after{content:'';position:fixed;top:-200px;right:-100px;width:600px;height
 .a-btn-primary{background:rgba(255,80,0,0.1);border-color:rgba(255,80,0,0.3);color:var(--accent)}
 .a-btn-primary:hover{background:rgba(255,80,0,0.2)}
 .a-btn-danger{background:rgba(255,77,109,0.08);border-color:rgba(255,77,109,0.25);color:var(--danger)}
+
+.a-pagination{display:flex;align-items:center;justify-content:center;gap:.75rem;padding:1rem 0}
+.a-pagination button{font-family:var(--mono);font-size:10px;letter-spacing:1px;padding:7px 14px;border-radius:8px;border:1px solid var(--border2);background:rgba(255,80,0,0.04);color:var(--text);cursor:pointer;transition:all .2s}
+.a-pagination button:hover:not(:disabled){background:rgba(255,80,0,0.14);border-color:var(--accent)}
+.a-pagination button:disabled{opacity:.35;cursor:not-allowed}
+.a-pagination span{font-family:var(--mono);font-size:11px;color:var(--muted)}
 .a-btn-danger:hover{background:rgba(255,77,109,0.18)}
 .progress-bar{height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden;margin-top:6px}
 .progress-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--accent),var(--accent2))}
@@ -326,6 +332,7 @@ body::after{content:'';position:fixed;top:-200px;right:-100px;width:600px;height
             <tbody id="all-users-table"></tbody>
           </table>
         </div>
+        <div class="a-pagination" id="users-pagination"></div>
       </div>
 
       <!-- ========== DOCTOR APPLICATIONS ========== -->
@@ -385,6 +392,7 @@ body::after{content:'';position:fixed;top:-200px;right:-100px;width:600px;height
             <tbody id="triage-logs-table"></tbody>
           </table>
         </div>
+        <div class="a-pagination" id="triage-pagination"></div>
       </div>
 
       <!-- ========== EMERGENCY ALERTS ========== -->
@@ -511,11 +519,14 @@ const API_BASE_URL = localStorage.getItem('medai_api_base_url')
 
 let _cachedUsers = null;
 
+// Used by Overview stats, Health Profiles, Emergency Alerts, and the
+// user-detail modal — these need the COMPLETE dataset to compute their own
+// aggregates, so this explicitly requests all=true rather than one page.
 async function fetchBackendUsers(){
   const token = localStorage.getItem('medai_token');
   if(!token) return null;
   try{
-    const res = await fetch(API_BASE_URL + '/api/admin/users', {
+    const res = await fetch(API_BASE_URL + '/api/admin/users?all=true', {
       headers: { 'Authorization': 'Bearer ' + token }
     });
     if(res.ok){
@@ -538,7 +549,7 @@ async function fetchBackendTriage(){
   const token = localStorage.getItem('medai_token');
   if(!token) return null;
   try{
-    const res = await fetch(API_BASE_URL + '/api/admin/triage', {
+    const res = await fetch(API_BASE_URL + '/api/admin/triage?all=true', {
       headers: { 'Authorization': 'Bearer ' + token }
     });
     if(res.ok){
@@ -619,9 +630,9 @@ function showAdminTab(id, el){
   const titleEl = document.getElementById('admin-topbar-title');
   if(titleEl) titleEl.textContent = adminTabTitles[id] || id;
   // Load data for that tab
-  if(id === 'users')            renderUsersTable(getAllUsers());
+  if(id === 'users')            loadUsersPage(1);
   if(id === 'health-profiles')  renderHealthProfiles();
-  if(id === 'triage-logs')      renderTriageLogs(getAllTriage());
+  if(id === 'triage-logs')      loadTriagePage(1);
   if(id === 'analytics')        renderAnalytics();
   if(id === 'alerts')           renderEmergencyAlerts();
   if(id === 'doctors')          renderDoctorApplications();
@@ -631,9 +642,12 @@ function showAdminTab(id, el){
 // INIT
 // ============================================================
 async function initAdmin(){
+  // Users/Triage tables load their own first page lazily when their tab is
+  // opened (loadUsersPage/loadTriagePage above) rather than blocking initial
+  // load on a full-dataset fetch. Overview still needs the aggregate data,
+  // so that one fetch (all=true) happens up front.
   await Promise.all([fetchBackendUsers(), fetchBackendTriage()]);
   renderOverview();
-  renderUsersTable(getAllUsers());
   // preload pending doctor count for sidebar badge without switching tabs
   preloadDoctorBadge();
 }
@@ -740,11 +754,45 @@ function renderOverview(){
 // USERS TABLE
 // ============================================================
 let allUsersCache = [];
-function renderUsersTable(users){
-  allUsersCache = users;
+// ============================================================
+// USERS TABLE — real server-side pagination + search (not the
+// fetch-everything-then-filter-in-memory pattern used elsewhere)
+// ============================================================
+let _usersPageState = { page: 1, pageSize: 25, totalPages: 1, total: 0 };
+let _usersSearchDebounce = null;
+
+async function loadUsersPage(page = 1){
+  const token = localStorage.getItem('medai_token');
+  const search = document.getElementById('user-search')?.value.trim() || '';
+  const plan = document.getElementById('user-filter')?.value || 'all';
+  const el = document.getElementById('all-users-table');
+  if(el) el.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:2rem;font-family:var(--mono);font-size:11px">Loading...</td></tr>';
+
+  if(!token){ renderUsersTable([]); return; }
+
+  const params = new URLSearchParams({ page, pageSize: _usersPageState.pageSize });
+  if(search) params.set('search', search);
+  if(plan !== 'all') params.set('plan', plan);
+
+  try{
+    const res = await fetch(`${API_BASE_URL}/api/admin/users?${params}`, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if(!res.ok){ renderUsersTable([]); return; }
+    const data = await res.json();
+    _usersPageState = { page: data.page, pageSize: data.pageSize, totalPages: data.totalPages, total: data.total };
+    renderUsersTable(data.users, data.total);
+    renderPaginationControls('users-pagination', _usersPageState, loadUsersPage);
+  }catch(e){
+    renderUsersTable([]);
+  }
+}
+
+function renderUsersTable(users, total){
   const el = document.getElementById('all-users-table');
   const countEl = document.getElementById('user-count-label');
-  if(countEl) countEl.textContent = users.length + ' user' + (users.length!==1?'s':'') + ' found';
+  const shown = total !== undefined ? total : users.length;
+  if(countEl) countEl.textContent = shown + ' user' + (shown!==1?'s':'') + ' found';
   if(!el) return;
   el.innerHTML = users.length ? users.map(u => `<tr>
     <td><div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-weight:700;color:#000">${(u.firstname||u.username||'?')[0].toUpperCase()}</div></td>
@@ -754,34 +802,54 @@ function renderUsersTable(users){
     <td>${u.country||'—'}</td>
     <td>${planBadge(u.plan)}</td>
     <td style="font-family:var(--mono);font-size:12px;color:var(--accent)">${u.triageSessions||0}</td>
-    <td style="font-family:var(--mono);font-size:10px;color:var(--muted)">${u.joinDate ? new Date(u.joinDate).toLocaleDateString('en-GB') : '—'}</td>
+    <td style="font-family:var(--mono);font-size:10px;color:var(--muted)">${u.joinDate ? new Date(u.joinDate).toLocaleDateString('en-GB') : (u.createdAt ? new Date(u.createdAt).toLocaleDateString('en-GB') : '—')}</td>
     <td style="display:flex;gap:6px">
       <button class="a-btn a-btn-primary" style="padding:4px 10px;font-size:9px" onclick="showUserModal('${u.username}')">View</button>
-      <button class="a-btn a-btn-danger"  style="padding:4px 10px;font-size:9px" onclick="deleteUser('${u.username}')">Del</button>
+      <button class="a-btn a-btn-danger"  style="padding:4px 10px;font-size:9px" onclick="deleteUser('${u.id}','${u.username}')">Del</button>
     </td>
   </tr>`).join('') : '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:2rem;font-family:var(--mono);font-size:11px">No users found</td></tr>';
 }
 
 function filterUsers(){
-  const q      = (document.getElementById('user-search')?.value || '').toLowerCase();
-  const plan   = document.getElementById('user-filter')?.value || 'all';
-  const users  = getAllUsers();
-  const filtered = users.filter(u => {
-    const match = !q || (u.username||'').toLowerCase().includes(q) || (u.email||'').toLowerCase().includes(q) || ((u.firstname||'')+' '+(u.lastname||'')).toLowerCase().includes(q);
-    const planMatch = plan === 'all' || u.plan === plan;
-    return match && planMatch;
-  });
-  renderUsersTable(filtered);
+  clearTimeout(_usersSearchDebounce);
+  // Debounced so we're not firing a server request on every keystroke —
+  // still genuinely searching the full dataset server-side, just not
+  // re-querying mid-word.
+  _usersSearchDebounce = setTimeout(() => loadUsersPage(1), 350);
 }
 
-function deleteUser(username){
-  if(!confirm(`Delete user @${username}? This removes their account and all data.`)) return;
-  const users = getAllUsers().filter(u => u.username !== username);
-  localStorage.setItem('medai_users', JSON.stringify(users));
-  localStorage.removeItem('medai_triage_' + username);
-  renderUsersTable(getAllUsers());
-  renderOverview();
-  alert('User deleted.');
+// Generic Prev/Next + page-indicator control, shared by Users and Triage.
+function renderPaginationControls(containerId, state, loadFn){
+  const el = document.getElementById(containerId);
+  if(!el) return;
+  if(state.totalPages <= 1){ el.innerHTML = ''; return; }
+  el.innerHTML = `
+    <button ${state.page <= 1 ? 'disabled' : ''} onclick="${loadFn.name}(${state.page - 1})">← Prev</button>
+    <span>Page ${state.page} of ${state.totalPages} (${state.total} total)</span>
+    <button ${state.page >= state.totalPages ? 'disabled' : ''} onclick="${loadFn.name}(${state.page + 1})">Next →</button>
+  `;
+}
+
+async function deleteUser(id, username){
+  if(!confirm(`Delete user @${username}? This permanently removes their account and all their data.`)) return;
+  const token = localStorage.getItem('medai_token');
+  try{
+    const res = await fetch(`${API_BASE_URL}/api/admin/users/${id}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if(!res.ok){
+      const err = await res.json().catch(() => ({}));
+      alert(err.message || 'Could not delete this user. Please try again.');
+      return;
+    }
+    _cachedUsers = null; // invalidate the full-dataset cache used by other tabs
+    await loadUsersPage(_usersPageState.page);
+    renderOverview();
+    alert('User deleted.');
+  }catch(e){
+    alert('Could not reach the server. Please check your connection and try again.');
+  }
 }
 
 // ============================================================
@@ -805,12 +873,44 @@ function renderHealthProfiles(){
 // ============================================================
 // TRIAGE LOGS TABLE
 // ============================================================
-let allTriageCache = [];
-function renderTriageLogs(logs){
-  allTriageCache = logs;
+// ============================================================
+// TRIAGE LOGS TABLE — real server-side pagination + search
+// ============================================================
+let _triagePageState = { page: 1, pageSize: 25, totalPages: 1, total: 0 };
+let _triageSearchDebounce = null;
+
+async function loadTriagePage(page = 1){
+  const token = localStorage.getItem('medai_token');
+  const search = document.getElementById('triage-search')?.value.trim() || '';
+  const level = document.getElementById('triage-level-filter')?.value || 'all';
+  const el = document.getElementById('triage-logs-table');
+  if(el) el.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:2rem;font-family:var(--mono);font-size:11px">Loading...</td></tr>';
+
+  if(!token){ renderTriageLogs([]); return; }
+
+  const params = new URLSearchParams({ page, pageSize: _triagePageState.pageSize });
+  if(search) params.set('search', search);
+  if(level !== 'all') params.set('level', level);
+
+  try{
+    const res = await fetch(`${API_BASE_URL}/api/admin/triage?${params}`, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if(!res.ok){ renderTriageLogs([]); return; }
+    const data = await res.json();
+    _triagePageState = { page: data.page, pageSize: data.pageSize, totalPages: data.totalPages, total: data.total };
+    renderTriageLogs(data.records, data.total);
+    renderPaginationControls('triage-pagination', _triagePageState, loadTriagePage);
+  }catch(e){
+    renderTriageLogs([]);
+  }
+}
+
+function renderTriageLogs(logs, total){
   const el      = document.getElementById('triage-logs-table');
   const countEl = document.getElementById('triage-count-label');
-  if(countEl) countEl.textContent = logs.length + ' log' + (logs.length!==1?'s':'');
+  const shown = total !== undefined ? total : logs.length;
+  if(countEl) countEl.textContent = shown + ' log' + (shown!==1?'s':'');
   if(!el) return;
   el.innerHTML = logs.length ? logs.map(h => `<tr>
     <td><span style="font-family:var(--mono);font-size:11px">@${h.username}</span></td>
@@ -822,15 +922,8 @@ function renderTriageLogs(logs){
 }
 
 function filterTriage(){
-  const q     = (document.getElementById('triage-search')?.value || '').toLowerCase();
-  const level = document.getElementById('triage-level-filter')?.value || 'all';
-  const logs  = getAllTriage();
-  const filtered = logs.filter(h => {
-    const match = !q || (h.symptoms||'').toLowerCase().includes(q) || (h.username||'').toLowerCase().includes(q);
-    const lvl   = level === 'all' || h.triage_level === level;
-    return match && lvl;
-  });
-  renderTriageLogs(filtered);
+  clearTimeout(_triageSearchDebounce);
+  _triageSearchDebounce = setTimeout(() => loadTriagePage(1), 350);
 }
 
 // ============================================================
@@ -1126,7 +1219,7 @@ function showUserModal(username){
       ${triage.slice(0,5).map(h=>`<div style="padding:8px 0;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center"><span>${triageBadge(h.triage_level)}</span><span style="font-size:12px;color:var(--muted);flex:1">${(h.symptoms||'').slice(0,60)}…</span><span style="font-family:var(--mono);font-size:10px;color:var(--muted)">${h.confidence||70}%</span></div>`).join('')}
     </div>
     <div style="display:flex;gap:8px;margin-top:1.25rem">
-      <button class="a-btn a-btn-danger" onclick="deleteUser('${u.username}');closeUserModal()">🗑️ Delete User</button>
+      <button class="a-btn a-btn-danger" onclick="deleteUser('${u.id}','${u.username}');closeUserModal()">🗑️ Delete User</button>
     </div>
   `;
   document.getElementById('user-modal').style.display = 'flex';

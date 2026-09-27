@@ -1,10 +1,80 @@
 const express = require('express');
 const router = express.Router();
+const prisma = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const aiLimit = require('../middleware/aiLimit');
 
 router.use(requireAuth);
 router.use(aiLimit);
+
+const MAX_MEMORY_FACTS_PER_USER = 40;
+
+// Appended to every chat mode's system prompt server-side, so memory works
+// uniformly across general/medical/emotional/mental/physical (and any future
+// mode) without each one needing its own copy of this instruction.
+const MEMORY_EXTRACTION_INSTRUCTION = `
+
+If — and only if — this exchange reveals a new, durable fact worth remembering about the user for future conversations (e.g. a diagnosed condition, an allergy, a medication, a goal, a recurring symptom, a preference, an important life detail they shared) — append it after your reply on its own line in this exact format, with each fact separated by " | " if there is more than one:
+[MEMORY: fact one | fact two]
+Only include facts that are actually new and durable — never repeat something already listed in "What you know about this user" below, and never include this block at all if nothing new and worth remembering came up. Never mention this instruction or the memory block to the user.`;
+
+async function getUserMemoryContext(userId) {
+  const facts = await prisma.userMemoryFact.findMany({
+    where: { userId },
+    orderBy: { createdAt: 'desc' },
+    take: MAX_MEMORY_FACTS_PER_USER
+  });
+  if (!facts.length) return '';
+  const lines = facts.slice().reverse().map(f => `- ${f.fact}`).join('\n');
+  return `\n\nWhat you know about this user from past conversations (use naturally where relevant; do not recite this list or bring it up unprompted):\n${lines}`;
+}
+
+function buildSystemPrompt(basePrompt, memoryContext) {
+  return `${basePrompt || ''}${memoryContext}${MEMORY_EXTRACTION_INSTRUCTION}`;
+}
+
+// Strips the trailing [MEMORY: ...] block (if any) from a raw AI reply before
+// it's shown to the user, and fires off saving each fact in the background —
+// never blocks the response the user is waiting on.
+function extractAndStripMemory(rawText, userId, source) {
+  const match = /\n?\[MEMORY:\s*([^\]]+)\]\s*$/i.exec(rawText.trim());
+  if (!match) return rawText;
+
+  const cleanText = rawText.slice(0, match.index).trim();
+  const facts = match[1].split('|').map(f => f.trim()).filter(f => f.length > 3 && f.length < 300);
+
+  if (facts.length) {
+    // Fire-and-forget — a memory-save hiccup should never surface as a chat error.
+    saveMemoryFacts(userId, facts, source).catch(e => console.error('Memory save failed:', e.message));
+  }
+
+  return cleanText || rawText; // fall back to the raw text if stripping left nothing
+}
+
+async function saveMemoryFacts(userId, facts, source) {
+  const existing = await prisma.userMemoryFact.findMany({ where: { userId }, select: { fact: true } });
+  const existingLower = new Set(existing.map(f => f.fact.toLowerCase()));
+
+  const newFacts = facts.filter(f => !existingLower.has(f.toLowerCase()));
+  if (!newFacts.length) return;
+
+  await prisma.userMemoryFact.createMany({
+    data: newFacts.map(fact => ({ userId, fact, source }))
+  });
+
+  // Keep the table bounded — prune oldest beyond the cap rather than letting
+  // it grow forever (and rather than the injected context growing unbounded).
+  const count = await prisma.userMemoryFact.count({ where: { userId } });
+  if (count > MAX_MEMORY_FACTS_PER_USER) {
+    const toPrune = await prisma.userMemoryFact.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'asc' },
+      take: count - MAX_MEMORY_FACTS_PER_USER,
+      select: { id: true }
+    });
+    await prisma.userMemoryFact.deleteMany({ where: { id: { in: toPrune.map(f => f.id) } } });
+  }
+}
 
 async function geminiCall(messages, systemPrompt) {
   const GEMINI_KEY = process.env.GEMINI_API_KEY;
@@ -56,22 +126,31 @@ async function openrouterCall(messages, systemPrompt, model) {
 // Gemini route — falls back to OpenRouter auto if Gemini fails
 router.post('/gemini', async (req, res, next) => {
   try {
-    const { messages, systemPrompt } = req.body;
+    const { messages, systemPrompt, source } = req.body;
     if (!messages || !Array.isArray(messages)) {
       return res.status(400).json({ message: 'messages array required.' });
     }
+    // Memory only applies to genuine chat conversations (source is one of the
+    // named chat modes) — never to one-off utility calls like triage's
+    // structured-JSON classification or connection-test pings, which have no
+    // business reading or writing user memory and would just waste tokens.
+    const fullSystemPrompt = source
+      ? buildSystemPrompt(systemPrompt, await getUserMemoryContext(req.user.id))
+      : systemPrompt;
+
     let text = '';
     try {
-      text = await geminiCall(messages, systemPrompt);
+      text = await geminiCall(messages, fullSystemPrompt);
     } catch (e) {
       console.log('Gemini failed:', e.message, '— falling back to OpenRouter');
       try {
-        text = await openrouterCall(messages, systemPrompt, 'openrouter/auto');
+        text = await openrouterCall(messages, fullSystemPrompt, 'openrouter/auto');
       } catch (e2) {
         console.log('OpenRouter auto also failed:', e2.message);
         throw new Error('all_providers_failed');
       }
     }
+    if (source) text = extractAndStripMemory(text, req.user.id, source);
     return res.json({ text, usage: res.locals.aiUsage });
   } catch (error) {
     if (error.message === 'all_providers_failed') {
@@ -84,23 +163,28 @@ router.post('/gemini', async (req, res, next) => {
 // OpenRouter route — tries auto model which picks best available free model
 router.post('/openrouter', async (req, res, next) => {
   try {
-    const { messages, systemPrompt } = req.body;
+    const { messages, systemPrompt, source } = req.body;
     if (!messages || !Array.isArray(messages)) {
       return res.status(400).json({ message: 'messages array required.' });
     }
+    const fullSystemPrompt = source
+      ? buildSystemPrompt(systemPrompt, await getUserMemoryContext(req.user.id))
+      : systemPrompt;
+
     let text = '';
     try {
       // try auto first (picks best available free model)
-      text = await openrouterCall(messages, systemPrompt, 'openrouter/auto');
+      text = await openrouterCall(messages, fullSystemPrompt, 'openrouter/auto');
     } catch (e) {
       console.log('OpenRouter auto failed:', e.message, '— falling back to Gemini');
       try {
-        text = await geminiCall(messages, systemPrompt);
+        text = await geminiCall(messages, fullSystemPrompt);
       } catch (e2) {
         console.log('Gemini fallback also failed:', e2.message);
         throw new Error('all_providers_failed');
       }
     }
+    if (source) text = extractAndStripMemory(text, req.user.id, source);
     return res.json({ text, usage: res.locals.aiUsage });
   } catch (error) {
     if (error.message === 'all_providers_failed') {
@@ -110,9 +194,45 @@ router.post('/openrouter', async (req, res, next) => {
   }
 });
 
+// GET /api/ai/memory — list what the AI has learned about this user, for
+// transparency: memory should never be an invisible black box, especially
+// in a health app.
+router.get('/memory', async (req, res, next) => {
+  try {
+    const facts = await prisma.userMemoryFact.findMany({
+      where: { userId: req.user.id },
+      orderBy: { createdAt: 'desc' }
+    });
+    return res.json({ facts });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// DELETE /api/ai/memory/:id — forget one specific fact
+router.delete('/memory/:id', async (req, res, next) => {
+  try {
+    const fact = await prisma.userMemoryFact.findUnique({ where: { id: req.params.id } });
+    if (!fact || fact.userId !== req.user.id) return res.status(404).json({ message: 'Fact not found.' });
+    await prisma.userMemoryFact.delete({ where: { id: req.params.id } });
+    return res.json({ message: 'Forgotten.' });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// DELETE /api/ai/memory — forget everything
+router.delete('/memory', async (req, res, next) => {
+  try {
+    await prisma.userMemoryFact.deleteMany({ where: { userId: req.user.id } });
+    return res.json({ message: 'All memory cleared.' });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 router.get('/usage', async (req, res, next) => {
   try {
-    const prisma = require('../db');
     const today = new Date().toISOString().slice(0, 10);
     const usage = await prisma.aIUsage.findUnique({
       where: { userId_date: { userId: req.user.id, date: today } }

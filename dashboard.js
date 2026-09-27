@@ -186,9 +186,8 @@ function restoreChatHistories(){
 }
 
 // ---- GEMINI with retry on quota/overload ----
-async function callGemini(prompt, retries=3) {
+async function callGemini(messages, systemPrompt, source, retries=3) {
   const token = localStorage.getItem('medai_token');
-  const messages = [{ role: 'user', content: prompt }];
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
       const res = await fetch(API_BASE_URL + '/api/ai/gemini', {
@@ -197,7 +196,7 @@ async function callGemini(prompt, retries=3) {
           'Content-Type': 'application/json',
           ...(token ? { 'Authorization': 'Bearer ' + token } : {})
         },
-        body: JSON.stringify({ messages })
+        body: JSON.stringify({ messages, systemPrompt, source })
       });
       if (res.status === 429) {
         const data = await res.json().catch(() => ({}));
@@ -219,16 +218,15 @@ async function callGemini(prompt, retries=3) {
 }
 
 // ---- OPENROUTER (backend proxy) ----
-async function callOpenRouter(systemPrompt, userMessage) {
+async function callOpenRouter(systemPrompt, messages, source) {
   const token = localStorage.getItem('medai_token');
-  const messages = [{ role: 'user', content: userMessage }];
   const res = await fetch(API_BASE_URL + '/api/ai/openrouter', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { 'Authorization': 'Bearer ' + token } : {})
     },
-    body: JSON.stringify({ messages, systemPrompt })
+    body: JSON.stringify({ messages, systemPrompt, source })
   });
   if (res.status === 429) {
     const data = await res.json().catch(() => ({}));
@@ -358,14 +356,21 @@ async function sendChat(panelId, type) {
 
   chatHistories[histKey].push({ role: 'user', content: msg });
   persistChatHistories();
-  const fullPrompt = sysPrompt + '\n\nUser: ' + msg;
+
+  // Send real conversation context, not just the latest message in isolation —
+  // this is what actually lets the AI follow the conversation (remember what
+  // you told it two messages ago, answer follow-ups, etc). Capped to the last
+  // 16 turns (8 exchanges) to keep latency and token cost sane; long-term
+  // facts beyond that window are handled separately by the persistent memory
+  // system on the backend, not by replaying the entire raw transcript forever.
+  const recentHistory = chatHistories[histKey].slice(-16);
 
   let reply = null;
   try {
     if (backend === 'openrouter') {
-      reply = await callOpenRouter(sysPrompt, msg);
+      reply = await callOpenRouter(sysPrompt, recentHistory, histKey);
     } else {
-      reply = await callGemini(fullPrompt);
+      reply = await callGemini(recentHistory, sysPrompt, histKey);
     }
     if (!reply) reply = 'I had trouble generating a response. Please try again.';
     chatHistories[histKey].push({ role: 'assistant', content: reply });
@@ -420,7 +425,10 @@ Field rules:
 Complaint: ${input}`;
 
   try {
-    const reply = await callGemini(prompt.replace('temperature: 0.7', 'temperature: 0.3'));
+    // Single-shot structured-JSON classification — deliberately NOT a chat
+    // turn: no history, no source, so it never triggers memory injection or
+    // extraction (which is scoped to genuine conversations only).
+    const reply = await callGemini([{ role: 'user', content: prompt }]);
 
     const cleaned = (reply || '{}').replace(/```json|```/g, '').trim();
     const match   = cleaned.match(/\{[\s\S]*\}/);
@@ -2248,7 +2256,7 @@ async function testOpenRouter(){
   const status=document.getElementById('openrouter-status');
   if(status) status.textContent='Testing OpenRouter...';
   try{
-    const reply=await callOpenRouter('You are a connection test. Reply with one short sentence.', 'Say OpenRouter is connected for MedAI.');
+    const reply=await callOpenRouter('You are a connection test. Reply with one short sentence.', [{ role: 'user', content: 'Say OpenRouter is connected for MedAI.' }]);
     if(status) status.innerHTML=`<strong style="color:var(--safe)">Connected.</strong> ${escapeHtml(reply || 'OpenRouter responded.')}`;
   }catch(e){
     if(status) status.innerHTML=`<strong style="color:var(--danger)">Failed.</strong> ${escapeHtml(e.message || 'Check your key/model.')}`;
@@ -2279,7 +2287,7 @@ async function testGeminiConnection(){
   const status = document.getElementById('gemini-status');
   if(status) status.textContent = 'Testing Gemini API connection...';
   try {
-    const reply = await callGemini('Say Gemini connection test active for MedAI. Reply in one short sentence.');
+    const reply = await callGemini([{ role: 'user', content: 'Say Gemini connection test active for MedAI. Reply in one short sentence.' }]);
     if(status) status.innerHTML = `<strong style="color:var(--safe)">Connected.</strong> ${escapeHtml(reply)}`;
   } catch(e) {
     let msg = e.message === 'daily_limit' ? 'Daily message limit reached.' : e.message;
@@ -4758,4 +4766,73 @@ function maybeShowTourWelcome(user){
   if(!user || user.tutorialStatus !== 'not_started') return;
   const modal = document.getElementById('tour-welcome-modal');
   if(modal) modal.style.display = 'flex';
+}
+
+// ============================================================
+// AI MEMORY — transparency panel for the persistent cross-chat memory
+// built into the backend (server/src/routes/ai.js). Shows exactly what's
+// been remembered and lets the user forget any or all of it.
+// ============================================================
+async function openAiMemoryModal(){
+  const modal = document.getElementById('ai-memory-modal');
+  const list = document.getElementById('ai-memory-list');
+  if(!modal || !list) return;
+  modal.style.display = 'flex';
+  list.innerHTML = skeletonRows(3);
+
+  const token = localStorage.getItem('medai_token');
+  try{
+    const res = await fetch(`${API_BASE_URL}/api/ai/memory`, {
+      headers: { Authorization: 'Bearer ' + token }
+    });
+    if(!res.ok) throw new Error('failed');
+    const data = await res.json();
+    renderAiMemoryList(data.facts || []);
+  }catch(e){
+    list.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:13px;padding:1rem 0">Could not load memory right now. Please try again.</div>';
+  }
+}
+
+function renderAiMemoryList(facts){
+  const list = document.getElementById('ai-memory-list');
+  if(!list) return;
+  if(!facts.length){
+    list.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:13px;padding:1rem 0">Nothing remembered yet — it builds up naturally as you chat.</div>';
+    return;
+  }
+  list.innerHTML = facts.map(f => `
+    <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:rgba(168,85,247,0.06);border:1px solid rgba(168,85,247,0.15);border-radius:10px">
+      <div style="flex:1;font-size:12.5px;line-height:1.5;color:var(--text)">${escapeHtml(f.fact)}</div>
+      <button onclick="forgetOneMemoryFact('${f.id}')" title="Forget this" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0;line-height:1;flex-shrink:0">×</button>
+    </div>`).join('');
+}
+
+async function forgetOneMemoryFact(id){
+  const token = localStorage.getItem('medai_token');
+  try{
+    await fetch(`${API_BASE_URL}/api/ai/memory/${id}`, {
+      method: 'DELETE',
+      headers: { Authorization: 'Bearer ' + token }
+    });
+    openAiMemoryModal(); // refresh the list
+  }catch(e){}
+}
+
+async function clearAllAiMemory(){
+  if(!confirm('Forget everything the AI has learned about you? This cannot be undone.')) return;
+  const token = localStorage.getItem('medai_token');
+  try{
+    await fetch(`${API_BASE_URL}/api/ai/memory`, {
+      method: 'DELETE',
+      headers: { Authorization: 'Bearer ' + token }
+    });
+    renderAiMemoryList([]);
+  }catch(e){
+    alert('Could not clear memory right now. Please try again.');
+  }
+}
+
+function closeAiMemoryModal(){
+  const modal = document.getElementById('ai-memory-modal');
+  if(modal) modal.style.display = 'none';
 }

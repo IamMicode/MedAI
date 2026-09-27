@@ -1788,6 +1788,7 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
         <div class="glass-card">
           <div style="padding:1rem 1.25rem;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:2px">// GENERAL</div>
           <div class="settings-item" onclick="startTour(true)"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(0,212,255,0.1)">🧭</div><div><div class="settings-label">Take Dashboard Tour</div><div class="settings-desc">Replay the interactive walkthrough</div></div></div><span class="settings-arrow">›</span></div>
+          <div class="settings-item" onclick="openAiMemoryModal()"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(168,85,247,0.1)">🧠</div><div><div class="settings-label">AI Memory</div><div class="settings-desc">See what the AI has learned about you, or clear it</div></div></div><span class="settings-arrow">›</span></div>
           <div class="settings-item" onclick="showFaq()"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(0,212,255,0.1)">❓</div><div><div class="settings-label">FAQs</div><div class="settings-desc">Frequently asked questions</div></div></div><span class="settings-arrow">›</span></div>
           <div class="settings-item" onclick="showSettingsPanel('rating-panel')"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(255,215,0,0.1)">⭐</div><div><div class="settings-label">Rate the App</div><div class="settings-desc">Share your feedback</div></div></div><span class="settings-arrow">›</span></div>
           <div class="settings-item" onclick="showSettingsPanel('language-panel')"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(0,212,255,0.1)">🌐</div><div><div class="settings-label">Language</div><div class="settings-desc" id="language-desc">English (US)</div></div></div><span class="settings-arrow">›</span></div>
@@ -2245,6 +2246,20 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
     <div style="display:flex;gap:10px">
       <button onclick="dismissTourWelcome('skipped')" style="flex:1;background:transparent;border:1px solid rgba(0,212,255,0.2);border-radius:10px;color:rgba(150,200,230,0.7);font-family:'Syne',sans-serif;font-size:13px;font-weight:700;padding:12px;cursor:pointer">Skip Tutorial</button>
       <button onclick="dismissTourWelcome('start')" class="btn btn-primary" style="flex:1;justify-content:center;border:none;cursor:pointer;font-family:'Syne',sans-serif;font-weight:700">Start Tutorial</button>
+    </div>
+  </div>
+</div>
+<div id="ai-memory-modal" role="dialog" aria-modal="true" aria-labelledby="ai-memory-title" style="display:none;position:fixed;inset:0;z-index:9600;background:rgba(0,0,0,0.75);backdrop-filter:blur(10px);align-items:center;justify-content:center;padding:1rem">
+  <div style="background:#0a1628;border:1px solid var(--border2);border-radius:20px;padding:2rem;max-width:480px;width:100%;box-shadow:0 40px 80px rgba(0,0,0,0.5);max-height:85vh;display:flex;flex-direction:column">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:.4rem">
+      <div style="font-size:24px">🧠</div>
+      <div id="ai-memory-title" style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800">AI Memory</div>
+    </div>
+    <p style="font-size:12.5px;color:rgba(150,200,230,0.7);line-height:1.6;margin-bottom:1rem">Every AI chat mode shares this — things it's picked up about you across conversations, so it doesn't feel like talking to a stranger each time. Nothing here is hidden from you.</p>
+    <div id="ai-memory-list" style="overflow-y:auto;flex:1;min-height:80px;margin-bottom:1rem;display:flex;flex-direction:column;gap:8px"></div>
+    <div style="display:flex;gap:10px">
+      <button onclick="closeAiMemoryModal()" style="flex:1;background:transparent;border:1px solid rgba(0,212,255,0.2);border-radius:10px;color:rgba(150,200,230,0.7);font-family:'Syne',sans-serif;font-size:13px;font-weight:700;padding:12px;cursor:pointer">Close</button>
+      <button onclick="clearAllAiMemory()" style="flex:1;background:rgba(255,77,109,0.1);border:1px solid rgba(255,77,109,0.3);border-radius:10px;color:var(--danger);font-family:'Syne',sans-serif;font-size:13px;font-weight:700;padding:12px;cursor:pointer">Forget Everything</button>
     </div>
   </div>
 </div>

@@ -67,6 +67,24 @@ model User {
   vitalReadings         VitalReading[]
   payments              Payment[]
   notifications         Notification[]
+  memoryFacts           UserMemoryFact[]
+}
+
+// Durable facts the AI chat features have learned about a user over time,
+// shared across every chat mode (general/medical/emotional/mental/physical)
+// so the assistant feels consistent and personalized everywhere, not siloed
+// per tab and not reset every session. Extracted opportunistically by the
+// backend from replies (see server/src/routes/ai.js), capped and pruned
+// oldest-first per user to keep the injected context small and current.
+model UserMemoryFact {
+  id        String   @id @default(cuid())
+  userId    String
+  fact      String
+  source    String   // which chat mode surfaced it: chatbot | medical | emotional | mental | physical
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Notification {

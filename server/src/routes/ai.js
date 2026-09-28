@@ -19,14 +19,22 @@ If — and only if — this exchange reveals a new, durable fact worth rememberi
 Only include facts that are actually new and durable — never repeat something already listed in "What you know about this user" below, and never include this block at all if nothing new and worth remembering came up. Never mention this instruction or the memory block to the user.`;
 
 async function getUserMemoryContext(userId) {
-  const facts = await prisma.userMemoryFact.findMany({
-    where: { userId },
-    orderBy: { createdAt: 'desc' },
-    take: MAX_MEMORY_FACTS_PER_USER
-  });
-  if (!facts.length) return '';
-  const lines = facts.slice().reverse().map(f => `- ${f.fact}`).join('\n');
-  return `\n\nWhat you know about this user from past conversations (use naturally where relevant; do not recite this list or bring it up unprompted):\n${lines}`;
+  // Memory is a best-effort enhancement — if anything goes wrong reading it
+  // (table not migrated yet, transient DB error), chat must keep working
+  // without it rather than failing the whole request.
+  try {
+    const facts = await prisma.userMemoryFact.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: MAX_MEMORY_FACTS_PER_USER
+    });
+    if (!facts.length) return '';
+    const lines = facts.slice().reverse().map(f => `- ${f.fact}`).join('\n');
+    return `\n\nWhat you know about this user from past conversations (use naturally where relevant; do not recite this list or bring it up unprompted):\n${lines}`;
+  } catch (e) {
+    console.error('Memory read failed (continuing without it):', e.message);
+    return '';
+  }
 }
 
 function buildSystemPrompt(basePrompt, memoryContext) {

@@ -178,13 +178,23 @@ model WaitlistEmail {
 }
 
 model PasswordResetCode {
-  id        String   @id @default(cuid())
-  userId    String
-  codeHash  String
-  expiresAt DateTime
-  usedAt    DateTime?
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id             String    @id @default(cuid())
+  userId         String
+  codeHash       String
+  expiresAt      DateTime
+  usedAt         DateTime?
+  // Set once the 6-digit code has been correctly verified. Verifying no
+  // longer directly authorizes the password change — it issues a separate
+  // resetTokenHash below, so the original code itself can't be replayed
+  // straight against /reset-password.
+  verifiedAt     DateTime?
+  // Opaque, high-entropy, single-use credential (hashed) issued only after
+  // successful verification. This — not the 6-digit code — is what
+  // /reset-password actually requires.
+  resetTokenHash String?
+  attempts       Int       @default(0)
+  createdAt      DateTime  @default(now())
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, expiresAt])
 }

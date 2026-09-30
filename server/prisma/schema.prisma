@@ -68,6 +68,30 @@ model User {
   payments              Payment[]
   notifications         Notification[]
   memoryFacts           UserMemoryFact[]
+  healthLogs            HealthLog[]
+}
+
+// One flexible table for every Health Tools entry (medicine reminders, water,
+// sleep, food/calories, BMI, stress/anxiety) instead of a separate table per
+// tool. `type` says which tool it belongs to; `data` carries whatever shape
+// that tool needs. `dateKey` ("YYYY-MM-DD") is only set for the two
+// daily-aggregate tools (water, sleep), which upsert one row per user per
+// day rather than accumulating a new row per +/- tap; it stays null for the
+// discrete, per-event tools (food, medicine, bmi, stress), where every entry
+// is its own row. Postgres treats each NULL as distinct for uniqueness
+// purposes, so those never collide with each other under this constraint.
+model HealthLog {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String   // water | sleep | food | medicine | bmi | stress
+  dateKey   String?
+  data      Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type, dateKey])
+  @@index([userId, type, createdAt])
 }
 
 // Durable facts the AI chat features have learned about a user over time,

@@ -2469,28 +2469,43 @@ function toggleSettingFlag(flag,el){
   renderNotifications();
 }
 
-function changeLocalPassword(){
+async function changeLocalPassword(){
   const current=document.getElementById('current-password')?.value || '';
   const next=document.getElementById('new-password')?.value || '';
   const status=document.getElementById('password-status');
-  const u=getCurrentUser();
-  if(!u.username){
-    if(status) status.textContent='No logged-in user found.';
-    return;
-  }
-  if(current !== (u.password || '')){
-    if(status) status.innerHTML='<strong style="color:var(--danger)">Wrong current password.</strong>';
+  const btn=document.getElementById('change-password-btn');
+
+  if(!current || !next){
+    if(status) status.innerHTML='<strong style="color:var(--warning)">Enter your current and new password.</strong>';
     return;
   }
   if(next.length < 8){
     if(status) status.innerHTML='<strong style="color:var(--warning)">New password must be at least 8 characters.</strong>';
     return;
   }
-  u.password=next;
-  u.passwordChangedAt=new Date().toISOString();
-  setCurrentUser(u);
-  if(status) status.innerHTML='<strong style="color:var(--safe)">Password updated.</strong>';
-  ['current-password','new-password'].forEach(id=>{const el=document.getElementById(id); if(el) el.value='';});
+
+  if(btn) btn.disabled = true;
+  if(status) status.textContent = 'Updating...';
+
+  const token = localStorage.getItem('medai_token');
+  try{
+    const res = await fetch(`${API_BASE_URL}/api/auth/change-password`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ currentPassword: current, newPassword: next })
+    });
+    const result = await res.json().catch(() => ({}));
+    if(!res.ok){
+      if(status) status.innerHTML = `<strong style="color:var(--danger)">${escapeHtml(result.message || 'Could not update password.')}</strong>`;
+      return;
+    }
+    if(status) status.innerHTML='<strong style="color:var(--safe)">Password updated.</strong>';
+    ['current-password','new-password'].forEach(id=>{const el=document.getElementById(id); if(el) el.value='';});
+  }catch(e){
+    if(status) status.innerHTML='<strong style="color:var(--danger)">Could not reach the server. Please try again.</strong>';
+  }finally{
+    if(btn) btn.disabled = false;
+  }
 }
 
 async function saveEmergencySettings(){

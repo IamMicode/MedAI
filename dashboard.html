@@ -1412,7 +1412,7 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
     <div class="tab-panel" id="tab-tools">
       <div class="sec-label">// My Health</div>
       <h2 class="sec-title">Health <span class="grad">Tools</span></h2>
-      <p class="sec-sub">Frontend-ready tools for daily tracking, reminders, BMI, stress checks, calories, and heart-rate capture.</p>
+      <p class="sec-sub">Track daily habits, reminders, BMI, stress checks, and calories — synced to your account, not just this device.</p>
 
       <div class="grid-2" style="margin-bottom:1.25rem">
         <div class="glass-card" id="heart-tool" style="padding:1.5rem">
@@ -1438,8 +1438,7 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
           </div>
           <div class="btn btn-primary" onclick="addMedicineReminder()" style="margin-top:.75rem">Add Reminder</div>
           <div class="timeline" id="medicine-list" style="margin-top:1rem">
-            <div class="timeline-item"><div class="timeline-time">08:00</div><div><div class="timeline-title">Vitamin D</div><div class="timeline-meta">1 capsule - Daily</div></div><span class="badge badge-green">Taken</span></div>
-            <div class="timeline-item"><div class="timeline-time">21:00</div><div><div class="timeline-title">Allergy Tablet</div><div class="timeline-meta">1 tablet - Daily</div></div><span class="badge badge-warn">Due</span></div>
+            <div class="skel-row"><div style="flex:1"><div class="skel skel-line" style="width:50%"></div><div class="skel skel-line" style="width:70%;height:9px;margin-bottom:0"></div></div></div>
           </div>
         </div>
       </div>
@@ -1447,9 +1446,9 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
       <div class="grid-3" style="margin-bottom:1.25rem">
         <div class="glass-card" style="padding:1.25rem">
           <div class="sec-label" style="margin-bottom:.75rem">// Water & Sleep</div>
-          <div class="tracker-row"><div><div class="feature-title">Water</div><div class="history-meta">Goal: 8 cups</div></div><div class="tracker-stepper"><button class="round-btn" onclick="stepTracker('water-count',-1)">-</button><span id="water-count">5</span><button class="round-btn" onclick="stepTracker('water-count',1)">+</button></div></div>
-          <div class="tracker-row" style="margin-top:.75rem"><div><div class="feature-title">Sleep</div><div class="history-meta">Goal: 8 hours</div></div><div class="tracker-stepper"><button class="round-btn" onclick="stepTracker('sleep-count',-0.5)">-</button><span id="sleep-count">6.5</span><button class="round-btn" onclick="stepTracker('sleep-count',0.5)">+</button></div></div>
-          <div class="mini-result">Hydration 62% complete. Sleep quality is fair today.</div>
+          <div class="tracker-row"><div><div class="feature-title">Water</div><div class="history-meta">Goal: 8 cups</div></div><div class="tracker-stepper"><button class="round-btn" onclick="stepTracker('water-count',-1)">-</button><span id="water-count">0</span><button class="round-btn" onclick="stepTracker('water-count',1)">+</button></div></div>
+          <div class="tracker-row" style="margin-top:.75rem"><div><div class="feature-title">Sleep</div><div class="history-meta">Goal: 8 hours</div></div><div class="tracker-stepper"><button class="round-btn" onclick="stepTracker('sleep-count',-0.5)">-</button><span id="sleep-count">0</span><button class="round-btn" onclick="stepTracker('sleep-count',0.5)">+</button></div></div>
+          <div class="mini-result" id="water-sleep-summary">Log your water and sleep to see today's summary.</div>
         </div>
 
         <div class="glass-card" style="padding:1.25rem">
@@ -1481,10 +1480,9 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
             <input class="tool-input" id="food-cal" type="number" placeholder="Calories"/>
           </div>
           <div class="btn btn-primary" onclick="addFoodLog()" style="margin-top:.75rem">Add Food</div>
-          <div class="mini-result"><strong id="calorie-total" style="color:var(--accent)">1260</strong> kcal logged today. Goal: 2200 kcal.</div>
+          <div class="mini-result"><strong id="calorie-total" style="color:var(--accent)">0</strong> kcal logged today. Goal: 2200 kcal.</div>
           <div class="timeline" id="food-list" style="margin-top:1rem">
-            <div class="timeline-item"><div class="timeline-time">AM</div><div><div class="timeline-title">Oats + banana</div><div class="timeline-meta">420 kcal</div></div><span class="badge badge-blue">Meal</span></div>
-            <div class="timeline-item"><div class="timeline-time">PM</div><div><div class="timeline-title">Jollof rice + chicken</div><div class="timeline-meta">840 kcal</div></div><span class="badge badge-blue">Meal</span></div>
+            <div class="skel-row"><div style="flex:1"><div class="skel skel-line" style="width:55%"></div><div class="skel skel-line" style="width:35%;height:9px;margin-bottom:0"></div></div></div>
           </div>
         </div>
 
@@ -1494,7 +1492,7 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
             <div style="font-family:var(--head);font-size:52px;font-weight:800;color:var(--safe)" id="daily-score">85</div>
             <div>
               <div class="score-pill">Auto-updates from trackers</div>
-              <p style="font-size:13px;color:var(--muted);line-height:1.7;margin-top:.75rem">Score combines sleep, water, mood, calories, vitals, and completed medicines. For now it is simulated on the frontend.</p>
+              <p style="font-size:13px;color:var(--muted);line-height:1.7;margin-top:.75rem">Score combines sleep, water, mood, calories, vitals, and completed medicines.</p>
             </div>
           </div>
           <div class="btn btn-outline" onclick="refreshDailyScore()" style="margin-top:1rem">Refresh Score</div>

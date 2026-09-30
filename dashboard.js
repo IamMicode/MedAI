@@ -1186,6 +1186,14 @@ function stopHeartScan(clearPreview=true){
   }
 }
 
+// Shared, in-memory cache of the latest fetched medicine reminders and food
+// logs — several other features (Health Records stat card, the notification
+// bell's "medicine due" list, header search) need these too, and now that
+// the backend is the source of truth, they read from here instead of each
+// doing their own fetch or falling back to the retired localStorage keys.
+let _cachedMedicineReminders = [];
+let _cachedFoodLogs = [];
+
 function addMedicineReminder(){
   const name = document.getElementById('med-name')?.value.trim();
   const time = document.getElementById('med-time')?.value || 'Now';
@@ -1193,16 +1201,24 @@ function addMedicineReminder(){
   const frequency = document.getElementById('med-frequency')?.value || 'Daily';
   const list = document.getElementById('medicine-list');
   if(!name || !list) return;
+
+  const empty = list.querySelector('.tools-empty');
+  if(empty) empty.remove();
+
   const item = document.createElement('div');
   item.className = 'timeline-item';
-  item.innerHTML = `<div class="timeline-time">${time}</div><div><div class="timeline-title">${escapeHtml(name)}</div><div class="timeline-meta">${escapeHtml(dose)} - ${escapeHtml(frequency)}</div></div><span class="badge badge-warn" onclick="this.textContent='Taken';this.className='badge badge-green'">Due</span>`;
+  item.innerHTML = `<div class="timeline-time">${escapeHtml(time)}</div><div><div class="timeline-title">${escapeHtml(name)}</div><div class="timeline-meta">${escapeHtml(dose)} - ${escapeHtml(frequency)}</div></div><span class="badge badge-warn">Due</span>`;
   list.prepend(item);
-  const reminders = getStored('reminders', []);
-  reminders.unshift({name,time,dose,frequency,status:'Due',createdAt:new Date().toISOString()});
-  setStored('reminders', reminders.slice(0,30));
+  ['med-name','med-dose'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});
+
+  syncHealthLog('medicine', { name, time, dose, frequency, status: 'Due' }).then(log => {
+    if(log){
+      item.querySelector('.badge').setAttribute('onclick', `markReminderTaken('${log.id}')`);
+      _cachedMedicineReminders.unshift({ id: log.id, name, time, dose, frequency, status: 'Due', createdAt: log.createdAt });
+    }
+  });
   updateHistoryDashboard();
   renderNotifications();
-  ['med-name','med-dose'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});
 }
 
 function stepTracker(id,delta){
@@ -1210,9 +1226,21 @@ function stepTracker(id,delta){
   if(!el) return;
   const next=Math.max(0,(parseFloat(el.textContent)||0)+delta);
   el.textContent=Number.isInteger(next)?next:next.toFixed(1);
-  setStored('trackers', {water:document.getElementById('water-count')?.textContent, sleep:document.getElementById('sleep-count')?.textContent});
+  const type = id === 'water-count' ? 'water' : 'sleep';
+  syncHealthLog(type, { value: next });
+  updateWaterSleepSummary();
   refreshDailyScore();
   updateHistoryDashboard();
+}
+
+function updateWaterSleepSummary(){
+  const out = document.getElementById('water-sleep-summary');
+  if(!out) return;
+  const water = parseFloat(document.getElementById('water-count')?.textContent || 0);
+  const sleep = parseFloat(document.getElementById('sleep-count')?.textContent || 0);
+  const waterPct = Math.min(100, Math.round((water/8)*100));
+  const sleepLabel = sleep >= 7 ? 'good' : sleep >= 5 ? 'fair' : 'low';
+  out.textContent = `Hydration ${waterPct}% complete. Sleep quality is ${sleepLabel} today.`;
 }
 
 function calculateBmi(){
@@ -1224,6 +1252,7 @@ function calculateBmi(){
   const bmi=w/Math.pow(h/100,2);
   const status=bmi<18.5?'Underweight':bmi<25?'Healthy range':bmi<30?'Overweight':'Obesity range';
   out.innerHTML=`BMI: <strong style="color:var(--accent)">${bmi.toFixed(1)}</strong> - ${status}. Use this as a screening tool, not a diagnosis.`;
+  syncHealthLog('bmi', { height: h, weight: w, bmi: Number(bmi.toFixed(1)), status });
 }
 
 function calculateStress(){
@@ -1233,6 +1262,7 @@ function calculateStress(){
   const avg=(s+a)/2;
   const label=avg<=3?'Low':avg<=6?'Moderate':'High';
   if(out) out.innerHTML=`Stress/anxiety score: <strong style="color:${avg>6?'var(--warning)':'var(--safe)'}">${avg.toFixed(1)}/10</strong> - ${label}. Try breathing support in Mental Health AI if it feels heavy.`;
+  syncHealthLog('stress', { stress: s, anxiety: a, avg: Number(avg.toFixed(1)), label });
   refreshDailyScore();
 }
 
@@ -1244,17 +1274,20 @@ function addFoodLog(){
   calorieTotal += cal;
   const total=document.getElementById('calorie-total');
   if(total) total.textContent=calorieTotal;
+
+  const empty = list.querySelector('.tools-empty');
+  if(empty) empty.remove();
+
   const item=document.createElement('div');
   item.className='timeline-item';
   item.innerHTML=`<div class="timeline-time">Now</div><div><div class="timeline-title">${escapeHtml(food)}</div><div class="timeline-meta">${cal} kcal</div></div><span class="badge badge-blue">Meal</span>`;
   list.prepend(item);
-  const foods = getStored('foods', []);
-  foods.unshift({food,cal,createdAt:new Date().toISOString()});
-  setStored('foods', foods.slice(0,40));
-  setStored('calorieTotal', calorieTotal);
+  ['food-name','food-cal'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});
+
+  syncHealthLog('food', { food, cal });
+  _cachedFoodLogs.unshift({ id: null, food, cal, createdAt: new Date().toISOString() });
   updateHistoryDashboard();
   renderNotifications();
-  ['food-name','food-cal'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});
   refreshDailyScore();
 }
 
@@ -1522,45 +1555,115 @@ function setStored(name, value){
 }
 
 function loadLocalFrontendData(){
-  const trackers = getStored('trackers', null);
-  if(trackers){
-    const water=document.getElementById('water-count'), sleep=document.getElementById('sleep-count');
-    if(water && trackers.water) water.textContent = trackers.water;
-    if(sleep && trackers.sleep) sleep.textContent = trackers.sleep;
-  }
-  calorieTotal = Number(getStored('calorieTotal', calorieTotal)) || calorieTotal;
-  const total=document.getElementById('calorie-total');
-  if(total) total.textContent = calorieTotal;
-  renderStoredReminders();
-  renderStoredFoods();
   renderVitalsList();
   updateHistoryDashboard();
   renderSavedRating();
+  loadHealthToolsFromBackend();
 }
 
-function renderStoredReminders(){
+// Fetches every Health Tools value in one round trip and paints the whole
+// tab from the server's data — the actual source of truth now, not
+// localStorage (which was per-device only, invisible to doctors, and never
+// counted toward anything else in the app).
+async function loadHealthToolsFromBackend(){
+  const token = localStorage.getItem('medai_token');
+  if(!token) return;
+  try{
+    const res = await fetch(`${API_BASE_URL}/api/health-logs/summary`, {
+      headers: { Authorization: 'Bearer ' + token }
+    });
+    if(!res.ok) return;
+    const data = await res.json();
+
+    const water = document.getElementById('water-count');
+    if(water && data.water?.value !== undefined) water.textContent = data.water.value;
+    const sleep = document.getElementById('sleep-count');
+    if(sleep && data.sleep?.value !== undefined) sleep.textContent = data.sleep.value;
+    updateWaterSleepSummary();
+
+    renderStoredReminders(data.medicine || []);
+    renderStoredFoods(data.food || []);
+    _cachedMedicineReminders = (data.medicine || []).map(r => ({ id: r.id, name: r.data.name, time: r.data.time, dose: r.data.dose, frequency: r.data.frequency, status: r.data.status, createdAt: r.createdAt }));
+    _cachedFoodLogs = (data.food || []).map(f => ({ id: f.id, food: f.data.food, cal: f.data.cal, createdAt: f.createdAt }));
+
+    if(data.bmi){
+      const out = document.getElementById('bmi-result');
+      if(out) out.innerHTML = `BMI: <strong style="color:var(--accent)">${data.bmi.data.bmi}</strong> - ${data.bmi.data.status}. Use this as a screening tool, not a diagnosis.`;
+    }
+    if(data.stress){
+      const out = document.getElementById('stress-result');
+      const s = data.stress.data;
+      if(out) out.innerHTML = `Stress/anxiety score: <strong style="color:${s.avg>6?'var(--warning)':'var(--safe)'}">${s.avg}/10</strong> - ${s.label}. Try breathing support in Mental Health AI if it feels heavy.`;
+    }
+
+    // Calorie total for "today" is derived from the food entries the server
+    // just returned, so it's always consistent with the visible list rather
+    // than a separately-tracked counter that can drift out of sync with it.
+    const todayKey = new Date().toISOString().slice(0,10);
+    calorieTotal = (data.food || [])
+      .filter(f => f.createdAt.slice(0,10) === todayKey)
+      .reduce((sum, f) => sum + (f.data.cal || 0), 0);
+    const total = document.getElementById('calorie-total');
+    if(total) total.textContent = calorieTotal;
+
+    refreshDailyScore();
+    updateHistoryDashboard();
+    renderNotifications();
+  }catch(e){ /* Health Tools falls back to its static placeholder copy — non-critical */ }
+}
+
+// Persists one Health Tools entry to the backend. Fire-and-forget from the
+// caller's perspective — the UI has already updated optimistically by the
+// time this is called, so a slow network never blocks the person's next tap.
+async function syncHealthLog(type, data){
+  const token = localStorage.getItem('medai_token');
+  if(!token) return null;
+  try{
+    const res = await fetch(`${API_BASE_URL}/api/health-logs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ type, data })
+    });
+    if(!res.ok) return null;
+    const result = await res.json();
+    return result.log;
+  }catch(e){ return null; }
+}
+
+function renderStoredReminders(reminders){
   const list=document.getElementById('medicine-list');
   if(!list) return;
-  const reminders=getStored('reminders', []);
-  if(!reminders.length) return;
-  list.innerHTML = reminders.map(r=>`<div class="timeline-item"><div class="timeline-time">${escapeHtml(r.time||'Now')}</div><div><div class="timeline-title">${escapeHtml(r.name)}</div><div class="timeline-meta">${escapeHtml(r.dose||'Dose not set')} - ${escapeHtml(r.frequency||'Daily')}</div></div><span class="badge ${r.status==='Taken'?'badge-green':'badge-warn'}" onclick="markReminderTaken('${escapeHtml(r.createdAt)}')">${escapeHtml(r.status||'Due')}</span></div>`).join('');
+  if(!reminders.length){
+    list.innerHTML = '<div class="tools-empty" style="text-align:center;color:var(--muted);font-size:12px;padding:1rem 0">No reminders yet — add one above.</div>';
+    return;
+  }
+  list.innerHTML = reminders.map(r=>`<div class="timeline-item"><div class="timeline-time">${escapeHtml(r.data.time||'Now')}</div><div><div class="timeline-title">${escapeHtml(r.data.name)}</div><div class="timeline-meta">${escapeHtml(r.data.dose||'Dose not set')} - ${escapeHtml(r.data.frequency||'Daily')}</div></div><span class="badge ${r.data.status==='Taken'?'badge-green':'badge-warn'}" onclick="markReminderTaken('${r.id}')">${escapeHtml(r.data.status||'Due')}</span></div>`).join('');
 }
 
-function markReminderTaken(createdAt){
-  const reminders=getStored('reminders', []);
-  const next=reminders.map(r=>r.createdAt===createdAt?{...r,status:'Taken'}:r);
-  setStored('reminders', next);
-  renderStoredReminders();
+async function markReminderTaken(id){
+  const token = localStorage.getItem('medai_token');
+  try{
+    await fetch(`${API_BASE_URL}/api/health-logs/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ data: { status: 'Taken' } })
+    });
+  }catch(e){}
+  const cached = _cachedMedicineReminders.find(r => r.id === id);
+  if(cached) cached.status = 'Taken';
+  loadHealthToolsFromBackend();
   updateHistoryDashboard();
   renderNotifications();
 }
 
-function renderStoredFoods(){
+function renderStoredFoods(foods){
   const list=document.getElementById('food-list');
   if(!list) return;
-  const foods=getStored('foods', []);
-  if(!foods.length) return;
-  list.innerHTML = foods.map(f=>`<div class="timeline-item"><div class="timeline-time">${new Date(f.createdAt||Date.now()).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div><div><div class="timeline-title">${escapeHtml(f.food)}</div><div class="timeline-meta">${escapeHtml(f.cal)} kcal</div></div><span class="badge badge-blue">Meal</span></div>`).join('');
+  if(!foods.length){
+    list.innerHTML = '<div class="tools-empty" style="text-align:center;color:var(--muted);font-size:12px;padding:1rem 0">No meals logged yet.</div>';
+    return;
+  }
+  list.innerHTML = foods.map(f=>`<div class="timeline-item"><div class="timeline-time">${new Date(f.createdAt||Date.now()).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div><div><div class="timeline-title">${escapeHtml(f.data.food)}</div><div class="timeline-meta">${escapeHtml(String(f.data.cal))} kcal</div></div><span class="badge badge-blue">Meal</span></div>`).join('');
 }
 
 function renderStoredAppointments(){
@@ -1955,8 +2058,8 @@ function updateHistoryDashboard(history=getTriageHistory()){
   const now = Date.now();
   const weekCount = history.filter(h => now - new Date(h.createdAt || 0).getTime() <= 7*24*60*60*1000).length;
   const vitals = (()=>{try{return JSON.parse(localStorage.getItem(vitalsKey()) || '[]')}catch(e){return []}})();
-  const reminders = getStored('reminders', []);
-  const foods = getStored('foods', []);
+  const reminders = _cachedMedicineReminders;
+  const foods = _cachedFoodLogs;
   const appointments = getStored('appointments', []);
   const records = count + vitals.length + foods.length + reminders.length + appointments.length;
   const followups = appointments.length + history.filter(h => h.level === 'doctor_soon' || h.level === 'emergency').length;
@@ -3261,7 +3364,7 @@ function renderNotifications(unreadCount){
     return;
   }
 
-  const reminders=localStorage.getItem('medicine_notifications') === 'false' ? [] : getStored('reminders', []).filter(r=>r.status!=='Taken').slice(0,3);
+  const reminders=localStorage.getItem('medicine_notifications') === 'false' ? [] : _cachedMedicineReminders.filter(r=>r.status!=='Taken').slice(0,3);
   const reminderItems = reminders.map(r=>({text:`Medicine reminder due: ${r.name} at ${r.time || 'now'}`,time:'Reminder', isRead:true}));
 
   const realItems = _latestNotifications.map(n => ({
@@ -3335,8 +3438,8 @@ function searchHealthData(query){
   const results=[
     ...getTriageHistory().map(h=>({type:'Triage',title:h.symptoms||h.title,meta:`${h.level} - ${h.confidence||70}%`,tab:'history'})),
     ...getStored('appointments',[]).map(a=>({type:'Appointment',title:a.doctor,meta:`${a.date||'TBD'} ${a.reason||''}`,tab:'appointments'})),
-    ...getStored('reminders',[]).map(r=>({type:'Reminder',title:r.name,meta:`${r.time||''} ${r.dose||''}`,tab:'tools'})),
-    ...getStored('foods',[]).map(f=>({type:'Food',title:f.food,meta:`${f.cal} kcal`,tab:'tools'}))
+    ...(_cachedMedicineReminders||[]).map(r=>({type:'Reminder',title:r.name,meta:`${r.time||''} ${r.dose||''}`,tab:'tools'})),
+    ...(_cachedFoodLogs||[]).map(f=>({type:'Food',title:f.food,meta:`${f.cal} kcal`,tab:'tools'}))
   ].filter(r=>JSON.stringify(r).toLowerCase().includes(q)).slice(0,8);
   pop.innerHTML = results.length ? results.map(r=>`<div class="search-row" onclick="showTab('${r.tab}',null);document.getElementById('search-results').classList.remove('open')"><div class="search-title">${escapeHtml(r.title||r.type)}</div><div class="search-meta">${escapeHtml(r.type)} - ${escapeHtml(r.meta||'')}</div></div>`).join('') : '<div class="search-row"><div class="search-title">No local results found</div><div class="search-meta">Try a symptom, medicine, food, or doctor name</div></div>';
   pop.classList.add('open');

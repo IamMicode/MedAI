@@ -10,6 +10,7 @@ const validate = require('../middleware/validate');
 const { authLimiter } = require('../middleware/rateLimits');
 const { createToken } = require('../utils/jwt');
 const sanitizeUser = require('../utils/sanitizeUser');
+const { requireAuth } = require('../middleware/auth');
 const {
   registerSchema,
   loginSchema,
@@ -354,6 +355,49 @@ router.post('/reset-password', authLimiter, validate(resetPasswordSchema), async
         ? 'Password reset successful.'
         : 'Password set successfully. You can now sign in with your email and password, in addition to Google.'
     });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// PATCH /api/auth/change-password — for an already-logged-in user changing
+// their own password from Settings (distinct from the forgot-password flow
+// above, which is for a user who's locked out and never authenticates first).
+// Verifies the real current password against the actual bcrypt hash — this
+// replaces a frontend-only implementation that compared against a value the
+// backend never even sends to the browser, so it could never have worked.
+router.patch('/change-password', authLimiter, requireAuth, async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: 'Current and new password are required.' });
+    }
+    if (newPassword.length < 8) {
+      return res.status(400).json({ message: 'New password must be at least 8 characters.' });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+    if (!user?.password) {
+      // Google-only account with no password set yet — same "set a password"
+      // path as reset-password already handles, not a wrong-password case.
+      return res.status(400).json({ message: 'This account has no password set yet. Use "Forgot password" to set one.' });
+    }
+
+    const currentOk = await bcrypt.compare(currentPassword, user.password);
+    if (!currentOk) {
+      return res.status(401).json({ message: 'Current password is incorrect.' });
+    }
+
+    const sameAsBefore = await bcrypt.compare(newPassword, user.password);
+    if (sameAsBefore) {
+      return res.status(400).json({ message: 'New password must be different from your current password.' });
+    }
+
+    const hashed = await bcrypt.hash(newPassword, 12);
+    await prisma.user.update({ where: { id: user.id }, data: { password: hashed } });
+
+    console.log(`Password changed for user ${user.id} via Settings.`);
+    return res.json({ message: 'Password updated.' });
   } catch (error) {
     return next(error);
   }

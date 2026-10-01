@@ -1535,7 +1535,7 @@ function skeletonChatBubbles(){
     { w: '62%', side: 'flex-start' },
     { w: '30%', side: 'flex-end' }
   ];
-  return `<div style="display:flex;flex-direction:column;gap:10px;padding:1rem">
+  return `<div class="chat-skeleton-loading" style="display:flex;flex-direction:column;gap:10px;padding:1rem">
     ${widths.map(m => `<div class="skel skel-bubble" style="width:${m.w};align-self:${m.side}"></div>`).join('')}
   </div>`;
 }
@@ -2901,6 +2901,12 @@ async function loadPatientMessages(){
       }
       return;
     }
+
+    // Clear the skeleton loader the moment real messages are about to render —
+    // it was never being removed here before, so it kept sitting in the DOM
+    // alongside (and above) the actual conversation once it loaded.
+    const skeleton = container.querySelector('.chat-skeleton-loading');
+    if(skeleton) skeleton.remove();
 
     const emptyState = container.querySelector('.patient-chat-empty');
     if(emptyState) emptyState.remove();

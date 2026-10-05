@@ -623,22 +623,70 @@ function closeDeleteModal(){
   document.getElementById('delete-confirm-input').value = '';
   document.getElementById('delete-error').style.display = 'none';
 }
-function executeDelete(){
+async function executeDelete(){
   const input = document.getElementById('delete-confirm-input').value.trim();
-  const user  = JSON.parse(localStorage.getItem('medai_current_user') || '{}');
   const errEl = document.getElementById('delete-error');
+  const btn = document.getElementById('execute-delete-btn');
+
   if(input !== 'DELETE'){
     errEl.textContent = 'Please type DELETE exactly to confirm.';
     errEl.style.display = 'block';
     return;
   }
-  const users = JSON.parse(localStorage.getItem('medai_users') || '[]');
-  const filtered = users.filter(u => u.username !== user.username);
-  localStorage.setItem('medai_users', JSON.stringify(filtered));
-  localStorage.removeItem('medai_current_user');
-  closeDeleteModal();
-  alert('Your account has been permanently deleted.');
-  window.location.href = 'Login_page.html';
+
+  errEl.style.display = 'none';
+  btn.disabled = true;
+  btn.textContent = 'Deleting...';
+
+  const token = localStorage.getItem('medai_token');
+  if(!token){
+    // No session to authenticate the deletion with — this should not be
+    // reachable from the UI (the page requires login), but if it somehow
+    // is, fail honestly instead of claiming success.
+    errEl.textContent = 'No active session found. Please log in again and retry.';
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = '🗑️ Delete Forever';
+    return;
+  }
+
+  try{
+    const res = await fetch(`${API_BASE_URL}/api/profile`, {
+      method: 'DELETE',
+      headers: { Authorization: 'Bearer ' + token }
+    });
+
+    if(!res.ok){
+      const result = await res.json().catch(() => ({}));
+      errEl.textContent = result.message || 'Could not delete your account. Please try again.';
+      errEl.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = '🗑️ Delete Forever';
+      return; // backend did not confirm deletion — do not touch local session or claim success
+    }
+
+    // Only now, after the server has actually confirmed deletion, clear the
+    // local session and every other piece of locally-cached account data.
+    // Every key this app writes — session token, settings, and per-username
+    // keys like chat history or achievements-seen — uses a "medai_" prefix,
+    // so this catches all of it rather than leaving stale data behind for
+    // whichever account logs in on this device next.
+    Object.keys(localStorage)
+      .filter(k => k.startsWith('medai_'))
+      .forEach(k => localStorage.removeItem(k));
+    // The two keys this app writes without the "medai_" prefix.
+    localStorage.removeItem('medicine_notifications');
+    localStorage.removeItem('notifications_enabled');
+
+    closeDeleteModal();
+    alert('Your account has been permanently deleted.');
+    window.location.href = 'Login_page.html';
+  }catch(e){
+    errEl.textContent = 'Could not reach the server. Please check your connection and try again.';
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = '🗑️ Delete Forever';
+  }
 }
 
 function logoutUser(){

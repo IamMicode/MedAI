@@ -2224,7 +2224,7 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
     <div id="delete-error" style="display:none;font-size:12px;color:#ff4d6d;text-align:center;margin-bottom:.75rem;font-family:'Share Tech Mono',monospace;letter-spacing:1px"></div>
     <div style="display:flex;gap:10px">
       <button onclick="closeDeleteModal()" style="flex:1;background:transparent;border:1px solid rgba(0,212,255,0.2);border-radius:10px;color:rgba(150,200,230,0.6);font-family:'Syne',sans-serif;font-size:13px;font-weight:700;padding:12px;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='rgba(0,212,255,0.2)'">Cancel</button>
-      <button onclick="executeDelete()" style="flex:1;background:rgba(255,77,109,0.15);border:1px solid rgba(255,77,109,0.4);border-radius:10px;color:#ff4d6d;font-family:'Syne',sans-serif;font-size:13px;font-weight:700;padding:12px;cursor:pointer;transition:all .2s" onmouseover="this.style.background='rgba(255,77,109,0.25)'" onmouseout="this.style.background='rgba(255,77,109,0.15)'">🗑️ Delete Forever</button>
+      <button id="execute-delete-btn" onclick="executeDelete()" style="flex:1;background:rgba(255,77,109,0.15);border:1px solid rgba(255,77,109,0.4);border-radius:10px;color:#ff4d6d;font-family:'Syne',sans-serif;font-size:13px;font-weight:700;padding:12px;cursor:pointer;transition:all .2s" onmouseover="this.style.background='rgba(255,77,109,0.25)'" onmouseout="this.style.background='rgba(255,77,109,0.15)'">🗑️ Delete Forever</button>
     </div>
   </div>
 </div>

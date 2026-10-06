@@ -23,6 +23,7 @@ const twoFactorRoutes = require('./routes/twoFactor');
 const healthLogsRoutes = require('./routes/healthLogs');
 
 const { passport, configurePassport } = require('./passport');
+const { getAllowedOrigins } = require('./config/frontendOrigin');
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -39,8 +40,21 @@ app.set('trust proxy', 1);
 configurePassport();
 
 app.use(helmet());
+// Explicit allowlist rather than "allow any origin if FRONTEND_ORIGIN is
+// unset" — a missing env var now means ONLY the known origins below are
+// trusted, never every origin on the internet. See
+// src/config/frontendOrigin.js for what's in the list and why.
+const allowedOrigins = getAllowedOrigins();
 app.use(cors({
-  origin: process.env.FRONTEND_ORIGIN || true,
+  origin: (origin, callback) => {
+    // Requests with no Origin header — server-to-server calls, curl, and
+    // the Bachs/Brevo webhooks hitting this API directly — aren't
+    // cross-origin browser requests at all, so there's nothing for CORS to
+    // protect here. Their own signature/auth checks are what actually
+    // guards them, not this.
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error(`Origin ${origin} is not allowed by CORS.`));
+  },
   credentials: true
 }));
 app.use(express.json({

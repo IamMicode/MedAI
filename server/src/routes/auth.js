@@ -11,6 +11,7 @@ const { authLimiter } = require('../middleware/rateLimits');
 const { createToken } = require('../utils/jwt');
 const sanitizeUser = require('../utils/sanitizeUser');
 const { requireAuth } = require('../middleware/auth');
+const { getFrontendOrigin } = require('../config/frontendOrigin');
 const {
   registerSchema,
   loginSchema,
@@ -168,12 +169,12 @@ router.get('/google/callback', authLimiter, (req, res, next) => {
     if (error) return next(error);
     if (!user) {
       const message = encodeURIComponent(info?.message || 'Google sign-in failed.');
-      return res.redirect(`${process.env.FRONTEND_ORIGIN || ''}/Login_page.html?oauth_error=${message}`);
+      return res.redirect(`${getFrontendOrigin()}/Login_page.html?oauth_error=${message}`);
     }
 
     const token = createToken(user);
     const destination = user.role === 'ADMIN' ? '/admin.html' : '/dashboard.html';
-    const redirectUrl = new URL(destination, process.env.FRONTEND_ORIGIN || 'http://localhost:3000');
+    const redirectUrl = new URL(destination, getFrontendOrigin());
     redirectUrl.searchParams.set('token', token);
     return res.redirect(redirectUrl.toString());
   })(req, res, next);

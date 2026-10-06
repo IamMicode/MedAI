@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const { requireAuth } = require('../middleware/auth');
 const prisma = require('../db');
 const notify = require('../utils/notify');
+const { getFrontendOrigin } = require('../config/frontendOrigin');
 
 // Bachs (https://bachs.io) — hosted checkout + webhook, similar shape to Stripe/Flutterwave
 // but the customer is fully redirected to a hosted page rather than an inline widget.
@@ -11,7 +12,7 @@ const BACHS_SECRET_KEY = process.env.BACHS_SECRET_KEY || '';
 const BACHS_BASE_URL = BACHS_SECRET_KEY.startsWith('sk_sandbox_')
   ? 'https://sandbox-api.bachs.io'
   : 'https://api.bachs.io';
-const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://localhost:3000';
+const FRONTEND_ORIGIN = getFrontendOrigin();
 
 // Server-side price authority — never trust a client-submitted amount.
 // Mirrors dashboard.js's `prices` table; keep these two in sync if pricing changes.

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { requireAuth } = require('../middleware/auth');
+const { getFrontendOrigin } = require('../config/frontendOrigin');
 
 router.use(requireAuth);
 
@@ -54,7 +55,7 @@ const FETCH_TIMEOUT_MS = 25000;
 // var already used for this exact purpose elsewhere in this codebase (see the
 // OpenRouter HTTP-Referer header in ai.js) — reused here rather than inventing
 // a new config value or a fake contact address.
-const APP_ORIGIN = process.env.FRONTEND_ORIGIN || 'https://medai.app';
+const APP_ORIGIN = getFrontendOrigin();
 const OVERPASS_REQUEST_HEADERS = {
   'Content-Type': 'application/x-www-form-urlencoded',
   'User-Agent': `MedAI-Locator/1.0 (+${APP_ORIGIN})`,
@@ -209,4 +210,3 @@ router.get('/search', async (req, res, next) => {
 });
 
 module.exports = router;
-

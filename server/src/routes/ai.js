@@ -3,6 +3,7 @@ const router = express.Router();
 const prisma = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const aiLimit = require('../middleware/aiLimit');
+const { getFrontendOrigin } = require('../config/frontendOrigin');
 
 router.use(requireAuth);
 router.use(aiLimit);
@@ -117,7 +118,7 @@ async function openrouterCall(messages, systemPrompt, model) {
     headers: {
       'Content-Type': 'application/json',
       'Authorization': 'Bearer ' + OR_KEY,
-      'HTTP-Referer': process.env.FRONTEND_ORIGIN || 'https://medai.app',
+      'HTTP-Referer': getFrontendOrigin(),
       'X-Title': 'MedAI'
     },
     body: JSON.stringify({ model: model, messages: allMessages, max_tokens: 1024 })
@@ -305,7 +306,7 @@ async function openrouterVisionCall(imageDataUri, promptText, systemPrompt) {
     headers: {
       'Content-Type': 'application/json',
       'Authorization': 'Bearer ' + OR_KEY,
-      'HTTP-Referer': process.env.FRONTEND_ORIGIN || 'https://medai.app',
+      'HTTP-Referer': getFrontendOrigin(),
       'X-Title': 'MedAI'
     },
     body: JSON.stringify({ model: 'openrouter/free', messages, max_tokens: 1536 })

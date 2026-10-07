@@ -2,8 +2,10 @@ const express = require('express');
 const router = express.Router();
 const prisma = require('../db');
 const { requireAuth } = require('../middleware/auth');
+const { healthLogLimiter } = require('../middleware/rateLimits');
 
 router.use(requireAuth);
+router.use(healthLogLimiter);
 
 const DAILY_TYPES = new Set(['water', 'sleep']);
 const VALID_TYPES = new Set(['water', 'sleep', 'food', 'medicine', 'bmi', 'stress']);

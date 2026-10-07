@@ -5,6 +5,7 @@ const { requireAuth } = require('../middleware/auth');
 const prisma = require('../db');
 const notify = require('../utils/notify');
 const { getFrontendOrigin } = require('../config/frontendOrigin');
+const { paymentInitLimiter, paymentStatusLimiter } = require('../middleware/rateLimits');
 
 // Bachs (https://bachs.io) — hosted checkout + webhook, similar shape to Stripe/Flutterwave
 // but the customer is fully redirected to a hosted page rather than an inline widget.
@@ -30,7 +31,7 @@ const PRICE_TABLE = {
 };
 
 // POST /api/payments/initialize — patient starts a Premium checkout
-router.post('/initialize', requireAuth, async (req, res, next) => {
+router.post('/initialize', requireAuth, paymentInitLimiter, async (req, res, next) => {
   try {
     const { country, planType } = req.body;
     if (!['monthly', 'yearly'].includes(planType)) {
@@ -130,7 +131,7 @@ router.post('/initialize', requireAuth, async (req, res, next) => {
 });
 
 // GET /api/payments/status/:txRef — patient frontend polls this after returning from checkout
-router.get('/status/:txRef', requireAuth, async (req, res, next) => {
+router.get('/status/:txRef', requireAuth, paymentStatusLimiter, async (req, res, next) => {
   try {
     const payment = await prisma.payment.findUnique({ where: { txRef: req.params.txRef } });
     if (!payment || payment.userId !== req.user.id) {

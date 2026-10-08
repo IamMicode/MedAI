@@ -117,13 +117,6 @@ function closeMobileMore(){
 // Emotional + Mental + Physical → OpenRouter
 // ============================================================
 // Which AI uses which backend
-const DEFAULT_OPENROUTER_MODEL = 'openai/gpt-4o-mini'; // legacy Settings display only — not used by callOpenRouter
-function getOpenRouterSettings(){
-  return {
-    key: localStorage.getItem('medai_openrouter_key') || '',
-    model: localStorage.getItem('medai_openrouter_model') || DEFAULT_OPENROUTER_MODEL
-  };
-}
 const aiBackend = {
   chatbot:   'gemini',
   medical:   'gemini',
@@ -674,9 +667,11 @@ async function executeDelete(){
     Object.keys(localStorage)
       .filter(k => k.startsWith('medai_'))
       .forEach(k => localStorage.removeItem(k));
-    // The two keys this app writes without the "medai_" prefix.
-    localStorage.removeItem('medicine_notifications');
-    localStorage.removeItem('notifications_enabled');
+    // The four notification-toggle keys this app writes without the "medai_"
+    // prefix (written dynamically via toggleSettingFlag, which is why a
+    // search for literal localStorage.setItem('...') calls misses them).
+    ['notifications_enabled', 'medicine_notifications', 'appointment_notifications', 'system_notifications']
+      .forEach(k => localStorage.removeItem(k));
 
     closeDeleteModal();
     alert('Your account has been permanently deleted.');
@@ -2385,81 +2380,19 @@ async function disable2FA(){
   }
 }
 
-function saveOpenRouterSettings(){
-  const key=document.getElementById('openrouter-key')?.value.trim();
-  const model=document.getElementById('openrouter-model')?.value.trim() || DEFAULT_OPENROUTER_MODEL;
-  if(key) localStorage.setItem('medai_openrouter_key', key);
-  localStorage.setItem('medai_openrouter_model', model);
-  const status=document.getElementById('openrouter-status');
-  if(status) status.innerHTML=`<strong style="color:var(--safe)">Saved.</strong> Support AIs now use ${escapeHtml(model)} via OpenRouter.`;
-}
-
-function clearOpenRouterSettings(){
-  localStorage.removeItem('medai_openrouter_key');
-  const key=document.getElementById('openrouter-key');
-  if(key) key.value='';
-  const status=document.getElementById('openrouter-status');
-  if(status) status.textContent='OpenRouter key removed from this browser.';
-}
-
-async function testOpenRouter(){
-  saveOpenRouterSettings();
-  const status=document.getElementById('openrouter-status');
-  if(status) status.textContent='Testing OpenRouter...';
-  try{
-    const reply=await callOpenRouter('You are a connection test. Reply with one short sentence.', [{ role: 'user', content: 'Say OpenRouter is connected for MedAI.' }]);
-    if(status) status.innerHTML=`<strong style="color:var(--safe)">Connected.</strong> ${escapeHtml(reply || 'OpenRouter responded.')}`;
-  }catch(e){
-    if(status) status.innerHTML=`<strong style="color:var(--danger)">Failed.</strong> ${escapeHtml(e.message || 'Check your key/model.')}`;
-  }
-}
-
-function saveGeminiSettings(){
-  const key = document.getElementById('gemini-key-input')?.value.trim();
-  const status = document.getElementById('gemini-status');
-  if(key) {
-    localStorage.setItem('medai_gemini_key', key);
-    if(status) status.innerHTML = `<strong style="color:var(--safe)">Saved.</strong> Using your custom Gemini API Key.`;
-  } else {
-    clearGeminiSettings();
-  }
-}
-
-function clearGeminiSettings(){
-  localStorage.removeItem('medai_gemini_key');
-  const input = document.getElementById('gemini-key-input');
-  if(input) input.value = '';
-  const status = document.getElementById('gemini-status');
-  if(status) status.textContent = 'Using default system key.';
-}
-
-async function testGeminiConnection(){
-  saveGeminiSettings();
-  const status = document.getElementById('gemini-status');
-  if(status) status.textContent = 'Testing Gemini API connection...';
-  try {
-    const reply = await callGemini([{ role: 'user', content: 'Say Gemini connection test active for MedAI. Reply in one short sentence.' }]);
-    if(status) status.innerHTML = `<strong style="color:var(--safe)">Connected.</strong> ${escapeHtml(reply)}`;
-  } catch(e) {
-    let msg = e.message === 'daily_limit' ? 'Daily message limit reached.' : e.message;
-    if(status) status.innerHTML = `<strong style="color:var(--danger)">Failed.</strong> ${escapeHtml(msg || 'Check your API Key.')}`;
-  }
+// Personal Gemini/OpenRouter API keys used to be saved in this browser's
+// localStorage through a Settings screen. Nothing ever read them: the real AI
+// calls go through the backend proxy, which only uses the server's own keys
+// (see server/src/routes/ai.js). The screen has been removed, but anyone who
+// saved a key before then still has it sitting in plaintext in their browser —
+// so wipe it, rather than just hiding the UI and leaving the secret behind.
+function removeLegacyAiKeys(){
+  ['medai_gemini_key', 'medai_openrouter_key', 'medai_openrouter_model']
+    .forEach(k => localStorage.removeItem(k));
 }
 
 function loadSettingsControls(){
-  const settings=getOpenRouterSettings();
-  const key=document.getElementById('openrouter-key');
-  const model=document.getElementById('openrouter-model');
-  const status=document.getElementById('openrouter-status');
-  if(key) key.value=settings.key;
-  if(model) model.value=settings.model;
-  if(status) status.textContent=settings.key ? `OpenRouter key saved. Current model: ${settings.model}` : 'No OpenRouter key saved yet.';
-  
-  const geminiKey = localStorage.getItem('medai_gemini_key') || '';
-  const geminiInput = document.getElementById('gemini-key-input');
-  const geminiStatus = document.getElementById('gemini-status');
-  if(geminiInput) geminiInput.value = geminiKey;
-  if(geminiStatus) geminiStatus.textContent = geminiKey ? 'Custom API key saved.' : 'Using default system key.';
+  removeLegacyAiKeys();
 
   setToggleFromFlag('notifications_enabled','settings-notif-toggle',true);
   setToggleFromFlag('medicine_notifications','medicine-notif-toggle',true);

@@ -1793,8 +1793,6 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
           <div class="settings-item" onclick="showSettingsPanel('emergency-panel')"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(255,77,109,0.1)">📞</div><div><div class="settings-label">Emergency Contacts</div><div class="settings-desc">Quick dial numbers</div></div></div><span class="settings-arrow">›</span></div>
           <div class="settings-item" onclick="showSettingsPanel('notifications-panel')"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(0,212,255,0.1)">🔔</div><div><div class="settings-label">Notifications</div><div class="settings-desc">Push & email alerts</div></div></div><div class="toggle on" id="settings-notif-toggle" onclick="event.stopPropagation();toggleSettingFlag('notifications_enabled',this)"></div></div>
           <div class="settings-item"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(0,212,255,0.1)">🌙</div><div><div class="settings-label">Dark Mode</div><div class="settings-desc" id="theme-desc">On</div></div></div><div class="toggle on" id="theme-toggle" onclick="toggleTheme(this)"></div></div>
-          <div class="settings-item" onclick="showSettingsPanel('openrouter-panel')"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(168,85,247,0.1)">AI</div><div><div class="settings-label">OpenRouter API</div><div class="settings-desc">Support AI provider</div></div></div><span class="settings-arrow">›</span></div>
-          <div class="settings-item" onclick="showSettingsPanel('gemini-panel')"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(0,212,255,0.1)">AI</div><div><div class="settings-label">Gemini API</div><div class="settings-desc">Triage & general chatbot provider</div></div></div><span class="settings-arrow">›</span></div>
         </div>
 
         <!-- Privacy & Security -->
@@ -1808,34 +1806,7 @@ html,body{height:100%;font-family:var(--body);background:var(--bg);color:var(--t
           <div class="settings-item" onclick="confirmDelete()"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(255,77,109,0.1)">🗑️</div><div><div class="settings-label" style="color:var(--danger)">Delete Account</div><div class="settings-desc">Permanently remove your data</div></div></div><span class="settings-arrow" style="color:var(--danger)">›</span></div>
         </div>
 
-        <div class="glass-card settings-panel" id="openrouter-panel">
-          <div class="settings-panel-title">OpenRouter API</div>
-          <p class="settings-panel-copy">Safe Space, Mental, and Physical AI support now use OpenRouter. Paste your key here. Frontend storage is convenient for testing, but backend proxying is safer for production.</p>
-          <div class="grid-2">
-            <input class="tool-input" id="openrouter-key" type="password" placeholder="OpenRouter API key"/>
-            <input class="tool-input" id="openrouter-model" placeholder="Model e.g. openai/gpt-4o-mini"/>
-          </div>
-          <div class="settings-actions">
-            <button class="btn btn-primary" onclick="saveOpenRouterSettings()">Save OpenRouter</button>
-            <button class="btn btn-outline" onclick="testOpenRouter()">Test Connection</button>
-            <button class="btn btn-danger" onclick="clearOpenRouterSettings()">Clear Key</button>
-          </div>
-          <div class="mini-result" id="openrouter-status">No OpenRouter key saved yet.</div>
-        </div>
 
-        <div class="glass-card settings-panel" id="gemini-panel">
-          <div class="settings-panel-title">Gemini API Settings</div>
-          <p class="settings-panel-copy">General AI Chatbot and Quick Triage both use Gemini. Paste your key here to configure it dynamically. Your key stays in this browser.</p>
-          <div class="grid-2">
-            <input class="tool-input" id="gemini-key-input" type="password" placeholder="Gemini API key (AIzaSy...)"/>
-          </div>
-          <div class="settings-actions">
-            <button class="btn btn-primary" onclick="saveGeminiSettings()">Save Gemini Key</button>
-            <button class="btn btn-outline" onclick="testGeminiConnection()">Test Connection</button>
-            <button class="btn btn-danger" onclick="clearGeminiSettings()">Clear Key</button>
-          </div>
-          <div class="mini-result" id="gemini-status">Using default system key.</div>
-        </div>
 
         <div class="glass-card settings-panel" id="password-panel">
           <div class="settings-panel-title">Change Password</div>

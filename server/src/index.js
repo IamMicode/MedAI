@@ -53,7 +53,7 @@ app.use(cors({
     // protect here. Their own signature/auth checks are what actually
     // guards them, not this.
     if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
-    return callback(new Error(`Origin ${origin} is not allowed by CORS.`));
+    return callback(Object.assign(new Error(`Origin ${origin} is not allowed by CORS.`), { status: 403 }));
   },
   credentials: true
 }));

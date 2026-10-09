@@ -875,7 +875,13 @@
   // LOGIN WITH LOCALSTORAGE AUTH
   // ============================================================
   // Default backend URL should match server PORT in server/.env.
-  const API_BASE_URL = localStorage.getItem('medai_api_base_url') || 'http://medai-backend-5r9o.onrender.com';
+  // Same resolution as every other page: saved override, else local backend
+  // when developing locally, else the production backend over HTTPS. (This
+  // used to fall back to plain http://, which the site's CSP blocks.)
+  const API_BASE_URL = localStorage.getItem('medai_api_base_url')
+    || (['localhost','127.0.0.1'].includes(window.location.hostname)
+          ? 'http://127.0.0.1:5500'
+          : 'https://medai-backend-5r9o.onrender.com');
   const ADMIN_USERNAME = 'Mangu';
   const ADMIN_PASSWORD = 'Your-momma';
 

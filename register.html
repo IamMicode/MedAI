@@ -453,7 +453,14 @@ function validateStep1(){
 // ============================================================
 function validateStep2(){
   hideError();
-  if(!document.getElementById('dob').value){showError('Please enter your date of birth.');return}
+  const dobVal=document.getElementById('dob').value;
+  if(!dobVal){showError('Please enter your date of birth.');return}
+  // Convenience only — the server enforces this too and is the real gate.
+  const d=new Date(dobVal+'T00:00:00'), t=new Date();
+  let age=t.getFullYear()-d.getFullYear();
+  if(t.getMonth()<d.getMonth()||(t.getMonth()===d.getMonth()&&t.getDate()<d.getDate())) age--;
+  if(isNaN(age)||age<0||age>120){showError('Please enter a valid date of birth.');return}
+  if(age<18){showError('You must be at least 18 years old to use MedAI.');return}
   if(!document.getElementById('gender').value){showError('Please select your gender.');return}
   goToStep(3);
 }

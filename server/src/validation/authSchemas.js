@@ -22,7 +22,7 @@ const registerSchema = z.object({
   username: z.string().trim().min(3).max(40),
   email: z.string().trim().email().toLowerCase(),
   password: z.string().min(8).max(100),
-  dob: optionalString,
+  dob: z.string().trim().min(1, 'Date of birth is required.'),
   gender: optionalString,
   height: optionalString,
   weight: optionalString,

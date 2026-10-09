@@ -12,6 +12,7 @@ const { createToken } = require('../utils/jwt');
 const sanitizeUser = require('../utils/sanitizeUser');
 const { requireAuth } = require('../middleware/auth');
 const { getFrontendOrigin } = require('../config/frontendOrigin');
+const { checkDob } = require('../utils/age');
 const {
   registerSchema,
   loginSchema,
@@ -24,6 +25,11 @@ const router = express.Router();
 
 router.post('/register', authLimiter, validate(registerSchema), async (req, res, next) => {
   try {
+    // MedAI is 18+ (Terms). Enforced here, not just in the signup form —
+    // anyone can call this endpoint directly and skip the form's checks.
+    const dobError = checkDob(req.body.dob);
+    if (dobError) return res.status(400).json({ message: dobError });
+
     const existing = await prisma.user.findFirst({
       where: {
         OR: [

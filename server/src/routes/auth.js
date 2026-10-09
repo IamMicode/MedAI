@@ -205,6 +205,19 @@ router.post('/forgot-password', authLimiter, validate(forgotPasswordSchema), asy
       data: { usedAt: new Date() }
     });
 
+    // Housekeeping: reset codes are single-use and short-lived, so anything
+    // expired or used more than a day ago is just dead weight. Done here (on
+    // each new request) rather than via a cron job — simple, and the table
+    // never grows unbounded. A failure must never block the reset itself.
+    try {
+      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      await prisma.passwordResetCode.deleteMany({
+        where: { OR: [{ expiresAt: { lt: cutoff } }, { usedAt: { lt: cutoff } }] }
+      });
+    } catch (cleanupError) {
+      console.error('Reset-code cleanup failed (continuing):', cleanupError.message);
+    }
+
     // crypto.randomInt is cryptographically secure and free of the modulo
     // bias a naive `% 900000` would introduce — Math.random() is not
     // appropriate for anything security-sensitive like this.
@@ -352,6 +365,11 @@ router.post('/reset-password', authLimiter, validate(resetPasswordSchema), async
       }),
       prisma.passwordResetCode.update({
         where: { id: resetCode.id },
+        data: { usedAt: new Date(), resetTokenHash: null }
+      }),
+      // Any other still-open codes/tokens for this account die with it.
+      prisma.passwordResetCode.updateMany({
+        where: { userId: user.id, usedAt: null, id: { not: resetCode.id } },
         data: { usedAt: new Date(), resetTokenHash: null }
       })
     ]);

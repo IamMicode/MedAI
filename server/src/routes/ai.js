@@ -7,7 +7,8 @@ const { aiLimiter } = require('../middleware/rateLimits');
 const { getFrontendOrigin } = require('../config/frontendOrigin');
 
 router.use(requireAuth);
-router.use(aiLimit);
+// aiLimit is applied per-route to the endpoints that actually call an AI
+// provider — NOT router-wide, so /memory and /usage never burn quota.
 
 const MAX_MEMORY_FACTS_PER_USER = 40;
 
@@ -134,7 +135,7 @@ async function openrouterCall(messages, systemPrompt, model) {
 }
 
 // Gemini route — falls back to OpenRouter auto if Gemini fails
-router.post('/gemini', aiLimiter, async (req, res, next) => {
+router.post('/gemini', aiLimiter, aiLimit, async (req, res, next) => {
   try {
     const { messages, systemPrompt, source } = req.body;
     if (!messages || !Array.isArray(messages)) {
@@ -171,7 +172,7 @@ router.post('/gemini', aiLimiter, async (req, res, next) => {
 });
 
 // OpenRouter route — tries auto model which picks best available free model
-router.post('/openrouter', aiLimiter, async (req, res, next) => {
+router.post('/openrouter', aiLimiter, aiLimit, async (req, res, next) => {
   try {
     const { messages, systemPrompt, source } = req.body;
     if (!messages || !Array.isArray(messages)) {
@@ -336,7 +337,7 @@ This is a plain-English reading aid, not a diagnosis. Keep it clear and free of 
 
 // POST /api/ai/analyze-report — OCR + plain-English explanation for a lab result,
 // prescription, or report, whether pasted as text or uploaded as a photo.
-router.post('/analyze-report', aiLimiter, async (req, res, next) => {
+router.post('/analyze-report', aiLimiter, aiLimit, async (req, res, next) => {
   try {
     const { text, imageData } = req.body;
     if (!text?.trim() && !imageData) {

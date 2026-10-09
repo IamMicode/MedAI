@@ -62,7 +62,7 @@ th{color:var(--text);font-family:var(--mono);font-size:11px;letter-spacing:0.5px
   </div>
 
   <h1>Privacy Policy</h1>
-  <div class="updated">LAST UPDATED — SEPTEMBER 2026 (DRAFT — PENDING LEGAL REVIEW)</div>
+  <div class="updated">LAST UPDATED — OCTOBER 2026 (DRAFT — PENDING LEGAL REVIEW)</div>
 
   <div class="toc">
     <div class="toc-title">Contents</div>
@@ -118,8 +118,15 @@ th{color:var(--text);font-family:var(--mono);font-size:11px;letter-spacing:0.5px
   <p>When you use Quick Triage, we store the symptoms you typed along with the AI's triage classification, summary, and confidence level, so you (and, where you've chosen to share it, a matched doctor) can refer back to it. You can bulk-delete your triage history from within the app.</p>
 
   <h3>AI assistant conversations (Medical, Safe Space, Mental, Physical Health)</h3>
-  <p>Messages you send to MedAI's AI assistants are transmitted to Google Gemini or OpenRouter to generate a response (see Section 7). <strong>As currently implemented, MedAI's own servers do not save the content of these conversations</strong> — only an aggregate daily usage count per user is stored, not the messages themselves.</p>
-  <div class="gap-banner"><strong>Note:</strong> this means if you'd like AI-assistant conversations to persist as part of your medical record (distinct from Quick Triage results, which are saved), that is not currently how the product works — worth confirming this is the intended design.</div>
+  <p>Messages you send to MedAI's AI assistants are transmitted to Google Gemini or OpenRouter to generate a response (see Section 7). MedAI's servers do <strong>not</strong> store a transcript of these conversations. Two things are kept, and you should know about both:</p>
+  <ul>
+    <li><strong>In your browser:</strong> the conversation history for each assistant is saved in your browser's local storage on that device (see Section 11) so it is still there when you come back. It is not uploaded as a transcript. You can clear it from Settings, and deleting your account clears it on the device you delete from.</li>
+    <li><strong>AI memory (on our servers):</strong> to make the assistants feel consistent between sessions, MedAI stores short <em>facts the AI derives from your messages</em> — for example a condition, allergy, medication, goal, or preference you mentioned — in a table linked to your account. These are the AI's own condensed summaries, not your full conversations, and because the AI decides what is worth remembering they can include health information. They are added automatically in the Medical, Safe Space, Mental and Physical assistants; there is currently no setting to switch this off. A maximum of 40 facts is kept per user (the oldest are dropped first). On later chats the stored facts are included in the prompt sent to Gemini or OpenRouter. You can view every fact, delete one, or clear them all from <strong>AI Memory</strong> in the dashboard, and they are removed when you delete your account.</li>
+  </ul>
+  <p>Beyond that, only an aggregate daily usage count per user is stored (used to enforce the free-tier daily limit).</p>
+
+  <h3>Health Tools, Safe Space and achievements</h3>
+  <p>Entries you make in Health Tools — medicine reminders, water intake, sleep, food/calorie logs, BMI results and stress/anxiety check-ins — are saved to your account on our servers so they follow you across devices. Panic-mode sessions (when they started and ended, whether you completed the grounding exercise or used the calming sound, and an optional note) and the achievements you have unlocked are also saved to your account. All of this is deleted when you delete your account.</p>
 
   <h3>Doctor-patient conversations</h3>
   <p>If you chat with a doctor through MedAI, we store the conversation, including message text, any images you send (stored directly in our database), delivery/read status, and whether you've chosen to share your fuller profile with that doctor.</p>
@@ -134,13 +141,13 @@ th{color:var(--text);font-family:var(--mono);font-size:11px;letter-spacing:0.5px
   <p>If you use the Medical Locator's "search near me," your device coordinates (or a place name you type) are sent to OpenStreetMap's Nominatim (for address search) and Overpass (for nearby-facility search) services to find results. MedAI's backend passes this through to those services but does not separately keep a history of your past location searches. A doctor's own workplace coordinates, if they add one, are stored so it can be shown on the map.</p>
 
   <h3>Technical information</h3>
-  <p>MedAI does not use cookies. Your browser's local storage holds your session/authentication token (so you stay signed in) and, for doctor accounts, a small display-name value — not for tracking or advertising. Standard web request logs (such as IP address at time of request) are inherent to any hosting provider; MedAI does not currently operate a dedicated analytics or error-monitoring service. <span class="placeholder">[TO BE CONFIRMED: what default request-log retention applies at the Vercel/Render hosting layer]</span>.</p>
+  <p>MedAI does not use cookies. It does use your browser's local storage — see Section 11 for exactly what is kept there. None of it is used for tracking or advertising. Standard web request logs (such as IP address at time of request) are inherent to any hosting provider; MedAI does not currently operate a dedicated analytics or error-monitoring service. <span class="placeholder">[TO BE CONFIRMED: what default request-log retention applies at the Vercel/Render hosting layer]</span>.</p>
 
   <h3>Payment information</h3>
   <p>See Section 10 — MedAI's backend never directly receives or stores your card details.</p>
 
   <h3>Notifications</h3>
-  <p>In-app notifications (new message, appointment request/accepted/declined, review received, doctor application approved/rejected, payment successful) are generated and stored within the app. These are not emails. The only transactional email MedAI currently sends is the password-reset verification code.</p>
+  <p>In-app notifications (new message, appointment request/accepted/declined, review received, doctor application approved/rejected, payment successful) are generated and stored within the app. These are not emails. The only transactional email MedAI currently sends is the password-reset verification code, delivered through Brevo.</p>
 
   <h2 id="sensitive-data">4. Health and Sensitive Personal Data</h2>
   <p>Much of what's described above — symptoms, conditions, medications, allergies, vitals, triage results, and doctor-patient conversations — is health information that receives enhanced legal protection ("special category" or "sensitive" data) in many jurisdictions. We process it because it is core to what MedAI does: helping you understand symptoms, maintain a health record, and connect with doctors.</p>
@@ -176,7 +183,7 @@ th{color:var(--text);font-family:var(--mono);font-size:11px;letter-spacing:0.5px
 
   <h2 id="ai-processing">7. AI and Automated Processing</h2>
   <p>MedAI currently uses two AI providers: <strong>Google Gemini</strong> (model: gemini-1.5-flash) as the primary provider, and <strong>OpenRouter</strong> — configured to auto-select from whichever underlying free model is available — as a fallback if Gemini is unavailable. No other AI provider is used in the current production backend.</p>
-  <p>When you message an AI assistant, the text of your message (and relevant context) is sent to whichever provider responds. As noted in Section 3, MedAI itself does not persist the content of these conversations beyond an aggregate usage counter — Quick Triage is the exception, where the structured result is deliberately saved.</p>
+  <p>When you message an AI assistant, the text of your message (and relevant context) is sent to whichever provider responds. As noted in Section 3, MedAI's servers do not store transcripts of these conversations. They do store the short AI-derived memory facts described there (and include them in later prompts to the provider), and Quick Triage is another exception, where the structured result is deliberately saved.</p>
   <p>Because OpenRouter auto-routes to a variable underlying model, the specific downstream provider handling any given message — and that provider's own data retention and training practices — can differ from one message to the next. Those practices are governed by Gemini's and OpenRouter's own privacy policies, not MedAI's, and we encourage reviewing them directly for specifics. MedAI does not currently have a human review/moderation process for AI conversations.</p>
   <p><strong>AI-generated output, including triage results, is informational and supportive only — it is not a medical diagnosis and does not replace professional medical care.</strong> Where triage indicates urgency, MedAI directs you toward seeking professional attention.</p>
 
@@ -199,7 +206,15 @@ th{color:var(--text);font-family:var(--mono);font-size:11px;letter-spacing:0.5px
   <p>What MedAI does store: a transaction reference, Bachs' checkout/session identifier, the amount and currency, the plan type (monthly/yearly), the payment status, and Bachs' own provider transaction reference once confirmed via a cryptographically verified webhook. Any billing or cardholder details Bachs itself collects are governed by Bachs' own privacy policy. <span class="placeholder">[TO BE CONFIRMED: link to Bachs' current privacy policy to reference here]</span>.</p>
 
   <h2 id="cookies">11. Cookies, Local Storage and Analytics</h2>
-  <p>MedAI does not use cookies. Browser local storage is used only to hold your session/authentication token, and, for doctor accounts, a small interface display-name value — neither is used for tracking, profiling, or advertising. No analytics or error-monitoring service (such as Google Analytics or Sentry) is currently integrated into MedAI. If that changes, this policy will be updated before any such tool is enabled.</p>
+  <p>MedAI does not use cookies. It does use your browser's local storage (data kept on your own device) for the following. None of it is used for tracking, profiling, or advertising, and no analytics or error-monitoring service (such as Google Analytics or Sentry) is integrated into MedAI. If that changes, this policy will be updated before any such tool is enabled.</p>
+  <ul>
+    <li><strong>Sign-in:</strong> your session token, so you stay signed in (doctors have their own token and display name; admin sessions use session storage that ends when the tab closes).</li>
+    <li><strong>A copy of your account profile:</strong> your name, email and the health-profile fields you have filled in, kept so the app can load quickly. This stays on the device until you sign out, delete your account, or clear your browser data.</li>
+    <li><strong>AI assistant conversation history</strong> for each assistant (Section 3).</li>
+    <li><strong>Local copies of your recent triage history and vitals</strong> (up to 50 and 100 entries), and local copies of Health Tools entries, kept for fast loading. The saved versions of this data are on our servers (Sections 3 and 9).</li>
+    <li><strong>Preferences:</strong> theme, language, country, billing-period choice, notification toggles, your chosen therapy provider, whether you have seen an achievement, and your app rating.</li>
+  </ul>
+  <p>Because this data sits in the browser, anyone who can use that browser profile can see it — sign out on shared devices. Deleting your account removes the MedAI keys from the device you delete it on; other devices you used keep theirs until you sign out or clear site data there.</p>
 
   <h2 id="third-parties">12. Third-Party Services and Subprocessors</h2>
   <table>
@@ -207,7 +222,7 @@ th{color:var(--text);font-family:var(--mono);font-size:11px;letter-spacing:0.5px
     <tr><td>Google</td><td>Sign-in with Google (OAuth)</td><td>Google account identifier, name, email, profile picture</td></tr>
     <tr><td>Google Gemini</td><td>Primary AI provider for assistants and triage</td><td>Message text you send to an AI assistant</td></tr>
     <tr><td>OpenRouter</td><td>Fallback AI provider (auto-routed model)</td><td>Message text you send to an AI assistant</td></tr>
-    <tr><td>Resend</td><td>Transactional email — currently password-reset codes only</td><td>Email address, reset code</td></tr>
+    <tr><td>Brevo</td><td>Transactional email — currently password-reset codes only</td><td>Email address, reset code</td></tr>
     <tr><td>Bachs</td><td>Payment processing for Premium subscriptions</td><td>Payment/billing details (held by Bachs, not MedAI)</td></tr>
     <tr><td>OpenStreetMap (Nominatim &amp; Overpass)</td><td>Address search and nearby medical-facility search</td><td>Coordinates or place name you search</td></tr>
     <tr><td>Vercel</td><td>Frontend hosting</td><td>Standard web request data</td></tr>
@@ -225,7 +240,7 @@ th{color:var(--text);font-family:var(--mono);font-size:11px;letter-spacing:0.5px
   <table>
     <tr><th>Category</th><th>Current behavior</th></tr>
     <tr><td>Account information</td><td>Retained while active; deleted on account deletion. <span class="placeholder">[Backup retention after deletion: TO BE CONFIRMED]</span></td></tr>
-    <tr><td>AI assistant conversations</td><td>Not persisted beyond an aggregate daily usage counter (Section 3) — <span class="placeholder">[counter retention period: TO BE CONFIRMED]</span></td></tr>
+    <tr><td>AI assistant conversations</td><td>Transcripts are not stored on our servers; AI-derived memory facts are kept (max 40 per user) until you delete them or your account; an aggregate daily usage counter is also kept (Section 3) — <span class="placeholder">[counter retention period: TO BE CONFIRMED]</span></td></tr>
     <tr><td>Triage history</td><td>Retained until user-deleted or account deletion — <span class="placeholder">[maximum age policy, if any: TO BE CONFIRMED]</span></td></tr>
     <tr><td>Vitals readings</td><td>Same as above — <span class="placeholder">[TO BE CONFIRMED]</span></td></tr>
     <tr><td>Doctor-patient conversations</td><td>Retained indefinitely today, tied to the accounts involved — <span class="placeholder">[TO BE CONFIRMED]</span></td></tr>
@@ -243,7 +258,7 @@ th{color:var(--text);font-family:var(--mono);font-size:11px;letter-spacing:0.5px
     <li><strong>Data at rest</strong> is stored in a managed PostgreSQL database. Whether our database host applies disk-level encryption at rest is a property of that provider — <span class="placeholder">[TO BE CONFIRMED with database host]</span>. MedAI does not currently apply additional application-level encryption to health-data fields beyond the database's own storage.</li>
     <li><strong>Access control:</strong> authentication is required for all patient/doctor API routes; role-based checks restrict admin-only and doctor-only endpoints; a doctor's access to a specific patient's fuller profile requires that patient's explicit "Share Profile" toggle (Section 8).</li>
     <li><strong>Security headers</strong> are set using the Helmet middleware.</li>
-    <li><strong>Rate limiting</strong> applies to login, registration, and password-reset endpoints to reduce brute-force and abuse risk.</li>
+    <li><strong>Rate limiting</strong> applies to sign-in, registration and password-reset endpoints, the AI endpoints, payment endpoints and health-log endpoints to reduce brute-force and abuse risk.</li>
     <li><strong>Administrative access:</strong> an internal admin role exists to approve doctor applications and manage users. <span class="placeholder">[TO BE CONFIRMED: how many people hold admin access today and what internal controls govern it]</span>.</li>
     <li><strong>Backups:</strong> <span class="placeholder">[TO BE CONFIRMED with hosting/database provider — no custom backup system exists in the application code itself]</span>.</li>
   </ul>
@@ -266,7 +281,7 @@ th{color:var(--text);font-family:var(--mono);font-size:11px;letter-spacing:0.5px
   <p>After a patient has had a conversation with a doctor, they may leave a 1–5 star rating and an optional written comment for that doctor. This is limited to one review per patient-doctor pair, and both the rating and comment are visible to other patients viewing that doctor's profile. The average rating and review count are shown on the doctor's card wherever they appear in the app (Medical Locator, appointments, triage doctor-match).</p>
 
   <h2 id="deletion">20. Account Deletion</h2>
-  <p>You can permanently delete your account at any time from Settings. This is immediate and irreversible: it removes your account and, because nearly every record in our database is linked to your account and cascades on deletion, it also removes your profile, vitals, triage history, conversations and messages, appointments, reviews, notifications, and payment records tied to that account.</p>
+  <p>You can permanently delete your account at any time from Settings. This is immediate and irreversible: it removes your account and, because nearly every record in our database is linked to your account and cascades on deletion, it also removes your profile, vitals, triage history, conversations and messages, appointments, reviews, notifications, and payment records tied to that account, along with your AI memory facts, Health Tools entries, panic sessions and achievements. The app also clears its saved copies from the browser you delete from.</p>
   <div class="gap-banner"><strong>Worth knowing:</strong> because deletion cascades to payment records too, this may need reconciling against jurisdictions that require financial/transaction records to be retained for a minimum period regardless of account deletion (Section 14) — Bachs, our payment processor, may separately retain its own copy of transaction records under its own policy even after MedAI's copy is deleted.</div>
 
   <h2 id="changes">21. Changes to This Policy</h2>

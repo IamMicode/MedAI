@@ -141,7 +141,7 @@ router.get('/patients', async (req, res, next) => {
     });
 
     // pull each patient's most recent triage record too, if any exists, for severity context
-    const patientIds = conversations.map(c => c.patient.id);
+    const patientIds = conversations.filter(c => c.profileShared).map(c => c.patient.id);
     const triageRecords = patientIds.length
       ? await prisma.triageRecord.findMany({
           where: { userId: { in: patientIds } },
@@ -153,18 +153,24 @@ router.get('/patients', async (req, res, next) => {
       if (!latestTriageByPatient[t.userId]) latestTriageByPatient[t.userId] = t;
     }
 
+    // Share Profile is enforced HERE too, not just on /patients/:id. Until the
+    // patient turns sharing on for this conversation, the doctor gets only the
+    // patient's name — no email, blood group, allergies, conditions, emergency
+    // contact or triage details.
     const patients = conversations
       .map(c => {
         const lastMessage = c.messages[0] || null;
-        const triage = latestTriageByPatient[c.patient.id] || null;
+        const shared = c.profileShared === true;
+        const triage = shared ? (latestTriageByPatient[c.patient.id] || null) : null;
         return {
           id: c.patient.id,
           conversationId: c.id,
           name: `${c.patient.firstname || ''} ${c.patient.lastname || ''}`.trim() || c.patient.username,
-          email: c.patient.email,
-          bloodGroup: c.patient.bloodGroup,
-          allergies: c.patient.allergies,
-          conditions: c.patient.conditions,
+          profileShared: shared,
+          email: shared ? c.patient.email : null,
+          bloodGroup: shared ? c.patient.bloodGroup : null,
+          allergies: shared ? c.patient.allergies : [],
+          conditions: shared ? c.patient.conditions : [],
           highestSeverity: triage ? triage.triageLevel : null,
           lastTriageSummary: triage ? (triage.summary || triage.symptoms || null) : null,
           lastMessage: lastMessage ? (lastMessage.content || (lastMessage.imageData ? '📷 Image' : '')) : null,

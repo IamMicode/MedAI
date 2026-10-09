@@ -12,32 +12,37 @@ async function aiLimit(req, res, next) {
       where: { id: userId },
       select: { plan: true }
     });
-    if (user?.plan && user.plan !== 'FREE') return next();
+    // The DB stores plan as 'Free' / 'Premium' (see schema default). Compare
+    // case-insensitively so a casing difference can never again silently
+    // exempt every free user from the quota.
+    const plan = String(user?.plan || 'Free').toLowerCase();
+    if (plan !== 'free') return next();
 
     const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 
+    // Increment first, then check the value the DB returns. Two simultaneous
+    // requests can't both read "9" and both slip through to 11.
     const usage = await prisma.aIUsage.upsert({
       where: { userId_date: { userId, date: today } },
-      update: {},
-      create: { userId, date: today, count: 0 }
+      update: { count: { increment: 1 } },
+      create: { userId, date: today, count: 1 }
     });
 
-    if (usage.count >= FREE_DAILY_LIMIT) {
+    if (usage.count > FREE_DAILY_LIMIT) {
+      // Over the cap: give the slot back so the counter stays at the limit.
+      await prisma.aIUsage.update({
+        where: { userId_date: { userId, date: today } },
+        data: { count: { decrement: 1 } }
+      });
       return res.status(429).json({
         message: `Daily limit reached. Free users get ${FREE_DAILY_LIMIT} AI messages per day. Upgrade to Premium for unlimited access.`,
         limit: FREE_DAILY_LIMIT,
-        used: usage.count,
+        used: FREE_DAILY_LIMIT,
         upgradeRequired: true
       });
     }
 
-    // increment count
-    await prisma.aIUsage.update({
-      where: { userId_date: { userId, date: today } },
-      data: { count: { increment: 1 } }
-    });
-
-    res.locals.aiUsage = { used: usage.count + 1, limit: FREE_DAILY_LIMIT };
+    res.locals.aiUsage = { used: usage.count, limit: FREE_DAILY_LIMIT };
     return next();
   } catch (error) {
     return next(error);

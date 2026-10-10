@@ -8,6 +8,20 @@ const router = express.Router();
 
 router.use(requireAuth, requireAdmin);
 
+// GET /api/admin/me — lets the admin page ask the SERVER "is this session a
+// real admin?" before showing anything, instead of trusting browser storage.
+router.get('/me', async (req, res, next) => {
+  try {
+    const admin = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { id: true, username: true }
+    });
+    return res.json({ admin });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 // Shared pagination helper — clamps page/pageSize to sane bounds so a typo'd
 // query param (or a scripted abuse attempt) can't force an unbounded fetch.
 function parsePagination(query, defaultPageSize = 25, maxPageSize = 100) {

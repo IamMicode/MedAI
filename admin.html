@@ -5,20 +5,19 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>MedAI Admin Panel</title>
 <script>
+// Google sign-in for an admin account redirects back here with ?token=...
+// Keep only the token; whether it belongs to a real admin is decided by the
+// SERVER (see verifyAdminSession below), never by anything stored in the browser.
 (function(){
   const params = new URLSearchParams(window.location.search);
   const token = params.get('token');
   if(token){
     localStorage.setItem('medai_token', token);
-    sessionStorage.setItem('medai_admin_session', 'active');
     params.delete('token');
     const cleanUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}${window.location.hash}`;
     window.history.replaceState({}, document.title, cleanUrl);
   }
 })();
-if(sessionStorage.getItem('medai_admin_session') !== 'active'){
-  window.location.replace('Login_page.html');
-}
 </script>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&family=Share+Tech+Mono&display=swap" rel="stylesheet"/>
 <style>
@@ -164,16 +163,8 @@ body::after{content:'';position:fixed;top:-200px;right:-100px;width:600px;height
     </div>
     <h1 class="admin-title">Admin Access</h1>
     <div class="admin-sub"><div class="sec-dot"></div>Restricted Area — Authorized Personnel Only</div>
-    <div class="admin-field">
-      <label>Admin Username</label>
-      <input class="admin-input" type="text" id="admin-username" placeholder="admin" onkeydown="if(event.key==='Enter')adminLogin()"/>
-    </div>
-    <div class="admin-field">
-      <label>Admin Password</label>
-      <input class="admin-input" type="password" id="admin-password" placeholder="••••••••" onkeydown="if(event.key==='Enter')adminLogin()"/>
-    </div>
-    <button class="admin-login-btn" onclick="adminLogin()">🛡️ &nbsp;Access Admin Panel</button>
-    <div class="admin-err" id="admin-err">Invalid credentials. Access denied.</div>
+    <div class="admin-sub" id="admin-gate-msg" style="margin:1rem 0">Checking your session…</div>
+    <button class="admin-login-btn" id="admin-gate-btn" style="display:none" onclick="window.location.href='Login_page.html'">🛡️ &nbsp;Sign in with your admin account</button>
     <a href="Login_page.html" class="admin-back">← Back to MedAI</a>
   </div>
 </div>
@@ -413,6 +404,10 @@ body::after{content:'';position:fixed;top:-200px;right:-100px;width:600px;height
           <div class="a-card" style="padding:1.5rem">
             <div style="font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:2px;margin-bottom:1rem">// CHANGE ADMIN PASSWORD</div>
             <div style="margin-bottom:.75rem">
+              <label style="font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:2px;display:block;margin-bottom:7px">CURRENT PASSWORD</label>
+              <input class="admin-input" type="password" id="current-admin-pass" placeholder="Current password" autocomplete="current-password"/>
+            </div>
+            <div style="margin-bottom:.75rem">
               <label style="font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:2px;display:block;margin-bottom:7px">NEW PASSWORD</label>
               <input class="admin-input" type="password" id="new-admin-pass" placeholder="New password"/>
             </div>
@@ -460,47 +455,57 @@ body::after{content:'';position:fixed;top:-200px;right:-100px;width:600px;height
 // ============================================================
 // ADMIN AUTH
 // ============================================================
-// Default credentials — change these!
-const ADMIN_CREDS = {
-  username: 'Mangu',
-  password: 'Your-momma'
-};
+// There is NO password in this page. Admins sign in through the normal MedAI
+// login (Login_page.html -> /api/auth/login, with 2FA if enabled). This page
+// then asks the server (GET /api/admin/me, guarded by requireAdmin) whether the
+// stored token belongs to a real admin. Every admin API call is re-checked on
+// the server too, so nothing here is a security boundary on its own.
+function showAdminGate(message, showButton){
+  document.getElementById('admin-shell').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('admin-gate-msg').textContent = message;
+  document.getElementById('admin-gate-btn').style.display = showButton ? 'block' : 'none';
+}
 
-function adminLogin(){
-  const u = document.getElementById('admin-username').value.trim();
-  const p = document.getElementById('admin-password').value;
-  const stored = JSON.parse(localStorage.getItem('medai_admin_creds') || 'null');
-  const creds = stored || ADMIN_CREDS;
+function clearAdminSession(){
+  ['medai_token','medai_current_user'].forEach(k => localStorage.removeItem(k));
+  ['medai_admin_session','medai_admin_started_at','medai_admin_name'].forEach(k => sessionStorage.removeItem(k));
+}
 
-  if(u.toLowerCase() === creds.username.toLowerCase() && p === creds.password){
-    document.getElementById('login-screen').style.display = 'none';
-    document.getElementById('admin-shell').style.display  = 'flex';
-    sessionStorage.setItem('medai_admin_session', 'active');
-    document.getElementById('as-admin-name').textContent = u;
-    initAdmin();
-  } else {
-    const errEl = document.getElementById('admin-err');
-    errEl.style.display = 'block';
-    document.getElementById('admin-password').value = '';
-    setTimeout(() => errEl.style.display='none', 3000);
+async function verifyAdminSession(){
+  const token = localStorage.getItem('medai_token');
+  if(!token){ showAdminGate('Sign in with an administrator account to continue.', true); return; }
+  try{
+    const res = await fetch(API_BASE_URL + '/api/admin/me', { headers: { Authorization: 'Bearer ' + token } });
+    if(res.ok){
+      const data = await res.json();
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('admin-shell').style.display  = 'flex';
+      document.getElementById('as-admin-name').textContent = (data.admin && data.admin.username) || 'Admin';
+      initAdmin();
+      return;
+    }
+    if(res.status === 401 || res.status === 403){
+      // Not an admin (or the session expired) — drop the token so a normal
+      // user's session isn't left lying around on this page.
+      if(res.status === 401) clearAdminSession();
+      showAdminGate(res.status === 403
+        ? 'This account does not have administrator access.'
+        : 'Your session has expired. Please sign in again.', true);
+      return;
+    }
+    showAdminGate('Could not reach the server. Please try again shortly.', true);
+  }catch(e){
+    showAdminGate('Could not reach the server. Please try again shortly.', true);
   }
 }
 
-document.getElementById('admin-username').addEventListener('keydown', e => { if(e.key==='Enter') adminLogin(); });
-document.getElementById('admin-password').addEventListener('keydown', e => { if(e.key==='Enter') adminLogin(); });
-
 function adminLogout(){
-  sessionStorage.removeItem('medai_admin_session');
+  clearAdminSession();
   window.location.href = 'Login_page.html';
 }
 
-// Auto-restore session
-if(sessionStorage.getItem('medai_admin_session') === 'active'){
-  document.getElementById('login-screen').style.display = 'none';
-  document.getElementById('admin-shell').style.display  = 'flex';
-  document.getElementById('as-admin-name').textContent = sessionStorage.getItem('medai_admin_name') || ADMIN_CREDS.username;
-  initAdmin();
-}
+document.addEventListener('DOMContentLoaded', verifyAdminSession);
 
 // Clock
 setInterval(() => {
@@ -1232,19 +1237,28 @@ function closeUserModal(){
 // ============================================================
 // ADMIN SETTINGS ACTIONS
 // ============================================================
-function changeAdminPassword(){
+async function changeAdminPassword(){
+  const cur = document.getElementById('current-admin-pass').value;
   const np = document.getElementById('new-admin-pass').value;
   const cp = document.getElementById('confirm-admin-pass').value;
   const msgEl = document.getElementById('pass-change-msg');
-  if(!np || np.length < 6){ msgEl.textContent='Password must be at least 6 characters.'; msgEl.style.color='var(--danger)'; msgEl.style.display='block'; return; }
-  if(np !== cp){ msgEl.textContent='Passwords do not match.'; msgEl.style.color='var(--danger)'; msgEl.style.display='block'; return; }
-  const stored = JSON.parse(localStorage.getItem('medai_admin_creds') || 'null') || ADMIN_CREDS;
-  stored.password = np;
-  localStorage.setItem('medai_admin_creds', JSON.stringify(stored));
-  document.getElementById('new-admin-pass').value = '';
-  document.getElementById('confirm-admin-pass').value = '';
-  msgEl.textContent = '✓ Password updated successfully.'; msgEl.style.color='var(--safe)'; msgEl.style.display='block';
-  setTimeout(() => msgEl.style.display='none', 3000);
+  const say = (text, color) => { msgEl.textContent = text; msgEl.style.color = color; msgEl.style.display = 'block'; setTimeout(() => msgEl.style.display='none', 4000); };
+  if(!cur){ say('Enter your current password.', 'var(--danger)'); return; }
+  if(!np || np.length < 8){ say('New password must be at least 8 characters.', 'var(--danger)'); return; }
+  if(np !== cp){ say('Passwords do not match.', 'var(--danger)'); return; }
+  try{
+    const res = await fetch(API_BASE_URL + '/api/auth/change-password', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem('medai_token') },
+      body: JSON.stringify({ currentPassword: cur, newPassword: np })
+    });
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok){ say(data.message || 'Could not update the password.', 'var(--danger)'); return; }
+    ['current-admin-pass','new-admin-pass','confirm-admin-pass'].forEach(id => document.getElementById(id).value = '');
+    say('✓ Password updated.', 'var(--safe)');
+  }catch(e){
+    say('Could not reach the server. Please try again.', 'var(--danger)');
+  }
 }
 
 function clearAllTriage(){
@@ -1260,7 +1274,7 @@ function nukeAllData(){
     const ans = prompt('Type WIPE ALL to confirm permanent deletion of ALL data:');
     if(ans !== 'WIPE ALL'){ alert('Cancelled.'); return; }
   }
-  const keys = Object.keys(localStorage).filter(k => k.startsWith('medai_') && k !== 'medai_admin_creds' && k !== 'medai_admin_session');
+  const keys = Object.keys(localStorage).filter(k => k.startsWith('medai_') && k !== 'medai_token');
   keys.forEach(k => localStorage.removeItem(k));
   alert('All user data wiped. Admin credentials preserved.');
   renderOverview();

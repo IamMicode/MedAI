@@ -22,7 +22,7 @@ const registerSchema = z.object({
   username: z.string().trim().min(3).max(40),
   email: z.string().trim().email().toLowerCase(),
   password: z.string().min(8).max(100),
-  dob: optionalString,
+  dob: z.string().trim().min(1, 'Date of birth is required.'),
   gender: optionalString,
   height: optionalString,
   weight: optionalString,
@@ -54,9 +54,13 @@ const verifyResetCodeSchema = z.object({
   code: z.string().regex(/^\d{6}$/)
 });
 
+// /reset-password authorizes with the opaque single-use resetToken issued by
+// /verify-reset-code — NOT the 6-digit code itself. (This schema used to ask
+// for `code`, which the frontend never sends at this step, so every real
+// reset failed validation before reaching the handler.)
 const resetPasswordSchema = z.object({
   email: z.string().trim().email().toLowerCase(),
-  code: z.string().regex(/^\d{6}$/),
+  resetToken: z.string().min(32).max(256),
   password: z.string().min(8).max(100)
 });
 

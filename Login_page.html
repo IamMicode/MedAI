@@ -640,7 +640,6 @@
       <div class="vitals-bar">
         <div class="vital-chip"><div class="dot dot-green"></div>System Online</div>
         <div class="vital-chip"><div class="dot dot-blue"></div>Encrypted</div>
-        <div class="vital-chip"><div class="dot dot-green"></div>HIPAA Safe</div>
       </div>
 
     </div>
@@ -875,27 +874,21 @@
   // LOGIN WITH LOCALSTORAGE AUTH
   // ============================================================
   // Default backend URL should match server PORT in server/.env.
-  const API_BASE_URL = localStorage.getItem('medai_api_base_url') || 'http://medai-backend-5r9o.onrender.com';
-  const ADMIN_USERNAME = 'Mangu';
-  const ADMIN_PASSWORD = 'Your-momma';
-
+  // Same resolution as every other page: saved override, else local backend
+  // when developing locally, else the production backend over HTTPS. (This
+  // used to fall back to plain http://, which the site's CSP blocks.)
+  const API_BASE_URL = localStorage.getItem('medai_api_base_url')
+    || (['localhost','127.0.0.1'].includes(window.location.hostname)
+          ? 'http://127.0.0.1:5500'
+          : 'https://medai-backend-5r9o.onrender.com');
   function startGoogleLogin(){
     window.location.href = `${API_BASE_URL}/api/auth/google`;
-  }
-
-  function getAdminCredentials(){
-    try{
-      return JSON.parse(localStorage.getItem('medai_admin_creds') || 'null') || { username: ADMIN_USERNAME, password: ADMIN_PASSWORD };
-    }catch(e){
-      return { username: ADMIN_USERNAME, password: ADMIN_PASSWORD };
-    }
   }
 
   function completeLogin(data){
     localStorage.setItem('medai_token', data.token);
     localStorage.setItem('medai_current_user', JSON.stringify(data.user || {}));
     if(data.user && data.user.role === 'ADMIN'){
-      sessionStorage.setItem('medai_admin_session','active');
       sessionStorage.setItem('medai_admin_started_at', new Date().toISOString());
       sessionStorage.setItem('medai_admin_name', data.user.username);
       if(window.medaiShowLoader) window.medaiShowLoader('Opening admin console');
@@ -958,6 +951,71 @@
       errBox.style.display = 'block';
     }
   }
+
+  // ── Google sign-in: date-of-birth step (MedAI is 18+) ─────────────────
+  // Google doesn't give us a date of birth, so a Google sign-up isn't finished
+  // until the user supplies one. The server validates the age and only then
+  // creates the account / issues a session (POST /api/auth/google/complete).
+  function showGoogleDobModal(stepToken){
+    const existing = document.getElementById('google-dob-modal');
+    if(existing) existing.remove();
+    const modal = document.createElement('div');
+    modal.id = 'google-dob-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:900;display:flex;align-items:center;justify-content:center;padding:1rem';
+    modal.innerHTML = `
+      <div style="max-width:380px;width:100%;background:#0a1628;border:1px solid rgba(0,212,255,0.25);border-radius:16px;padding:1.75rem">
+        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:18px;margin-bottom:6px;color:#e2f0ff">One more step</div>
+        <div style="font-size:13px;color:#5a7a99;margin-bottom:1.25rem;line-height:1.5">MedAI is for adults aged 18 or over. Please enter your date of birth to finish signing in with Google.</div>
+        <input id="google-dob-input" type="date" style="width:100%;background:rgba(0,212,255,0.06);border:1px solid rgba(0,212,255,0.2);border-radius:10px;color:#e2f0ff;font-size:16px;padding:12px 14px;outline:none;margin-bottom:1rem;color-scheme:dark"/>
+        <div id="google-dob-error" style="color:#ff4d6d;font-size:12.5px;margin-bottom:.75rem;display:none"></div>
+        <div style="display:flex;gap:10px">
+          <div id="google-dob-cancel" style="flex:1;text-align:center;padding:11px;border-radius:10px;border:1px solid rgba(0,212,255,0.15);color:#5a7a99;cursor:pointer;font-size:13px">Cancel</div>
+          <div id="google-dob-submit" style="flex:1;text-align:center;padding:11px;border-radius:10px;background:linear-gradient(135deg,#00d4ff,#0077dd);color:#04090f;font-weight:700;cursor:pointer;font-size:13px">Continue</div>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    const input = document.getElementById('google-dob-input');
+    input.max = new Date().toISOString().slice(0,10);
+    document.getElementById('google-dob-cancel').onclick = () => modal.remove();
+    document.getElementById('google-dob-submit').onclick = () => submitGoogleDob(stepToken);
+    input.focus();
+  }
+
+  async function submitGoogleDob(stepToken){
+    const errBox = document.getElementById('google-dob-error');
+    const dob = document.getElementById('google-dob-input').value;
+    errBox.style.display = 'none';
+    if(!dob){ errBox.textContent = 'Please enter your date of birth.'; errBox.style.display = 'block'; return; }
+    try{
+      const response = await fetch(`${API_BASE_URL}/api/auth/google/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stepToken, dob })
+      });
+      const data = await response.json().catch(()=>({}));
+      if(response.ok && data.token){
+        document.getElementById('google-dob-modal').remove();
+        completeLogin(data);
+        return;
+      }
+      errBox.textContent = data.message || 'Could not finish signing in. Please try again.';
+      errBox.style.display = 'block';
+    }catch(e){
+      errBox.textContent = 'Could not reach the server. Check your connection and try again.';
+      errBox.style.display = 'block';
+    }
+  }
+
+  // The step token arrives in the URL fragment (never sent to servers or logs).
+  (function resumeGoogleStep(){
+    const hash = window.location.hash.replace(/^#/, '');
+    if(!hash) return;
+    const params = new URLSearchParams(hash);
+    const stepToken = params.get('google_signup') || params.get('google_dob');
+    if(!stepToken) return;
+    window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+    document.addEventListener('DOMContentLoaded', () => showGoogleDobModal(stepToken));
+  })();
 
   async function handleLogin(e){
     e.preventDefault();

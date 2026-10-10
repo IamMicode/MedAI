@@ -12,6 +12,7 @@ const { createToken } = require('../utils/jwt');
 const sanitizeUser = require('../utils/sanitizeUser');
 const { requireAuth } = require('../middleware/auth');
 const { getFrontendOrigin } = require('../config/frontendOrigin');
+const { checkDob } = require('../utils/age');
 const {
   registerSchema,
   loginSchema,
@@ -24,6 +25,11 @@ const router = express.Router();
 
 router.post('/register', authLimiter, validate(registerSchema), async (req, res, next) => {
   try {
+    // MedAI is 18+ (Terms). Enforced here, not just in the signup form —
+    // anyone can call this endpoint directly and skip the form's checks.
+    const dobError = checkDob(req.body.dob);
+    if (dobError) return res.status(400).json({ message: dobError });
+
     const existing = await prisma.user.findFirst({
       where: {
         OR: [
@@ -164,20 +170,114 @@ router.get('/google', authLimiter, (req, res, next) => {
   })(req, res, next);
 });
 
+// Short-lived, signed tokens that carry a Google sign-in through the one extra
+// step Google can't do for us: confirming date of birth (18+). They are
+// single-purpose (checked via `purpose`) and cannot be used as a login token —
+// requireAuth would reject them because they carry no role/login claims it
+// accepts for any protected route.
+const GOOGLE_STEP_TTL = '15m';
+function signGoogleStepToken(payload) {
+  return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: GOOGLE_STEP_TTL });
+}
+
 router.get('/google/callback', authLimiter, (req, res, next) => {
   passport.authenticate('google', { session: false }, (error, user, info) => {
     if (error) return next(error);
+    const frontend = getFrontendOrigin();
+
+    // New Google identity: no account yet. Send them to the DOB step.
+    if (!user && info?.googleSignup) {
+      const stepToken = signGoogleStepToken({ purpose: 'google-signup', ...info.googleSignup });
+      return res.redirect(`${frontend}/Login_page.html#google_signup=${encodeURIComponent(stepToken)}`);
+    }
+
     if (!user) {
       const message = encodeURIComponent(info?.message || 'Google sign-in failed.');
-      return res.redirect(`${getFrontendOrigin()}/Login_page.html?oauth_error=${message}`);
+      return res.redirect(`${frontend}/Login_page.html?oauth_error=${message}`);
+    }
+
+    // Existing patient account with no date of birth on file (e.g. created via
+    // Google before this check existed): same DOB step before any session.
+    // Doctors and admins are not patients and are not gated here.
+    if (user.role === 'USER' && !user.dob) {
+      const stepToken = signGoogleStepToken({ purpose: 'google-dob', id: user.id });
+      return res.redirect(`${frontend}/Login_page.html#google_dob=${encodeURIComponent(stepToken)}`);
     }
 
     const token = createToken(user);
     const destination = user.role === 'ADMIN' ? '/admin.html' : '/dashboard.html';
-    const redirectUrl = new URL(destination, getFrontendOrigin());
+    const redirectUrl = new URL(destination, frontend);
     redirectUrl.searchParams.set('token', token);
     return res.redirect(redirectUrl.toString());
   })(req, res, next);
+});
+
+// POST /api/auth/google/complete — finishes a Google sign-up/sign-in that is
+// waiting on a date of birth. The age rule is enforced HERE, server-side.
+router.post('/google/complete', authLimiter, async (req, res, next) => {
+  try {
+    const { stepToken, dob } = req.body || {};
+    if (typeof stepToken !== 'string' || typeof dob !== 'string') {
+      return res.status(400).json({ message: 'A valid sign-in step and date of birth are required.' });
+    }
+
+    let step;
+    try {
+      step = jwt.verify(stepToken, process.env.JWT_SECRET);
+    } catch (e) {
+      return res.status(400).json({ message: 'This sign-in step has expired. Please sign in with Google again.' });
+    }
+
+    const dobError = checkDob(dob.trim());
+    if (dobError) return res.status(400).json({ message: dobError });
+
+    if (step.purpose === 'google-dob') {
+      const existing = await prisma.user.findUnique({ where: { id: step.id } });
+      if (!existing || existing.role !== 'USER') {
+        return res.status(400).json({ message: 'This sign-in step is no longer valid. Please sign in again.' });
+      }
+      const user = existing.dob
+        ? existing
+        : await prisma.user.update({ where: { id: existing.id }, data: { dob: dob.trim() } });
+      return res.json({ token: createToken(user), user: sanitizeUser(user) });
+    }
+
+    if (step.purpose === 'google-signup') {
+      const taken = await prisma.user.findFirst({
+        where: { OR: [{ email: step.email }, { googleId: step.googleId }] }
+      });
+      if (taken) {
+        return res.status(409).json({ message: 'An account with that email already exists. Please sign in.' });
+      }
+
+      const usernameBase = String(step.email).split('@')[0].replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 30) || 'medai-user';
+      let username = usernameBase;
+      let suffix = 1;
+      while (await prisma.user.findUnique({ where: { username } })) {
+        username = `${usernameBase}${suffix}`;
+        suffix += 1;
+      }
+
+      const user = await prisma.user.create({
+        data: {
+          firstname: step.firstname || '',
+          lastname: step.lastname || '',
+          username,
+          email: step.email,
+          googleId: step.googleId,
+          authProvider: 'google',
+          avatarUrl: step.avatarUrl || null,
+          emailVerified: true,
+          dob: dob.trim()
+        }
+      });
+      return res.status(201).json({ token: createToken(user), user: sanitizeUser(user) });
+    }
+
+    return res.status(400).json({ message: 'This sign-in step is not valid.' });
+  } catch (error) {
+    return next(error);
+  }
 });
 
 const RESET_CODE_TTL_MS = 10 * 60 * 1000; // 10 minutes — used by both the DB expiry and the email copy below
@@ -198,6 +298,19 @@ router.post('/forgot-password', authLimiter, validate(forgotPasswordSchema), asy
       where: { userId: user.id, usedAt: null },
       data: { usedAt: new Date() }
     });
+
+    // Housekeeping: reset codes are single-use and short-lived, so anything
+    // expired or used more than a day ago is just dead weight. Done here (on
+    // each new request) rather than via a cron job — simple, and the table
+    // never grows unbounded. A failure must never block the reset itself.
+    try {
+      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      await prisma.passwordResetCode.deleteMany({
+        where: { OR: [{ expiresAt: { lt: cutoff } }, { usedAt: { lt: cutoff } }] }
+      });
+    } catch (cleanupError) {
+      console.error('Reset-code cleanup failed (continuing):', cleanupError.message);
+    }
 
     // crypto.randomInt is cryptographically secure and free of the modulo
     // bias a naive `% 900000` would introduce — Math.random() is not
@@ -346,6 +459,11 @@ router.post('/reset-password', authLimiter, validate(resetPasswordSchema), async
       }),
       prisma.passwordResetCode.update({
         where: { id: resetCode.id },
+        data: { usedAt: new Date(), resetTokenHash: null }
+      }),
+      // Any other still-open codes/tokens for this account die with it.
+      prisma.passwordResetCode.updateMany({
+        where: { userId: user.id, usedAt: null, id: { not: resetCode.id } },
         data: { usedAt: new Date(), resetTokenHash: null }
       })
     ]);

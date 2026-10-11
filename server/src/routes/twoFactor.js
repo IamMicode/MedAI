@@ -89,7 +89,11 @@ router.post('/verify-setup', async (req, res, next) => {
         twoFactorEnabled: true,
         twoFactorSecret: user.twoFactorPendingSecret,
         twoFactorPendingSecret: null,
-        twoFactorBackupCodes: hashedBackupCodes
+        twoFactorBackupCodes: hashedBackupCodes,
+        // a new secret starts with a clean replay/attempt history
+        twoFactorLastStep: null,
+        twoFactorAttempts: 0,
+        twoFactorWindowEndsAt: null
       }
     });
 
@@ -119,7 +123,10 @@ router.post('/disable', async (req, res, next) => {
         twoFactorEnabled: false,
         twoFactorSecret: null,
         twoFactorPendingSecret: null,
-        twoFactorBackupCodes: []
+        twoFactorBackupCodes: [],
+        twoFactorLastStep: null,
+        twoFactorAttempts: 0,
+        twoFactorWindowEndsAt: null
       }
     });
 

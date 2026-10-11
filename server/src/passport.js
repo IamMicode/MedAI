@@ -49,29 +49,14 @@ function configurePassport() {
           return done(null, linkedUser);
         }
 
-        const usernameBase = email.split('@')[0].replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 30) || 'medai-user';
-        let username = usernameBase;
-        let suffix = 1;
-
-        while (await prisma.user.findUnique({ where: { username } })) {
-          username = `${usernameBase}${suffix}`;
-          suffix += 1;
-        }
-
-        const user = await prisma.user.create({
-          data: {
-            firstname: firstName,
-            lastname: lastName,
-            username,
-            email,
-            googleId: profile.id,
-            authProvider: 'google',
-            avatarUrl,
-            emailVerified: true
-          }
+        // A brand-new Google identity does NOT get an account here. Google
+        // doesn't tell us the user's date of birth, and MedAI is 18+, so the
+        // account is only created after the user supplies one and the server
+        // validates it (POST /api/auth/google/complete). Until then, nothing
+        // exists in the database — an under-18 sign-up leaves no account behind.
+        return done(null, false, {
+          googleSignup: { googleId: profile.id, email, firstname: firstName, lastname: lastName, avatarUrl }
         });
-
-        return done(null, user);
       } catch (error) {
         return done(error);
       }

@@ -1,4 +1,5 @@
 const express = require('express');
+const { isPremiumActive, effectivePlan } = require('../utils/premium');
 const router = express.Router();
 const crypto = require('crypto');
 const { requireAuth } = require('../middleware/auth');
@@ -138,7 +139,7 @@ router.get('/status/:txRef', requireAuth, paymentStatusLimiter, async (req, res,
       return res.status(404).json({ message: 'Payment not found.' });
     }
     const user = await prisma.user.findUnique({ where: { id: req.user.id }, select: { plan: true, premiumExpiresAt: true } });
-    return res.json({ status: payment.status, plan: user.plan, premiumExpiresAt: user.premiumExpiresAt });
+    return res.json({ status: payment.status, plan: effectivePlan(user), premiumExpiresAt: user.premiumExpiresAt });
   } catch (error) {
     return next(error);
   }
@@ -207,83 +208,148 @@ router.post('/webhook', async (req, res, next) => {
       return res.status(401).json({ message: 'Invalid webhook signature.' });
     }
 
-    // Acknowledge immediately; do the real work after.
+    // The database — not the HTTP response — is what makes processing
+    // idempotent (see applySuccessfulPayment). The response only tells Bachs
+    // whether to retry: 200 once the event is fully handled (including duplicates,
+    // unknown payments and ignored event types), 500 only on an unexpected
+    // error so a transient failure is redelivered instead of silently lost.
+    let outcome;
+    try {
+      outcome = await processBachsEvent(req.body);
+    } catch (error) {
+      console.error('Bachs webhook processing error:', error);
+      return res.status(500).json({ message: 'Temporary processing error.' });
+    }
     res.status(200).json({ received: true });
 
-    const event = req.body;
-    const data = event?.data || {};
-
-    if (event?.type === 'collection.failed') {
-      const txRef = event.metadata?.txRef || data.metadata?.txRef || null;
-      const payment = txRef
-        ? await prisma.payment.findUnique({ where: { txRef } })
-        : (data.checkout_id ? await prisma.payment.findFirst({ where: { checkoutId: data.checkout_id } }) : null);
-      if (payment && payment.status !== 'SUCCESSFUL') {
-        await prisma.payment.update({ where: { id: payment.id }, data: { status: 'FAILED', providerRef: data.charge_id || null } });
+    // Email/in-app notification only for the delivery that actually claimed the
+    // payment, and after the response — a slow notifier can't cause a retry.
+    if (outcome?.activated) {
+      try {
+        await notify(outcome.userId, {
+          type: 'payment_success',
+          title: 'Premium activated! 🎉',
+          body: `Your ${outcome.planType} Premium subscription is now active. Enjoy unlimited AI access.`,
+          link: 'premium'
+        });
+      } catch (error) {
+        console.error('Bachs webhook notification error:', error);
       }
-      return;
     }
+    return undefined;
+  } catch (error) {
+    return next(error);
+  }
+});
 
-    if (event?.type !== 'collection.succeeded') return;
+const PLAN_DURATION_MS = {
+  monthly: 30 * 24 * 60 * 60 * 1000,
+  yearly: 365 * 24 * 60 * 60 * 1000
+};
+const MAX_EXPIRY_UPDATE_ATTEMPTS = 5;
 
-    // Bachs is a fairly new provider — try every plausible location for our own
-    // reference before falling back to the checkout_id we stored ourselves at
-    // initialize time (checkout_id is the one field guaranteed present per docs).
-    const txRef = event.metadata?.txRef || data.metadata?.txRef || data.reference || null;
+// Idempotency key = OUR Payment row (txRef is unique and one checkout maps to
+// one row). Bachs' event id is not stored anywhere in the schema, and a retried
+// delivery carries the same event id AND the same payment, so the payment row is
+// the natural, migration-free key.
+//
+// Everything below runs in ONE interactive transaction:
+//   1. claim the payment with a conditional UPDATE (status != SUCCESSFUL).
+//      Postgres lets exactly one concurrent delivery win it; the others match 0
+//      rows and extend nothing.
+//   2. extend the subscription with a compare-and-set on premiumExpiresAt, so two
+//      DIFFERENT payments for the same user processed at the same moment cannot
+//      both read the same old expiry and overwrite each other (lost renewal).
+// If anything throws, the transaction rolls back and the payment goes back to
+// unclaimed, so "paid but no Premium" can't be left behind — Bachs retries.
+async function applySuccessfulPayment(payment, data, now) {
+  const duration = PLAN_DURATION_MS[payment.planType] || PLAN_DURATION_MS.monthly;
+  return prisma.$transaction(async (tx) => {
+    const claim = await tx.payment.updateMany({
+      where: { id: payment.id, status: { not: 'SUCCESSFUL' } },
+      data: { status: 'SUCCESSFUL', providerRef: data.charge_id || null, verifiedAt: now }
+    });
+    if (claim.count !== 1) return false;   // already processed by another delivery
 
-    let payment = txRef
-      ? await prisma.payment.findUnique({ where: { txRef } })
-      : null;
-
-    if (!payment && data.checkout_id) {
-      payment = await prisma.payment.findFirst({ where: { checkoutId: data.checkout_id } });
-    }
-
-    if (!payment) {
-      console.error('Bachs webhook: could not match any payment for event', event.id);
-      return;
-    }
-    if (payment.status === 'SUCCESSFUL') return; // already processed (at-least-once delivery)
-
-    // Bachs sends status in caps ("SUCCEEDED") per docs.bachs.io — compare
-    // case-insensitively rather than assuming a casing that isn't guaranteed.
-    const isValid = String(data.status).toUpperCase() === 'SUCCEEDED'
-      && data.currency === payment.currency
-      && parseFloat(data.amount) >= payment.amount;
-
-    if (!isValid) {
-      await prisma.payment.update({ where: { id: payment.id }, data: { status: 'FAILED', providerRef: data.charge_id || null } });
-      return;
-    }
-
-    const now = new Date();
-    const durationMs = payment.planType === 'yearly' ? 365 * 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000;
-
-    await prisma.$transaction([
-      prisma.payment.update({
-        where: { id: payment.id },
-        data: { status: 'SUCCESSFUL', providerRef: data.charge_id || null, verifiedAt: now }
-      }),
-      prisma.user.update({
+    for (let attempt = 0; attempt < MAX_EXPIRY_UPDATE_ATTEMPTS; attempt++) {
+      const current = await tx.user.findUnique({
         where: { id: payment.userId },
+        select: { plan: true, premiumExpiresAt: true }
+      });
+      if (!current) throw new Error('Payment user not found.');
+      // Renewal while still active stacks on the remaining time; an expired or
+      // missing expiry starts from now.
+      const base = isPremiumActive(current, now) ? new Date(current.premiumExpiresAt) : now;
+      const updated = await tx.user.updateMany({
+        where: { id: payment.userId, premiumExpiresAt: current.premiumExpiresAt ?? null },
         data: {
           plan: 'Premium',
           premiumActivatedAt: now,
-          premiumExpiresAt: new Date(now.getTime() + durationMs)
+          premiumExpiresAt: new Date(base.getTime() + duration)
         }
-      })
-    ]);
+      });
+      if (updated.count === 1) return true;
+      // Someone else changed the expiry between our read and write: re-read and retry.
+    }
+    throw new Error('Could not update subscription expiry after repeated conflicts.');
+  }, { maxWait: 5000, timeout: 10000 });
+}
 
-    await notify(payment.userId, {
-      type: 'payment_success',
-      title: 'Premium activated! 🎉',
-      body: `Your ${payment.planType} Premium subscription is now active. Enjoy unlimited AI access.`,
-      link: 'premium'
-    });
-  } catch (error) {
-    // Already responded 200 to Bachs above; just log for our own visibility.
-    console.error('Bachs webhook processing error:', error);
+async function processBachsEvent(event) {
+  const data = event?.data || {};
+
+  if (event?.type === 'collection.failed') {
+    const txRef = event.metadata?.txRef || data.metadata?.txRef || null;
+    const payment = txRef
+      ? await prisma.payment.findUnique({ where: { txRef } })
+      : (data.checkout_id ? await prisma.payment.findFirst({ where: { checkoutId: data.checkout_id } }) : null);
+    if (payment) {
+      // Conditional, so a late/duplicate "failed" event can never overwrite a SUCCESSFUL payment.
+      await prisma.payment.updateMany({
+        where: { id: payment.id, status: { not: 'SUCCESSFUL' } },
+        data: { status: 'FAILED', providerRef: data.charge_id || null }
+      });
+    }
+    return null;
   }
-});
+
+  if (event?.type !== 'collection.succeeded') return null;
+
+  // Bachs is a fairly new provider — try every plausible location for our own
+  // reference before falling back to the checkout_id we stored ourselves at
+  // initialize time (checkout_id is the one field guaranteed present per docs).
+  const txRef = event.metadata?.txRef || data.metadata?.txRef || data.reference || null;
+
+  let payment = txRef
+    ? await prisma.payment.findUnique({ where: { txRef } })
+    : null;
+
+  if (!payment && data.checkout_id) {
+    payment = await prisma.payment.findFirst({ where: { checkoutId: data.checkout_id } });
+  }
+
+  if (!payment) {
+    console.error('Bachs webhook: could not match any payment for event', event.id);
+    return null;
+  }
+  if (payment.status === 'SUCCESSFUL') return null; // fast path for redeliveries; the real guard is the claim below
+
+  // Bachs sends status in caps ("SUCCEEDED") per docs.bachs.io — compare
+  // case-insensitively rather than assuming a casing that isn't guaranteed.
+  const isValid = String(data.status).toUpperCase() === 'SUCCEEDED'
+    && data.currency === payment.currency
+    && parseFloat(data.amount) >= payment.amount;
+
+  if (!isValid) {
+    await prisma.payment.updateMany({
+      where: { id: payment.id, status: { not: 'SUCCESSFUL' } },
+      data: { status: 'FAILED', providerRef: data.charge_id || null }
+    });
+    return null;
+  }
+
+  const activated = await applySuccessfulPayment(payment, data, new Date());
+  return activated ? { activated: true, userId: payment.userId, planType: payment.planType } : null;
+}
 
 module.exports = router;

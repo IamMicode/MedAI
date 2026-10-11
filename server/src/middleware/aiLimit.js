@@ -1,4 +1,5 @@
 const prisma = require('../db');
+const { isPremiumActive } = require('../utils/premium');
 
 const FREE_DAILY_LIMIT = 10;
 
@@ -10,13 +11,13 @@ async function aiLimit(req, res, next) {
     // premium users have no limit
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { plan: true }
+      select: { plan: true, premiumExpiresAt: true }
     });
     // The DB stores plan as 'Free' / 'Premium' (see schema default). Compare
     // case-insensitively so a casing difference can never again silently
     // exempt every free user from the quota.
-    const plan = String(user?.plan || 'Free').toLowerCase();
-    if (plan !== 'free') return next();
+    // Premium only counts while premiumExpiresAt is in the future.
+    if (isPremiumActive(user)) return next();
 
     const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 

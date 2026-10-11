@@ -10,8 +10,9 @@ const validate = require('../middleware/validate');
 const { authLimiter } = require('../middleware/rateLimits');
 const { createToken } = require('../utils/jwt');
 const sanitizeUser = require('../utils/sanitizeUser');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, authenticateAccessToken } = require('../middleware/auth');
 const { getFrontendOrigin } = require('../config/frontendOrigin');
+const { checkDob } = require('../utils/age');
 const {
   registerSchema,
   loginSchema,
@@ -24,6 +25,11 @@ const router = express.Router();
 
 router.post('/register', authLimiter, validate(registerSchema), async (req, res, next) => {
   try {
+    // MedAI is 18+ (Terms). Enforced here, not just in the signup form —
+    // anyone can call this endpoint directly and skip the form's checks.
+    const dobError = checkDob(req.body.dob);
+    if (dobError) return res.status(400).json({ message: dobError });
+
     const existing = await prisma.user.findFirst({
       where: {
         OR: [
@@ -55,6 +61,30 @@ router.post('/register', authLimiter, validate(registerSchema), async (req, res,
   }
 });
 
+// ───────────────────────── authentication stages ─────────────────────────
+// A user goes through up to three stages before holding a real session:
+//   1. primary proof   (password, or Google OAuth)
+//   2. second factor   (only if twoFactorEnabled)            → pendingToken
+//   3. date of birth   (only patients with none on file)     → stepToken
+// Tokens issued mid-flow are typed (pending2FA / purpose) and requireAuth
+// rejects them everywhere, so none of them can call a protected API. A real
+// session token is produced ONLY by sessionResponse() below, which every
+// login path (password, 2FA, Google) funnels through.
+function pendingTwoFactorToken(user) {
+  return jwt.sign({ id: user.id, pending2FA: true, typ: '2fa-pending' }, process.env.JWT_SECRET, { expiresIn: '5m' });
+}
+
+const needsDob = (user) => user.role === 'USER' && !user.dob;
+
+// `mfaVerified` records that the second factor has ALREADY been checked in this
+// login, so the DOB step can't be used to skip it (see /complete-dob).
+function sessionResponse(user, { mfaVerified = false } = {}) {
+  if (needsDob(user)) {
+    return { requiresDob: true, stepToken: signGoogleStepToken({ purpose: 'complete-dob', id: user.id, mfa: mfaVerified }) };
+  }
+  return { token: createToken(user), user: sanitizeUser(user) };
+}
+
 router.post('/login', authLimiter, validate(loginSchema), async (req, res, next) => {
   try {
     const usernameOrEmail = req.body.usernameOrEmail.toLowerCase();
@@ -79,30 +109,100 @@ router.post('/login', authLimiter, validate(loginSchema), async (req, res, next)
     if (user.twoFactorEnabled) {
       // Password is correct, but don't issue a real session token yet — require
       // the 6-digit authenticator code (or a backup code) first. This pre-auth
-      // token is short-lived and only proves "password already verified", it
-      // carries no role/plan trust and can't be used to call any real API route.
-      const pendingToken = jwt.sign(
-        { id: user.id, pending2FA: true },
-        process.env.JWT_SECRET,
-        { expiresIn: '5m' }
-      );
-      return res.json({ requires2FA: true, pendingToken });
+      // token is short-lived and only proves "password already verified"; it is
+      // rejected by requireAuth, so it can't call any real API route.
+      return res.json({ requires2FA: true, pendingToken: pendingTwoFactorToken(user) });
     }
 
-    return res.json({
-      token: createToken(user),
-      user: sanitizeUser(user)
-    });
+    return res.json(sessionResponse(user));
   } catch (error) {
     return next(error);
   }
 });
 
+// ───────────────────────── second-factor verification ─────────────────────────
+// Three protections beyond "is the code right":
+//  1. Bounded attempts. Each verification ATTEMPT is reserved with an atomic
+//     increment BEFORE the code is checked, so parallel requests can't sneak
+//     extra guesses past the cap. After TWO_FACTOR_MAX_ATTEMPTS in one window the
+//     account's second-factor step is refused until the window ends, whatever
+//     pendingToken the caller holds. A caller needs a valid pendingToken (i.e. has
+//     already passed the password or Google step) to spend attempts, so an
+//     outsider who only knows an email address cannot lock anyone out.
+//  2. TOTP replay protection. The accepted time step is stored; a code for the
+//     same or an older step is rejected, atomically.
+//  3. Backup codes are single-use via a compare-and-set on the stored list: of N
+//     simultaneous requests with the same code, exactly one succeeds.
+const TWO_FACTOR_MAX_ATTEMPTS = 5;
+const TWO_FACTOR_WINDOW_MS = 15 * 60 * 1000;
+const TOTP_STEP_SECONDS = 30;
+
+async function reserveTwoFactorAttempt(userId, now = new Date()) {
+  // Start a fresh window if none is active. Conditional, so of several
+  // simultaneous requests only one resets the counter.
+  await prisma.user.updateMany({
+    where: { id: userId, OR: [{ twoFactorWindowEndsAt: null }, { twoFactorWindowEndsAt: { lte: now } }] },
+    data: { twoFactorAttempts: 0, twoFactorWindowEndsAt: new Date(now.getTime() + TWO_FACTOR_WINDOW_MS) }
+  });
+  // Atomic increment: the value returned is this request's own ticket number.
+  const state = await prisma.user.update({
+    where: { id: userId },
+    data: { twoFactorAttempts: { increment: 1 } },
+    select: { twoFactorAttempts: true, twoFactorWindowEndsAt: true }
+  });
+  if (state.twoFactorAttempts > TWO_FACTOR_MAX_ATTEMPTS) {
+    return { allowed: false, retryAfterSec: Math.max(1, Math.ceil((new Date(state.twoFactorWindowEndsAt) - now) / 1000)) };
+  }
+  return { allowed: true };
+}
+
+// Returns true if `code` is a currently-valid TOTP code that has NOT been used before.
+async function consumeTotp(user, code, now = new Date()) {
+  const result = speakeasy.totp.verifyDelta({
+    secret: user.twoFactorSecret,
+    encoding: 'base32',
+    token: code,
+    step: TOTP_STEP_SECONDS,
+    window: 1
+  });
+  if (!result) return false;
+  const step = Math.floor(now.getTime() / 1000 / TOTP_STEP_SECONDS) + result.delta;
+  const claimed = await prisma.user.updateMany({
+    where: { id: user.id, OR: [{ twoFactorLastStep: null }, { twoFactorLastStep: { lt: step } }] },
+    data: { twoFactorLastStep: step }
+  });
+  return claimed.count === 1;
+}
+
+// Returns true if `code` matched a backup code AND this request was the one that consumed it.
+async function consumeBackupCode(user, code) {
+  let codes = user.twoFactorBackupCodes || [];
+  for (let round = 0; round < 3; round++) {
+    let index = -1;
+    for (let i = 0; i < codes.length; i++) {
+      if (await bcrypt.compare(code, codes[i])) { index = i; break; }
+    }
+    if (index === -1) return false;
+    const remaining = codes.filter((_, i) => i !== index);
+    // Compare-and-set: only succeeds if the stored list is still exactly what we read.
+    const swapped = await prisma.user.updateMany({
+      where: { id: user.id, twoFactorBackupCodes: { equals: codes } },
+      data: { twoFactorBackupCodes: remaining }
+    });
+    if (swapped.count === 1) return true;
+    // The list changed under us (another request used a code). Re-read and re-check:
+    // if OUR code is the one that was taken, the next round finds no match and fails.
+    const fresh = await prisma.user.findUnique({ where: { id: user.id }, select: { twoFactorBackupCodes: true } });
+    codes = fresh?.twoFactorBackupCodes || [];
+  }
+  return false;
+}
+
 // POST /api/auth/2fa/verify-login — second step of login when 2FA is enabled.
 router.post('/2fa/verify-login', authLimiter, async (req, res, next) => {
   try {
-    const { pendingToken, code } = req.body;
-    if (!pendingToken || !code) {
+    const { pendingToken, code } = req.body || {};
+    if (typeof pendingToken !== 'string' || code === undefined || code === null || code === '') {
       return res.status(400).json({ message: 'pendingToken and code are required.' });
     }
 
@@ -121,33 +221,21 @@ router.post('/2fa/verify-login', authLimiter, async (req, res, next) => {
       return res.status(400).json({ message: '2FA is not enabled on this account.' });
     }
 
+    const attempt = await reserveTwoFactorAttempt(user.id);
+    if (!attempt.allowed) {
+      res.set('Retry-After', String(attempt.retryAfterSec));
+      return res.status(429).json({ message: 'Too many incorrect codes. Please wait a few minutes, then sign in again.' });
+    }
+
     const trimmedCode = String(code).trim();
-    const isTotpValid = speakeasy.totp.verify({
-      secret: user.twoFactorSecret,
-      encoding: 'base32',
-      token: trimmedCode,
-      window: 1
-    });
-
-    if (isTotpValid) {
-      return res.json({ token: createToken(user), user: sanitizeUser(user) });
+    const ok = (await consumeTotp(user, trimmedCode)) || (await consumeBackupCode(user, trimmedCode));
+    if (!ok) {
+      return res.status(401).json({ message: 'Incorrect code. Please try again.' });
     }
 
-    // Not a valid TOTP code — check if it matches (and consumes) a backup code instead.
-    for (let i = 0; i < user.twoFactorBackupCodes.length; i++) {
-      const matches = await bcrypt.compare(trimmedCode, user.twoFactorBackupCodes[i]);
-      if (matches) {
-        const remaining = [...user.twoFactorBackupCodes];
-        remaining.splice(i, 1);
-        await prisma.user.update({
-          where: { id: user.id },
-          data: { twoFactorBackupCodes: remaining }
-        });
-        return res.json({ token: createToken(user), user: sanitizeUser(user) });
-      }
-    }
-
-    return res.status(401).json({ message: 'Incorrect code. Please try again.' });
+    // Success: the attempt counter starts over for the next login.
+    await prisma.user.updateMany({ where: { id: user.id }, data: { twoFactorAttempts: 0, twoFactorWindowEndsAt: null } });
+    return res.json(sessionResponse(user, { mfaVerified: true }));
   } catch (error) {
     return next(error);
   }
@@ -164,20 +252,153 @@ router.get('/google', authLimiter, (req, res, next) => {
   })(req, res, next);
 });
 
+// Short-lived, signed tokens that carry a Google sign-in through the one extra
+// step Google can't do for us: confirming date of birth (18+). They are
+// single-purpose (checked via `purpose`) and cannot be used as a login token —
+// requireAuth would reject them because they carry no role/login claims it
+// accepts for any protected route.
+const GOOGLE_STEP_TTL = '15m';
+function signGoogleStepToken(payload) {
+  return jwt.sign({ ...payload, typ: 'step' }, process.env.JWT_SECRET, { expiresIn: GOOGLE_STEP_TTL });
+}
+
 router.get('/google/callback', authLimiter, (req, res, next) => {
   passport.authenticate('google', { session: false }, (error, user, info) => {
     if (error) return next(error);
+    const frontend = getFrontendOrigin();
+
+    // New Google identity: no account yet. Send them to the DOB step.
+    if (!user && info?.googleSignup) {
+      const stepToken = signGoogleStepToken({ purpose: 'google-signup', ...info.googleSignup });
+      return res.redirect(`${frontend}/Login_page.html#google_signup=${encodeURIComponent(stepToken)}`);
+    }
+
     if (!user) {
       const message = encodeURIComponent(info?.message || 'Google sign-in failed.');
-      return res.redirect(`${getFrontendOrigin()}/Login_page.html?oauth_error=${message}`);
+      return res.redirect(`${frontend}/Login_page.html?oauth_error=${message}`);
+    }
+
+    // Google proves who the person is — it does NOT replace this account's own
+    // second factor. If the account has 2FA enabled, no session is issued here;
+    // the user must complete the same authenticator-code step as a password
+    // login (POST /api/auth/2fa/verify-login) first.
+    if (user.twoFactorEnabled) {
+      return res.redirect(`${frontend}/Login_page.html#google_2fa=${encodeURIComponent(pendingTwoFactorToken(user))}`);
+    }
+
+    // Existing patient account with no date of birth on file (e.g. created via
+    // Google before this check existed): same DOB step before any session.
+    // Doctors and admins are not patients and are not gated here.
+    if (needsDob(user)) {
+      const stepToken = signGoogleStepToken({ purpose: 'complete-dob', id: user.id, mfa: false });
+      return res.redirect(`${frontend}/Login_page.html#google_dob=${encodeURIComponent(stepToken)}`);
     }
 
     const token = createToken(user);
     const destination = user.role === 'ADMIN' ? '/admin.html' : '/dashboard.html';
-    const redirectUrl = new URL(destination, getFrontendOrigin());
+    const redirectUrl = new URL(destination, frontend);
     redirectUrl.searchParams.set('token', token);
     return res.redirect(redirectUrl.toString());
   })(req, res, next);
+});
+
+// POST /api/auth/google/complete — finishes a Google sign-up/sign-in that is
+// waiting on a date of birth. The age rule is enforced HERE, server-side.
+router.post(['/google/complete', '/complete-dob'], authLimiter, async (req, res, next) => {
+  try {
+    const { stepToken, dob } = req.body || {};
+    if (typeof dob !== 'string') {
+      return res.status(400).json({ message: 'A valid sign-in step and date of birth are required.' });
+    }
+
+    let step;
+    let viaSession = false;
+    if (typeof stepToken === 'string') {
+      try {
+        step = jwt.verify(stepToken, process.env.JWT_SECRET);
+      } catch (e) {
+        return res.status(400).json({ message: 'This sign-in step has expired. Please sign in with Google again.' });
+      }
+    } else {
+      // A patient who is ALREADY signed in with a pre-existing session but has no
+      // date of birth on file (requireAuth answers DOB_REQUIRED to them) completes
+      // it here. This is the only route that accepts a session without the DOB
+      // check. A full session implies any second factor was already verified.
+      const auth = authenticateAccessToken(req);
+      if (auth.error || auth.payload.role !== 'USER') {
+        return res.status(401).json({ message: 'Login required.' });
+      }
+      step = { purpose: 'complete-dob', id: auth.payload.id, mfa: true };
+      viaSession = true;
+    }
+
+    const dobError = checkDob(dob.trim());
+    if (dobError) return res.status(400).json({ message: dobError });
+
+    if (step.purpose === 'complete-dob') {
+      const existing = await prisma.user.findUnique({ where: { id: step.id } });
+      if (!existing || existing.role !== 'USER') {
+        return res.status(400).json({ message: 'This sign-in step is no longer valid. Please sign in again.' });
+      }
+      // Defence in depth: if the account has 2FA, this step may only continue a
+      // login whose second factor was already verified. A step token minted
+      // before that (or by any future code path) can never become a session.
+      if (existing.twoFactorEnabled && !step.mfa) {
+        return res.status(403).json({ message: 'Two-factor verification is required. Please sign in again.' });
+      }
+      if (viaSession) {
+        // Not a token-refresh endpoint: an account that already has a date of birth
+        // is refused (its date can only be changed through the profile), and a
+        // successful completion returns the user but NO new token — the caller keeps
+        // the session they already hold.
+        if (existing.dob) return res.status(409).json({ message: 'Your date of birth is already on file.' });
+        const set = await prisma.user.updateMany({ where: { id: existing.id, dob: null }, data: { dob: dob.trim() } });
+        if (set.count !== 1) return res.status(409).json({ message: 'Your date of birth is already on file.' });
+        const updated = await prisma.user.findUnique({ where: { id: existing.id } });
+        return res.json({ user: sanitizeUser(updated) });
+      }
+      const user = existing.dob
+        ? existing
+        : await prisma.user.update({ where: { id: existing.id }, data: { dob: dob.trim() } });
+      return res.json({ token: createToken(user), user: sanitizeUser(user) });
+    }
+
+    if (step.purpose === 'google-signup') {
+      const taken = await prisma.user.findFirst({
+        where: { OR: [{ email: step.email }, { googleId: step.googleId }] }
+      });
+      if (taken) {
+        return res.status(409).json({ message: 'An account with that email already exists. Please sign in.' });
+      }
+
+      const usernameBase = String(step.email).split('@')[0].replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 30) || 'medai-user';
+      let username = usernameBase;
+      let suffix = 1;
+      while (await prisma.user.findUnique({ where: { username } })) {
+        username = `${usernameBase}${suffix}`;
+        suffix += 1;
+      }
+
+      const user = await prisma.user.create({
+        data: {
+          firstname: step.firstname || '',
+          lastname: step.lastname || '',
+          username,
+          email: step.email,
+          googleId: step.googleId,
+          authProvider: 'google',
+          avatarUrl: step.avatarUrl || null,
+          emailVerified: true,
+          dob: dob.trim()
+        }
+      });
+      return res.status(201).json({ token: createToken(user), user: sanitizeUser(user) });
+    }
+
+    return res.status(400).json({ message: 'This sign-in step is not valid.' });
+  } catch (error) {
+    return next(error);
+  }
 });
 
 const RESET_CODE_TTL_MS = 10 * 60 * 1000; // 10 minutes — used by both the DB expiry and the email copy below
@@ -198,6 +419,19 @@ router.post('/forgot-password', authLimiter, validate(forgotPasswordSchema), asy
       where: { userId: user.id, usedAt: null },
       data: { usedAt: new Date() }
     });
+
+    // Housekeeping: reset codes are single-use and short-lived, so anything
+    // expired or used more than a day ago is just dead weight. Done here (on
+    // each new request) rather than via a cron job — simple, and the table
+    // never grows unbounded. A failure must never block the reset itself.
+    try {
+      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      await prisma.passwordResetCode.deleteMany({
+        where: { OR: [{ expiresAt: { lt: cutoff } }, { usedAt: { lt: cutoff } }] }
+      });
+    } catch (cleanupError) {
+      console.error('Reset-code cleanup failed (continuing):', cleanupError.message);
+    }
 
     // crypto.randomInt is cryptographically secure and free of the modulo
     // bias a naive `% 900000` would introduce — Math.random() is not
@@ -346,6 +580,11 @@ router.post('/reset-password', authLimiter, validate(resetPasswordSchema), async
       }),
       prisma.passwordResetCode.update({
         where: { id: resetCode.id },
+        data: { usedAt: new Date(), resetTokenHash: null }
+      }),
+      // Any other still-open codes/tokens for this account die with it.
+      prisma.passwordResetCode.updateMany({
+        where: { userId: user.id, usedAt: null, id: { not: resetCode.id } },
         data: { usedAt: new Date(), resetTokenHash: null }
       })
     ]);

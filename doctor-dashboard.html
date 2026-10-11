@@ -425,7 +425,11 @@ async function openConversation(patientId){
     const res = await fetch(`${API_BASE_URL}/api/doctor-portal/conversations`, {
       method: 'POST', headers: authHeaders(), body: JSON.stringify({ patientId })
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok){
+      alert(data.message || 'Could not open this conversation.');
+      return;
+    }
     activeConversationId = data.conversation?.id;
     _renderedDoctorMessageIds = new Set();
     const area = document.getElementById('chat-area');

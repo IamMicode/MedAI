@@ -1,4 +1,5 @@
 const express = require('express');
+const { isPremiumActive } = require('../utils/premium');
 const router = express.Router();
 const prisma = require('../db');
 const { requireAuth } = require('../middleware/auth');
@@ -250,9 +251,9 @@ router.get('/usage', async (req, res, next) => {
     });
     const user = await prisma.user.findUnique({
       where: { id: req.user.id },
-      select: { plan: true }
+      select: { plan: true, premiumExpiresAt: true }
     });
-    const isPremium = user && user.plan && user.plan !== 'Free';
+    const isPremium = isPremiumActive(user);
     return res.json({ used: usage ? usage.count : 0, limit: isPremium ? null : 10, isPremium });
   } catch (error) {
     return next(error);

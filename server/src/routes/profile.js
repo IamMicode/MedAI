@@ -5,6 +5,7 @@ const prisma = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const validate = require('../middleware/validate');
 const sanitizeUser = require('../utils/sanitizeUser');
+const { checkDob } = require('../utils/age');
 
 const router = express.Router();
 
@@ -59,6 +60,16 @@ router.get('/', async (req, res, next) => {
 
 router.put('/', validate(profileSchema), async (req, res, next) => {
   try {
+    // Only validate a date of birth that is actually being CHANGED, so users
+    // whose stored value predates this rule can still save unrelated profile
+    // edits. Nobody can newly set a DOB that makes them under 18.
+    if (req.body.dob !== undefined) {
+      const current = await prisma.user.findUnique({ where: { id: req.user.id }, select: { dob: true } });
+      if (req.body.dob !== current?.dob) {
+        const dobError = checkDob(req.body.dob);
+        if (dobError) return res.status(400).json({ message: dobError });
+      }
+    }
     const user = await prisma.user.update({
       where: { id: req.user.id },
       data: req.body

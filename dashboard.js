@@ -684,11 +684,31 @@ async function executeDelete(){
   }
 }
 
-function logoutUser(){
-  localStorage.removeItem('medai_current_user');
-  if(window.medaiShowLoader) window.medaiShowLoader('Signing out');
-  setTimeout(()=>{ window.location.href = 'Login_page.html'; }, 350);
+// Removes ONLY what identifies the signed-in session: the bearer token, the
+// current-user object and the admin-session markers. Per-user health data caches,
+// preferences (theme, language, country), the device's saved-accounts list and
+// the API base URL setting are deliberately left alone.
+function clearAuthState(){
+  ['medai_token','medai_current_user'].forEach(k => { try{ localStorage.removeItem(k); }catch(e){} });
+  ['medai_admin_session','medai_admin_started_at','medai_admin_name'].forEach(k => { try{ sessionStorage.removeItem(k); }catch(e){} });
 }
+
+function logoutUser(){
+  clearAuthState();
+  // From here on this page must not send API requests: a timer or in-flight
+  // handler that captured the token earlier would otherwise keep using it (the
+  // fetch wrapper below short-circuits API calls once this flag is set).
+  window.__medaiLoggedOut = true;
+  if(window.medaiShowLoader) window.medaiShowLoader('Signing out');
+  // replace(), not href: the dashboard is not left in history for the Back button.
+  setTimeout(()=>{ window.location.replace('Login_page.html'); }, 350);
+}
+
+// Back/forward cache: returning to a restored dashboard after logout must not
+// show a live session.
+window.addEventListener('pageshow', (e) => {
+  if(e.persisted && !localStorage.getItem('medai_token')) window.location.replace('Login_page.html');
+});
 
 // ============================================================
 // GSAP STAGGER ON DASHBOARD LOAD
@@ -713,6 +733,79 @@ const API_BASE_URL = localStorage.getItem('medai_api_base_url')
   || (['localhost','127.0.0.1'].includes(window.location.hostname)
         ? 'http://127.0.0.1:5500'
         : 'https://medai-backend-5r9o.onrender.com');
+
+// ── Date-of-birth gate ──────────────────────────────────────────────────
+// MedAI is 18+. If the server answers any API call with 403 { code:'DOB_REQUIRED' }
+// (a patient whose account has no date of birth on file, signed in before that
+// rule existed), show a blocking prompt. The server enforces this; this is just
+// the way for the user to satisfy it. The date is self-reported, not verified.
+(function installDobGate(){
+  if(window.__medaiDobGate) return;
+  window.__medaiDobGate = true;
+  const nativeFetch = window.fetch.bind(window);
+  window.fetch = async function(...args){
+    if(window.__medaiLoggedOut){
+      const first = args[0];
+      const target = typeof first === 'string' ? first : ((first && first.url) || '');
+      if(target.indexOf(API_BASE_URL) === 0){
+        // Signed out: never send the (already removed) token anywhere.
+        return new Response(JSON.stringify({ message: 'Signed out.' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+      }
+    }
+    const res = await nativeFetch(...args);
+    try{
+      if(res.status === 403){
+        const first = args[0];
+        const url = typeof first === 'string' ? first : ((first && first.url) || '');
+        if(url.indexOf(API_BASE_URL) === 0){
+          res.clone().json().then(d => { if(d && d.code === 'DOB_REQUIRED') showDobRequiredModal(); }).catch(() => {});
+        }
+      }
+    }catch(e){ /* never break the caller's request */ }
+    return res;
+  };
+})();
+
+function showDobRequiredModal(){
+  if(document.getElementById('dob-required-modal')) return;
+  const modal = document.createElement('div');
+  modal.id = 'dob-required-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:99999;display:flex;align-items:center;justify-content:center;padding:1rem';
+  modal.innerHTML = `
+    <div style="max-width:380px;width:100%;background:#0a1628;border:1px solid rgba(0,212,255,0.25);border-radius:16px;padding:1.75rem;color:#e2f0ff;font-family:'DM Sans',sans-serif">
+      <div style="font-weight:800;font-size:18px;margin-bottom:6px">One more step</div>
+      <div style="font-size:13px;color:#8aa4bf;margin-bottom:1.25rem;line-height:1.5">MedAI is for adults aged 18 or over. Please enter your date of birth to keep using your account.</div>
+      <input id="dob-required-input" type="date" style="width:100%;box-sizing:border-box;background:rgba(0,212,255,0.06);border:1px solid rgba(0,212,255,0.2);border-radius:10px;color:#e2f0ff;font-size:16px;padding:12px 14px;margin-bottom:1rem;color-scheme:dark"/>
+      <div id="dob-required-error" role="alert" style="color:#ff4d6d;font-size:12.5px;margin-bottom:.75rem;display:none"></div>
+      <div style="display:flex;gap:10px">
+        <button id="dob-required-logout" type="button" style="flex:1;padding:11px;border-radius:10px;border:1px solid rgba(0,212,255,0.15);background:transparent;color:#8aa4bf;cursor:pointer;font-size:13px">Sign out</button>
+        <button id="dob-required-submit" type="button" style="flex:1;padding:11px;border-radius:10px;border:none;background:linear-gradient(135deg,#00d4ff,#0077dd);color:#04090f;font-weight:700;cursor:pointer;font-size:13px">Continue</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  const input = document.getElementById('dob-required-input');
+  input.max = new Date().toISOString().slice(0,10);
+  const err = document.getElementById('dob-required-error');
+  document.getElementById('dob-required-logout').onclick = () => logoutUser();
+  document.getElementById('dob-required-submit').onclick = async () => {
+    err.style.display = 'none';
+    if(!input.value){ err.textContent = 'Please enter your date of birth.'; err.style.display = 'block'; return; }
+    try{
+      const res = await fetch(`${API_BASE_URL}/api/auth/complete-dob`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('medai_token')}` },
+        body: JSON.stringify({ dob: input.value })
+      });
+      const data = await res.json().catch(() => ({}));
+      if(res.ok || res.status === 409){ window.location.reload(); return; }
+      err.textContent = data.message || 'Could not save your date of birth. Please try again.';
+      err.style.display = 'block';
+    }catch(e){
+      err.textContent = 'Could not reach the server. Please check your connection and try again.';
+      err.style.display = 'block';
+    }
+  };
+}
 
 // Render's free tier spins the backend down after ~15 min idle, and the
 // next request has to cold-start it — often 20-50s. That's almost always

@@ -5,6 +5,7 @@ const { z } = require('zod');
 const prisma = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const validate = require('../middleware/validate');
+const { doctorLoginLimiter, doctorRegisterLimiter } = require('../middleware/rateLimits');
 const notify = require('../utils/notify');
 
 const router = express.Router();
@@ -37,6 +38,10 @@ const loginSchema = z.object({
   password: z.string().min(1)
 });
 
+const INVALID_LOGIN = 'Invalid email or password.';
+// Compared against when the account doesn't exist, to keep timing uniform.
+const DUMMY_HASH = bcrypt.hashSync('medai-dummy-password', 10);
+
 function createDoctorToken(user, profile) {
   return jwt.sign(
     {
@@ -44,6 +49,7 @@ function createDoctorToken(user, profile) {
       email: user.email,
       username: user.username,
       role: user.role,
+      typ: 'access',
       verificationStatus: profile.verificationStatus
     },
     process.env.JWT_SECRET,
@@ -52,7 +58,7 @@ function createDoctorToken(user, profile) {
 }
 
 // ── REGISTER ──
-router.post('/register', validate(registerSchema), async (req, res, next) => {
+router.post('/register', doctorRegisterLimiter, validate(registerSchema), async (req, res, next) => {
   try {
     const {
       fullName, email, password, phone, licenseNumber, issuingAuthority,
@@ -108,7 +114,7 @@ router.post('/register', validate(registerSchema), async (req, res, next) => {
 });
 
 // ── LOGIN ──
-router.post('/login', validate(loginSchema), async (req, res, next) => {
+router.post('/login', doctorLoginLimiter, validate(loginSchema), async (req, res, next) => {
   try {
     const { email, password } = req.body;
 
@@ -117,13 +123,29 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
       include: { doctorProfile: true }
     });
 
-    if (!user || user.role !== 'DOCTOR' || !user.doctorProfile) {
-      return res.status(401).json({ message: 'No doctor account found with this email.' });
+    // One generic failure for "no such account", "not a doctor account" and
+    // "wrong password", and a bcrypt compare is ALWAYS performed, so neither
+    // the message nor the response time tells a caller whether an email exists.
+    const isDoctor = !!user && user.role === 'DOCTOR' && !!user.doctorProfile;
+    const validPassword = await bcrypt.compare(password, (isDoctor && user.password) || DUMMY_HASH);
+    if (!isDoctor || !validPassword) {
+      return res.status(401).json({ message: INVALID_LOGIN });
     }
 
-    const validPassword = await bcrypt.compare(password, user.password || '');
-    if (!validPassword) {
-      return res.status(401).json({ message: 'Incorrect password.' });
+    const status = user.doctorProfile.verificationStatus;
+    const doctorSummary = {
+      fullName: user.doctorProfile.fullName,
+      specialty: user.doctorProfile.specialty,
+      verificationStatus: status,
+      rejectionReason: user.doctorProfile.rejectionReason
+    };
+
+    // A doctor account with 2FA enabled must NOT get a session from the
+    // password alone. Same stage as patient login: hand back the short-lived,
+    // non-session pendingToken and finish at POST /api/auth/2fa/verify-login.
+    if (user.twoFactorEnabled) {
+      const pendingToken = jwt.sign({ id: user.id, pending2FA: true, typ: '2fa-pending' }, process.env.JWT_SECRET, { expiresIn: '5m' });
+      return res.json({ requires2FA: true, pendingToken, status, doctor: doctorSummary });
     }
 
     const token = createDoctorToken(user, user.doctorProfile);

@@ -152,7 +152,30 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
       return;
     }
 
-    // APPROVED
+    // APPROVED. If the account has two-factor authentication enabled, the
+    // server has NOT issued a session yet — it needs the authenticator code.
+    if(data.requires2FA){
+      const code = window.prompt('Two-factor authentication: enter the 6-digit code from your authenticator app (or a backup code).');
+      if(!code){
+        showError('Sign-in cancelled — a two-factor code is required.');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Sign In';
+        return;
+      }
+      const res2 = await fetch(API_BASE_URL + '/api/auth/2fa/verify-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pendingToken: data.pendingToken, code })
+      });
+      const data2 = await res2.json().catch(() => ({}));
+      if(!res2.ok || !data2.token){
+        showError(data2.message || 'Incorrect code. Please sign in again.');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Sign In';
+        return;
+      }
+      data.token = data2.token;
+    }
     localStorage.setItem('medai_doctor_token', data.token);
     localStorage.setItem('medai_doctor_name', data.doctor?.fullName || '');
     window.location.href = 'doctor-dashboard.html';

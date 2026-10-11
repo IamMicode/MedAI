@@ -3,10 +3,25 @@ const prisma = require('../db');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const sanitizeUser = require('../utils/sanitizeUser');
 const notify = require('../utils/notify');
+const { effectivePlan, premiumStatus } = require('../utils/premium');
 
 const router = express.Router();
 
 router.use(requireAuth, requireAdmin);
+
+// GET /api/admin/me — lets the admin page ask the SERVER "is this session a
+// real admin?" before showing anything, instead of trusting browser storage.
+router.get('/me', async (req, res, next) => {
+  try {
+    const admin = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { id: true, username: true }
+    });
+    return res.json({ admin });
+  } catch (error) {
+    return next(error);
+  }
+});
 
 // Shared pagination helper — clamps page/pageSize to sane bounds so a typo'd
 // query param (or a scripted abuse attempt) can't force an unbounded fetch.
@@ -19,12 +34,32 @@ function parsePagination(query, defaultPageSize = 25, maxPageSize = 100) {
 // GET /api/admin/users — paginated, searchable, and only selects the columns
 // the admin UI actually renders (never the full row — no password hashes,
 // 2FA secrets, or reset tokens leave the database here).
+// Plan filter by EFFECTIVE entitlement, not the stored string: 'Premium' means
+// an unexpired subscription, 'Expired' a stored Premium whose period has ended
+// (or has no expiry on record), 'Free' everything that is not currently Premium.
+function planFilter(plan, now = new Date()) {
+  if (!plan || plan === 'all') return {};
+  const activePremium = { plan: { equals: 'Premium', mode: 'insensitive' }, premiumExpiresAt: { gt: now } };
+  if (plan === 'Premium') return activePremium;
+  if (plan === 'Expired') {
+    return { plan: { equals: 'Premium', mode: 'insensitive' }, OR: [{ premiumExpiresAt: null }, { premiumExpiresAt: { lte: now } }] };
+  }
+  if (plan === 'Free') return { NOT: activePremium };
+  return { plan };
+}
+
+// Admin views show the effective plan plus the reason, never just the stored string.
+function withEntitlement(user, now = new Date()) {
+  if (!user) return user;
+  return { ...user, storedPlan: user.plan, plan: effectivePlan(user, now), premiumStatus: premiumStatus(user, now) };
+}
+
 router.get('/users', async (req, res, next) => {
   try {
     const { search, plan } = req.query;
     const where = {
       AND: [
-        plan && plan !== 'all' ? { plan } : {},
+        planFilter(plan),
         search ? {
           OR: [
             { username: { contains: search, mode: 'insensitive' } },
@@ -41,7 +76,7 @@ router.get('/users', async (req, res, next) => {
       phone: true, dob: true, gender: true, height: true, weight: true,
       bloodGroup: true, conditions: true, otherConditions: true, allergies: true,
       medications: true, smokes: true, alcohol: true, exercises: true,
-      emergName: true, emergPhone: true, plan: true, role: true, createdAt: true
+      emergName: true, emergPhone: true, plan: true, premiumExpiresAt: true, role: true, createdAt: true
     };
 
     // A few other admin views (Overview stats, Health Profiles, Emergency
@@ -52,7 +87,7 @@ router.get('/users', async (req, res, next) => {
     // Users TABLE view itself never sends it, so the table stays paginated.
     if (req.query.all === 'true') {
       const users = await prisma.user.findMany({ where, orderBy: { createdAt: 'desc' }, select });
-      return res.json({ users, total: users.length });
+      return res.json({ users: users.map(u => withEntitlement(u)), total: users.length });
     }
 
     const { page, pageSize, skip, take } = parsePagination(req.query);
@@ -61,7 +96,7 @@ router.get('/users', async (req, res, next) => {
       prisma.user.count({ where })
     ]);
 
-    return res.json({ users, total, page, pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)) });
+    return res.json({ users: users.map(u => withEntitlement(u)), total, page, pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)) });
   } catch (error) {
     return next(error);
   }
@@ -74,7 +109,8 @@ router.get('/users/:id', async (req, res, next) => {
       include: { triageRecords: true, achievements: true }
     });
     if (!user) return res.status(404).json({ message: 'User not found.' });
-    return res.json({ user: sanitizeUser(user) });
+    // sanitizeUser already reports the effective plan; add the stored value and the reason.
+    return res.json({ user: { ...sanitizeUser(user), storedPlan: user.plan, premiumStatus: premiumStatus(user) } });
   } catch (error) {
     return next(error);
   }

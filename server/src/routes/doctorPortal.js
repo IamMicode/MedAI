@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireApprovedDoctor } = require('../middleware/auth');
 const prisma = require('../db');
 const notify = require('../utils/notify');
 
@@ -14,6 +14,15 @@ function requireDoctor(req, res, next) {
 }
 
 router.use(requireDoctor);
+
+// Everything in the portal except the doctor's own status check requires an
+// APPROVED account. GET /me stays reachable for pending/rejected doctors
+// because that is how their dashboard learns (and shows) their status; it
+// returns 403 + the status itself for anyone not approved.
+router.use((req, res, next) => {
+  if (req.method === 'GET' && req.path === '/me') return next();
+  return requireApprovedDoctor(req, res, next);
+});
 
 // GET /api/doctor-portal/appointments — this doctor's incoming appointment requests, pending first
 router.get('/appointments', async (req, res, next) => {
@@ -141,7 +150,7 @@ router.get('/patients', async (req, res, next) => {
     });
 
     // pull each patient's most recent triage record too, if any exists, for severity context
-    const patientIds = conversations.map(c => c.patient.id);
+    const patientIds = conversations.filter(c => c.profileShared).map(c => c.patient.id);
     const triageRecords = patientIds.length
       ? await prisma.triageRecord.findMany({
           where: { userId: { in: patientIds } },
@@ -153,18 +162,24 @@ router.get('/patients', async (req, res, next) => {
       if (!latestTriageByPatient[t.userId]) latestTriageByPatient[t.userId] = t;
     }
 
+    // Share Profile is enforced HERE too, not just on /patients/:id. Until the
+    // patient turns sharing on for this conversation, the doctor gets only the
+    // patient's name — no email, blood group, allergies, conditions, emergency
+    // contact or triage details.
     const patients = conversations
       .map(c => {
         const lastMessage = c.messages[0] || null;
-        const triage = latestTriageByPatient[c.patient.id] || null;
+        const shared = c.profileShared === true;
+        const triage = shared ? (latestTriageByPatient[c.patient.id] || null) : null;
         return {
           id: c.patient.id,
           conversationId: c.id,
           name: `${c.patient.firstname || ''} ${c.patient.lastname || ''}`.trim() || c.patient.username,
-          email: c.patient.email,
-          bloodGroup: c.patient.bloodGroup,
-          allergies: c.patient.allergies,
-          conditions: c.patient.conditions,
+          profileShared: shared,
+          email: shared ? c.patient.email : null,
+          bloodGroup: shared ? c.patient.bloodGroup : null,
+          allergies: shared ? c.patient.allergies : [],
+          conditions: shared ? c.patient.conditions : [],
           highestSeverity: triage ? triage.triageLevel : null,
           lastTriageSummary: triage ? (triage.summary || triage.symptoms || null) : null,
           lastMessage: lastMessage ? (lastMessage.content || (lastMessage.imageData ? '📷 Image' : '')) : null,
@@ -235,21 +250,42 @@ router.get('/patients/:id', async (req, res, next) => {
 });
 
 // POST /api/doctor-portal/conversations — start or get existing conversation with a patient
+// POST /api/doctor-portal/conversations — open (get-or-create) a chat with a patient.
+// A doctor can NOT start a conversation with an arbitrary user id. There must
+// already be a connection the PATIENT created: an existing conversation, or an
+// appointment the patient requested with this doctor (which is the patient's
+// consent to be contacted by them). The target must also be an ordinary
+// patient account, never another doctor or an admin.
 router.post('/conversations', async (req, res, next) => {
   try {
     const { patientId } = req.body;
-    if (!patientId) return res.status(400).json({ message: 'patientId is required.' });
+    if (!patientId || typeof patientId !== 'string') {
+      return res.status(400).json({ message: 'patientId is required.' });
+    }
 
-    let conversation = await prisma.conversation.findUnique({
+    const existing = await prisma.conversation.findUnique({
       where: { doctorId_patientId: { doctorId: req.user.id, patientId } }
     });
+    if (existing) return res.json({ conversation: existing });
 
-    if (!conversation) {
-      conversation = await prisma.conversation.create({
-        data: { doctorId: req.user.id, patientId }
+    const patient = await prisma.user.findUnique({ where: { id: patientId }, select: { id: true, role: true } });
+    if (!patient || patient.role !== 'USER') {
+      return res.status(404).json({ message: 'Patient not found.' });
+    }
+
+    const connection = await prisma.appointment.findFirst({
+      where: { doctorId: req.user.id, patientId, status: { in: ['PENDING', 'ACCEPTED'] } },
+      select: { id: true }
+    });
+    if (!connection) {
+      return res.status(403).json({
+        message: 'You can only message patients who have booked an appointment with you or started a conversation with you.'
       });
     }
 
+    const conversation = await prisma.conversation.create({
+      data: { doctorId: req.user.id, patientId }
+    });
     return res.json({ conversation });
   } catch (error) {
     return next(error);

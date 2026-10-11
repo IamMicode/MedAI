@@ -311,7 +311,8 @@ body::after{content:'';position:fixed;top:-200px;right:-100px;width:600px;height
           <select id="user-filter" onchange="filterUsers()" style="background:rgba(255,80,0,0.04);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:var(--mono);font-size:11px;padding:8px 14px;outline:none;cursor:pointer">
             <option value="all">All Plans</option>
             <option value="Free">Free</option>
-            <option value="Premium">Premium</option>
+            <option value="Premium">Premium (active)</option>
+            <option value="Expired">Expired Premium</option>
           </select>
           <div style="margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--muted)" id="user-count-label"></div>
         </div>
@@ -594,10 +595,33 @@ function triageBadge(level){
   return map[level] || '<span class="a-badge ab-blue">'+level+'</span>';
 }
 
-function planBadge(plan){
-  return plan === 'Premium'
-    ? '<span class="a-badge ab-warn">👑 Premium</span>'
-    : '<span class="a-badge ab-blue">Free</span>';
+// Shows the EFFECTIVE entitlement (the server computes it from the expiry date),
+// and says why when a stored Premium no longer counts. Accepts a user object;
+// a bare plan string is still understood for older callers.
+function fmtExpiry(d){
+  if(!d) return '';
+  const t = new Date(d);
+  return isNaN(t) ? '' : t.toISOString().slice(0,10);
+}
+function premiumLabel(u){
+  const st = u.premiumStatus || (u.plan === 'Premium' ? 'active' : 'free');
+  const on = fmtExpiry(u.premiumExpiresAt);
+  if(st === 'active')    return 'Premium' + (on ? ' (until ' + on + ')' : '');
+  if(st === 'expired')   return 'Free — Premium expired' + (on ? ' ' + on : '');
+  if(st === 'no_expiry') return 'Free — Premium with no expiry on record';
+  return 'Free';
+}
+function planBadge(u){
+  const user = (typeof u === 'string') ? { plan: u } : (u || {});
+  const st = user.premiumStatus || (user.plan === 'Premium' ? 'active' : 'free');
+  const on = fmtExpiry(user.premiumExpiresAt);
+  if(st === 'active')
+    return '<span class="a-badge ab-warn" title="' + (on ? 'Active until ' + on : 'Active') + '">👑 Premium</span>';
+  if(st === 'expired')
+    return '<span class="a-badge ab-blue" title="Premium ended ' + on + '">Free · expired' + (on ? ' ' + on : '') + '</span>';
+  if(st === 'no_expiry')
+    return '<span class="a-badge ab-blue" title="Stored as Premium but no expiry date is recorded, so no Premium benefits apply">Free · no expiry set</span>';
+  return '<span class="a-badge ab-blue">Free</span>';
 }
 
 function calcHealthScore(u){
@@ -688,7 +712,7 @@ function renderOverview(){
   const newToday     = users.filter(u => u.joinDate && new Date(u.joinDate).toDateString() === today).length;
   const totalTriage  = triage.length;
   const emergencyCount = triage.filter(t => t.triage_level === 'emergency').length;
-  const premiumCount = users.filter(u => u.plan === 'Premium').length;
+  const premiumCount = users.filter(u => (u.premiumStatus || (u.plan === 'Premium' ? 'active' : 'free')) === 'active').length;   // active (unexpired) only
 
   const setEl = (id, val) => { const el=document.getElementById(id); if(el) el.textContent=val; };
   setEl('stat-total-users',   totalUsers);
@@ -749,7 +773,7 @@ function renderOverview(){
       <td>${u.country||'—'}</td>
       <td><span class="a-badge ab-danger">${u.bloodGroup||'?'}</span></td>
       <td style="color:var(--muted);font-family:var(--mono);font-size:11px">${fmtDate(u.joinDate)}</td>
-      <td>${planBadge(u.plan)}</td>
+      <td>${planBadge(u)}</td>
       <td><button class="a-btn a-btn-primary" style="padding:4px 12px;font-size:9px" onclick="showUserModal('${u.username}')">View</button></td>
     </tr>`).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;font-family:var(--mono);font-size:11px">No users registered yet</td></tr>';
   }
@@ -805,7 +829,7 @@ function renderUsersTable(users, total){
     <td style="font-family:var(--mono);font-size:11px;color:var(--muted)">@${u.username||'—'}</td>
     <td style="color:var(--muted)">${u.email||'—'}</td>
     <td>${u.country||'—'}</td>
-    <td>${planBadge(u.plan)}</td>
+    <td>${planBadge(u)}</td>
     <td style="font-family:var(--mono);font-size:12px;color:var(--accent)">${u.triageSessions||0}</td>
     <td style="font-family:var(--mono);font-size:10px;color:var(--muted)">${u.joinDate ? new Date(u.joinDate).toLocaleDateString('en-GB') : (u.createdAt ? new Date(u.createdAt).toLocaleDateString('en-GB') : '—')}</td>
     <td style="display:flex;gap:6px">
@@ -1188,7 +1212,7 @@ function showUserModal(username){
     ['Weight',       u.weight ? u.weight+'kg' : '—'],
     ['BMI',          (u.height&&u.weight) ? (u.weight/((u.height/100)**2)).toFixed(1) : '—'],
     ['Health Score', score+'/100'],
-    ['Plan',         u.plan||'Free'],
+    ['Plan',         premiumLabel(u)],
     ['Joined',       fmtDate(u.joinDate)],
     ['Triage Sessions', (u.triageSessions||0).toString()],
     ['Smokes',       u.smokes?'Yes':'No'],
@@ -1203,7 +1227,7 @@ function showUserModal(username){
       <div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-family:var(--head);font-size:22px;font-weight:700;color:#000">${(u.firstname||u.username||'?')[0].toUpperCase()}</div>
       <div>
         <div style="font-family:var(--head);font-size:18px;font-weight:700">${(u.firstname||'')+' '+(u.lastname||'')}</div>
-        <div style="font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1px">@${u.username} · ${planBadge(u.plan)}</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1px">@${u.username} · ${planBadge(u)}</div>
       </div>
     </div>
     ${rows.map(([k,v]) => `<div class="udm-row"><span class="udm-key">${k}</span><span class="udm-val">${v}</span></div>`).join('')}

@@ -34,6 +34,10 @@ model User {
   twoFactorSecret        String?
   twoFactorPendingSecret String?
   twoFactorBackupCodes   String[] @default([])
+  // Replay + brute-force protection for the second factor (see routes/auth.js):
+  twoFactorLastStep      Int?       // last accepted TOTP time step; a code for the same or an older step is a replay
+  twoFactorAttempts      Int        @default(0)  // attempts used in the current window (counted BEFORE the code is checked)
+  twoFactorWindowEndsAt  DateTime?  // end of the current attempt window; once reached, the counter starts over
   dob             String?
   gender          String?
   height          String?

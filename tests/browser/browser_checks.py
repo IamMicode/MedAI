@@ -30,7 +30,7 @@ for f in ('admin.html', 'Login_page.html'):
     check(f'{f}: no hard-coded admin username/password', not re.search(r"ADMIN_(CREDS|PASSWORD|USERNAME)|medai_admin_creds|Your-momma", src))
 
 # ---------- mock backend ----------
-state = {'admin_me': 200, 'complete': (201, {'token': 'tok', 'user': USER}), 'convo': (200, {'conversation': {'id': 'c1'}})}
+state = {'dob_required': False, 'dob_complete': (200, {'user': USER}), 'dob_posts': [], 'admin_users': [], 'admin_me': 200, 'complete': (201, {'token': 'tok', 'user': USER}), 'convo': (200, {'conversation': {'id': 'c1'}})}
 def mock(route):
     r = route.request; u = r.url
     h = {'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': '*'}
@@ -38,7 +38,14 @@ def mock(route):
     def ok(b, s=200): route.fulfill(status=s, headers=h, content_type='application/json', body=json.dumps(b))
     if '/api/admin/me' in u:
         return ok({'admin': {'id': 'a', 'username': 'boss'}}) if state['admin_me'] == 200 else ok({'message': 'x'}, state['admin_me'])
+    if '/api/admin/users' in u: return ok({'users': state['admin_users'], 'total': len(state['admin_users']), 'page': 1, 'pageSize': 50, 'totalPages': 1})
     if '/api/admin/' in u: return ok({'users': [], 'records': [], 'total': 0})
+    if '/api/auth/complete-dob' in u:
+        state['dob_posts'].append(r.post_data); st, body = state['dob_complete']
+        if st == 200: state['dob_required'] = False
+        return ok(body, st)
+    if state['dob_required'] and '/api/' in u and r.method != 'POST': return ok({'code': 'DOB_REQUIRED', 'message': 'Please enter your date of birth to continue.'}, 403)
+    if '/api/auth/login' in u: return ok({'token': 'LOGIN_TOKEN', 'user': USER})
     if '/api/auth/google/complete' in u: return ok(state['complete'][1], state['complete'][0])
     if '/api/ai/usage' in u: return ok({'used': 3, 'limit': 10, 'isPremium': False})
     if '/api/doctor-portal/conversations' in u and r.method == 'POST': return ok(state['convo'][1], state['convo'][0])
@@ -106,6 +113,90 @@ with sync_playwright() as pw:
     c.close()
     c, pg = login_with_hash('#google_dob=FAKESTEPTOKEN', (200, {'token': 'tok', 'user': USER}))
     check('existing-account DOB step also shows the modal', pg.locator('#google-dob-modal').count() == 1)
+    c.close()
+
+
+    # ---------- dashboard: legacy session without a date of birth (server answers 403 DOB_REQUIRED) ----------
+    state['dob_required'] = True; state['dob_posts'].clear(); state['dob_complete'] = (400, {'message': 'You must be at least 18 years old to use MedAI.'})
+    c = ctx_for(b, viewport={'width': 1280, 'height': 800}); pg = c.new_page(); errs = []
+    pg.on('pageerror', lambda e: errs.append(str(e)))
+    pg.add_init_script("localStorage.setItem('medai_token','tok');localStorage.setItem('medai_current_user', JSON.stringify(%s))" % json.dumps(USER))
+    pg.goto(BASE + 'dashboard.html'); pg.wait_for_timeout(1800)
+    check('DOB_REQUIRED from the server shows a blocking date-of-birth prompt', pg.locator('#dob-required-modal').count() == 1)
+    pg.fill('#dob-required-input', '2015-01-01'); pg.click('#dob-required-submit'); pg.wait_for_timeout(600)
+    check('under-18 answer: server message shown, prompt stays, request carried only the date', 'at least 18' in pg.inner_text('#dob-required-error') and pg.locator('#dob-required-modal').count() == 1 and len(state['dob_posts']) == 1 and json.loads(state['dob_posts'][0]) == {'dob': '2015-01-01'}, str(state['dob_posts']))
+    state['dob_complete'] = (200, {'user': USER})
+    pg.fill('#dob-required-input', '1990-01-01')
+    with pg.expect_navigation(timeout=5000): pg.click('#dob-required-submit')
+    pg.wait_for_timeout(1500)
+    check('adult answer completes it and the dashboard reloads without the prompt', pg.locator('#dob-required-modal').count() == 0 and not errs, str(errs[:2]))
+    c.close(); state['dob_required'] = False
+
+    # ---------- admin: expired Premium is not shown as Premium ----------
+    state['admin_users'] = [
+        {'id': 'a1', 'username': 'activeUser', 'email': 'a@x.co', 'plan': 'Premium', 'premiumStatus': 'active', 'premiumExpiresAt': '2099-01-01T00:00:00Z', 'role': 'USER', 'conditions': [], 'allergies': []},
+        {'id': 'e1', 'username': 'expiredUser', 'email': 'e@x.co', 'plan': 'Free', 'storedPlan': 'Premium', 'premiumStatus': 'expired', 'premiumExpiresAt': '2020-01-01T00:00:00Z', 'role': 'USER', 'conditions': [], 'allergies': []},
+        {'id': 'n1', 'username': 'noExpUser', 'email': 'n@x.co', 'plan': 'Free', 'storedPlan': 'Premium', 'premiumStatus': 'no_expiry', 'premiumExpiresAt': None, 'role': 'USER', 'conditions': [], 'allergies': []}]
+    state['admin_me'] = 200
+    c = ctx_for(b, viewport={'width': 1280, 'height': 800}); pg = c.new_page(); errs = []
+    pg.on('pageerror', lambda e: errs.append(str(e)))
+    pg.add_init_script("localStorage.setItem('medai_token','tok')")
+    pg.goto(BASE + 'admin.html'); pg.wait_for_timeout(1500)
+    pg.evaluate("typeof showSection==='function' ? showSection('users') : null"); pg.wait_for_timeout(1200)
+    body = pg.inner_text('body').lower()
+    check('admin: active Premium badge, expired shown as Free · expired + date, no-expiry flagged', 'premium' in body and 'expired 2020-01-01' in body and 'no expiry set' in body, body[-400:].replace('\n', ' '))
+    check('admin: Premium count counts only ACTIVE subscriptions (1 of 3)', pg.inner_text('#stat-premium-count').strip() == '1', pg.inner_text('#stat-premium-count'))
+    check('admin: no JS errors on the users view', not errs, str(errs[:2]))
+    c.close(); state['admin_users'] = []
+
+
+    # ---------- logout: token + current user removed, nothing else of the user's data, no authenticated requests afterwards ----------
+    SECRET = 'SECRET_TOKEN_123'
+    c = ctx_for(b, viewport={'width': 1280, 'height': 800}); pg = c.new_page(); errs = []
+    pg.on('pageerror', lambda e: errs.append(str(e)))
+    reqs = []
+    pg.on('request', lambda r: reqs.append((r.url, r.headers.get('authorization'))) if re.match(API, r.url) else None)
+    pg.add_init_script("""if(!sessionStorage.getItem('seeded')){ sessionStorage.setItem('seeded','1');
+      localStorage.setItem('medai_token','%s'); localStorage.setItem('medai_current_user', JSON.stringify(%s));
+      localStorage.setItem('medai_users', JSON.stringify([{username:'tester',email:'t@t.co'},{username:'other',email:'o@t.co'}]));
+      localStorage.setItem('medai_triage_history_tester','[{"id":1}]'); localStorage.setItem('medai_theme','dark'); localStorage.setItem('medai_language','en');
+      sessionStorage.setItem('medai_admin_session','active'); }""" % (SECRET, json.dumps(USER)))
+    pg.goto(BASE + 'dashboard.html'); pg.wait_for_timeout(1500)
+    check('before logout the session token is saved and used on API calls', pg.evaluate("localStorage.getItem('medai_token')") == SECRET and any(a == 'Bearer ' + SECRET for _, a in reqs), str(reqs[:3]))
+    pg.evaluate("logoutUser()")
+    st = pg.evaluate("""({token: localStorage.getItem('medai_token'), user: localStorage.getItem('medai_current_user'),
+      adminSession: sessionStorage.getItem('medai_admin_session'),
+      users: localStorage.getItem('medai_users'), triage: localStorage.getItem('medai_triage_history_tester'),
+      theme: localStorage.getItem('medai_theme'), lang: localStorage.getItem('medai_language')})""")
+    check('logout removes the bearer token, the current user and the admin-session marker immediately', st['token'] is None and st['user'] is None and st['adminSession'] is None, str(st))
+    check('logout leaves unrelated data alone (saved-accounts list, triage history cache, theme, language)', st['users'] and st['triage'] and st['theme'] == 'dark' and st['lang'] == 'en', str(st))
+    n_before = len(reqs)
+    stale = pg.evaluate("""(async () => { const r = await fetch(API_BASE_URL + '/api/profile', { headers: { Authorization: 'Bearer %s' } }); return r.status; })()""" % SECRET)
+    pg.wait_for_timeout(300)
+    check('after logout a request that still holds the old token is stopped locally (401) and never reaches the network', stale == 401 and len(reqs) == n_before, f'{stale} {reqs[n_before:]}')
+    pg.wait_for_url('**/Login_page.html', timeout=5000)
+    check('logout redirects to the login page', pg.url.endswith('Login_page.html'), pg.url)
+    check('no API request after logout carried the old token', not any(a and SECRET in a for _, a in reqs[n_before:]), str(reqs[n_before:]))
+    c.close()
+
+    # back/forward-cache restore of the dashboard with no token goes to login
+    c = ctx_for(b, viewport={'width': 1280, 'height': 800}); pg = c.new_page()
+    pg.add_init_script("if(!sessionStorage.getItem('s2')){sessionStorage.setItem('s2','1');localStorage.setItem('medai_token','tok');localStorage.setItem('medai_current_user', JSON.stringify(%s));}" % json.dumps(USER))
+    pg.goto(BASE + 'dashboard.html'); pg.wait_for_timeout(1200)
+    pg.evaluate("localStorage.removeItem('medai_token')")
+    pg.evaluate("window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }))")
+    pg.wait_for_url('**/Login_page.html', timeout=5000)
+    check('a dashboard restored from the back/forward cache without a token is sent to login', pg.url.endswith('Login_page.html'), pg.url)
+    c.close()
+
+
+    # ---------- normal login is unchanged: token + user stored, then the dashboard opens ----------
+    c = ctx_for(b, viewport={'width': 1280, 'height': 800}); pg = c.new_page()
+    pg.goto(BASE + 'Login_page.html'); pg.wait_for_timeout(800)
+    pg.fill('#username', 'tester'); pg.fill('#password', 'passw0rd!'); pg.press('#password', 'Enter')
+    pg.wait_for_url('**/dashboard.html', timeout=6000)
+    saved = pg.evaluate("({t: localStorage.getItem('medai_token'), u: JSON.parse(localStorage.getItem('medai_current_user')||'{}').username})")
+    check('password login still stores the token and current user and opens the dashboard', saved == {'t': 'LOGIN_TOKEN', 'u': 'tester'}, str(saved))
     c.close()
 
     # ---------- doctor dashboard: refused conversation is reported, not swallowed ----------

@@ -132,9 +132,11 @@ test('google/complete: under-18 is rejected and NO account is created', async ()
   assert.equal(users.rows.length, 0);
 });
 test('google/complete: junk dob, missing dob, expired/forged/wrong-purpose tokens rejected', async () => {
-  for (const body of [{ stepToken: signupToken(), dob: 'banana' }, { stepToken: signupToken() }, { dob: years(30) }]) {
+  for (const body of [{ stepToken: signupToken(), dob: 'banana' }, { stepToken: signupToken() }]) {
     assert.equal((await srv.call('POST', '/auth/google/complete', { body })).status, 400);
   }
+  // no step token AND no session → not a completion attempt at all
+  assert.equal((await srv.call('POST', '/auth/google/complete', { body: { dob: years(30) } })).status, 401);
   const expired = sign({ purpose: 'google-signup', googleId: 'g', email: 'e@e.co' }, { expiresIn: -10 });
   const forged = jwt.sign({ purpose: 'google-signup', googleId: 'g', email: 'e@e.co' }, 'wrong-secret');
   const loginToken = sign({ id: 'u1', role: 'USER' });          // a normal login token has no purpose

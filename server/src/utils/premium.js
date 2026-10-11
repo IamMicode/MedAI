@@ -16,6 +16,16 @@ function isPremiumActive(user, now = new Date()) {
   return exp.getTime() > now.getTime();
 }
 
+// 'active'    – Premium and the paid period has not ended
+// 'expired'   – stored plan is Premium but the paid period has ended
+// 'no_expiry' – stored plan is Premium but no expiry is on record (treated as Free; see above)
+// 'free'      – anything else
+function premiumStatus(user, now = new Date()) {
+  if (!user || String(user.plan || '').toLowerCase() !== 'premium') return 'free';
+  if (isPremiumActive(user, now)) return 'active';
+  return user.premiumExpiresAt ? 'expired' : 'no_expiry';
+}
+
 const effectivePlan = (user, now) => (isPremiumActive(user, now) ? 'Premium' : 'Free');
 
-module.exports = { isPremiumActive, effectivePlan };
+module.exports = { isPremiumActive, effectivePlan, premiumStatus };

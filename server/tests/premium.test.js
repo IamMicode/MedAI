@@ -93,3 +93,8 @@ test('/ai/usage reflects expiry server-side even if the token claims Premium', a
     assert.equal(good.body.limit, null);
   } finally { await srv.close(); }
 });
+
+test('sanitizeUser never exposes 2FA secrets or the new 2FA counters', () => {
+  const out = sanitizeUser({ id: 'x', plan: 'Free', password: 'h', twoFactorSecret: 's', twoFactorPendingSecret: 'p', twoFactorBackupCodes: ['h'], twoFactorLastStep: 5, twoFactorAttempts: 2, twoFactorWindowEndsAt: new Date() });
+  for (const k of ['password', 'twoFactorSecret', 'twoFactorPendingSecret', 'twoFactorBackupCodes', 'twoFactorLastStep', 'twoFactorAttempts', 'twoFactorWindowEndsAt']) assert.equal(k in out, false, k);
+});

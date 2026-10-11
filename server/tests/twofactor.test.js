@@ -125,6 +125,7 @@ test('password login for a 2FA account: requires2FA, no token; pendingToken is n
   assert.equal(r.body.requires2FA, true);
   assert.equal(r.body.token, undefined);
   assert.equal((await srv.call('GET', '/probe', { token: r.body.pendingToken })).status, 401);
+  assert.equal(jwt.decode(r.body.pendingToken).typ, '2fa-pending');
   const ok = await srv.call('POST', '/auth/2fa/verify-login', { body: { pendingToken: r.body.pendingToken, code: totp() } });
   assert.ok(ok.body.token);
 });
@@ -149,6 +150,7 @@ test('doctor without 2FA still logs in as before', async () => {
   users.rows.find(u => u.id === 'doc').twoFactorEnabled = false;
   const r = await srv.call('POST', '/api/doctors/login', { body: { email: 'doc@x.co', password: 'passw0rd!' } });
   assert.ok(r.body.token);
+  assert.equal(jwt.decode(r.body.token).typ, 'access');
   assert.equal(r.body.status, 'APPROVED');
 });
 

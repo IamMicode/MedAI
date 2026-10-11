@@ -37,7 +37,7 @@ test('protected routes require a login', async () => {
   }
 });
 test('mid-flow tokens (2FA pending / Google step) are not accepted as logins anywhere', async () => {
-  for (const t of [sign({ id: 'u', pending2FA: true }), sign({ id: 'u', purpose: 'google-dob' })]) {
+  for (const t of [sign({ id: 'u', pending2FA: true }), sign({ id: 'u', purpose: 'complete-dob' })]) {
     const r = await get('/api/profile', { headers: { Authorization: 'Bearer ' + t } });
     assert.equal(r.status, 401);
   }

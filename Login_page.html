@@ -939,6 +939,11 @@
         body: JSON.stringify({ pendingToken, code })
       });
       const data = await response.json().catch(()=>({}));
+      if(response.ok && data.requiresDob && data.stepToken){
+        document.getElementById('twofa-login-modal').remove();
+        showGoogleDobModal(data.stepToken);
+        return;
+      }
       if(response.ok && data.token){
         document.getElementById('twofa-login-modal').remove();
         completeLogin(data);
@@ -1011,9 +1016,16 @@
     const hash = window.location.hash.replace(/^#/, '');
     if(!hash) return;
     const params = new URLSearchParams(hash);
+    const pending2FA = params.get('google_2fa');
     const stepToken = params.get('google_signup') || params.get('google_dob');
-    if(!stepToken) return;
+    if(!stepToken && !pending2FA) return;
     window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+    // Google sign-in for an account with 2FA enabled: Google has proven who
+    // you are, but the authenticator code is still required before any session.
+    if(pending2FA){
+      document.addEventListener('DOMContentLoaded', () => show2FAModal(pending2FA));
+      return;
+    }
     document.addEventListener('DOMContentLoaded', () => showGoogleDobModal(stepToken));
   })();
 
@@ -1038,6 +1050,10 @@
       const data = await response.json().catch(()=>({}));
       if(response.ok && data.requires2FA && data.pendingToken){
         show2FAModal(data.pendingToken);
+        return false;
+      }
+      if(response.ok && data.requiresDob && data.stepToken){
+        showGoogleDobModal(data.stepToken);
         return false;
       }
       if(response.ok && data.token){

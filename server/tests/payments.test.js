@@ -68,3 +68,43 @@ test('payment initialize/status require login', async () => {
   assert.equal((await srv.call('POST', '/api/payments/initialize', { body: {} })).status, 401);
   assert.equal((await srv.call('GET', '/api/payments/status/TX1')).status, 401);
 });
+
+// ---- Premium renewal / expiry through the webhook (mocked Bachs, signed events) ----
+const pay = (id, txRef, planType = 'monthly') => payments.rows.push({ id, userId: 'u1', txRef, checkoutId: 'chk_' + id, amount: 5, currency: 'USD', planType, status: 'PENDING' });
+const fire = async (id, txRef) => {
+  const raw = event({ data: { checkout_id: 'chk_' + id, status: 'SUCCEEDED', currency: 'USD', amount: '5', charge_id: 'ch_' + id, metadata: { txRef } } });
+  assert.equal((await post(raw, { 'x-bachs-signature-v2': sign(raw) })).status, 200);
+  await settle();
+};
+const DAYMS = 864e5;
+
+test('renewal while ACTIVE stacks onto the remaining time; payment rows preserved', async () => {
+  const before = payments.rows.length;
+  const left = new Date(Date.now() + 10 * DAYMS);
+  Object.assign(users.rows[0], { plan: 'Premium', premiumExpiresAt: left });
+  pay('r1', 'TXR1'); await fire('r1', 'TXR1');
+  const gained = users.rows[0].premiumExpiresAt - left;
+  assert.ok(Math.abs(gained - 30 * DAYMS) < 5000, 'adds 30d to the existing expiry');
+  assert.equal(payments.rows.length, before + 1, 'no payment records removed');
+  assert.ok(payments.rows.every(p => p.id), 'older payments untouched');
+});
+test('renewal after EXPIRY starts from now, not from the stale date', async () => {
+  Object.assign(users.rows[0], { plan: 'Premium', premiumExpiresAt: new Date(Date.now() - 20 * DAYMS) });
+  pay('r2', 'TXR2', 'yearly'); await fire('r2', 'TXR2');
+  const left = users.rows[0].premiumExpiresAt - Date.now();
+  assert.ok(Math.abs(left - 365 * DAYMS) < 5000);
+});
+test('first purchase with NULL expiry starts from now', async () => {
+  Object.assign(users.rows[0], { plan: 'Free', premiumExpiresAt: null });
+  pay('r3', 'TXR3'); await fire('r3', 'TXR3');
+  assert.equal(users.rows[0].plan, 'Premium');
+  assert.ok(Math.abs(users.rows[0].premiumExpiresAt - Date.now() - 30 * DAYMS) < 5000);
+});
+test('status endpoint reports Free for a lapsed subscription (not the stale stored plan)', async () => {
+  const { tokenFor } = require('./helpers');
+  Object.assign(users.rows[0], { plan: 'Premium', premiumExpiresAt: new Date(Date.now() - DAYMS) });
+  const r = await srv.call('GET', '/api/payments/status/TXR3', { token: tokenFor({ id: 'u1', role: 'USER' }) });
+  assert.equal(r.body.plan, 'Free');
+  Object.assign(users.rows[0], { premiumExpiresAt: new Date(Date.now() + DAYMS) });
+  assert.equal((await srv.call('GET', '/api/payments/status/TXR3', { token: tokenFor({ id: 'u1', role: 'USER' }) })).body.plan, 'Premium');
+});

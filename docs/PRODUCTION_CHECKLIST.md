@@ -48,3 +48,12 @@ actually configured in your live services.
 ### B4. Rotate anything that has been exposed
 - The old admin password that was hard-coded in `admin.html` / `Login_page.html` has been in the public repo history since the first commit. Treat it as compromised: **change the real admin account's password** (Admin → Settings → Change password, or "Forgot password"), and change it anywhere else you reused it. Removing the text from the code does not remove it from git history.
 - Rotating `JWT_SECRET` signs everyone out (acceptable, and recommended if you ever pasted it anywhere).
+
+## C. Manual production checks for the 2FA / Premium / age changes
+(All automated tests use mocked services; none of this has been run against live Google, Bachs, Render or the real DB.)
+
+1. **Google + 2FA:** with a real test account that has 2FA on, sign in with Google → expect the 2FA code prompt, no dashboard until the code is accepted. Repeat with a backup code. Then a Google account without 2FA → straight in.
+2. **Premium expiry:** find users with `plan='Premium'` AND `premiumExpiresAt IS NULL` (read-only query). These now get Free benefits. If any are legitimate (manual grants), set an expiry for them deliberately before deploying.
+3. **Premium lapse/renewal:** with a Bachs sandbox payment, confirm the plan shows Premium; set that user's `premiumExpiresAt` to the past in a staging DB and confirm the 10/day AI cap and Free plan label apply; pay again and confirm it returns.
+4. **Existing patients without DOB:** sign in (password and Google) and confirm the DOB prompt appears, under-18 is refused, valid DOB completes sign-in.
+5. `admin1.html` was removed (no references); confirm `/admin1.html` is no longer needed in any bookmarks/Vercel dashboard rules.

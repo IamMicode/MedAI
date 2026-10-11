@@ -85,7 +85,7 @@ test('requireAuth rejects 2FA pendingToken and Google step tokens used as Bearer
   try {
     const good = await mini.call('GET', '/t', { token: tokenFor(users.rows[0]) });
     assert.equal(good.status, 200);
-    for (const t of [sign({ id: 'u9', pending2FA: true }), sign({ purpose: 'google-dob', id: 'u9' }), sign({ purpose: 'google-signup', email: 'e@e.co' })]) {
+    for (const t of [sign({ id: 'u9', pending2FA: true }), sign({ purpose: 'complete-dob', id: 'u9' }), sign({ purpose: 'google-signup', email: 'e@e.co' })]) {
       assert.equal((await mini.call('GET', '/t', { token: t })).status, 401);
     }
   } finally {
@@ -145,11 +145,11 @@ test('google/complete: junk dob, missing dob, expired/forged/wrong-purpose token
 });
 test('google/complete: legacy patient without dob — adult is let in and dob saved; under-18 gets no session', async () => {
   users.rows.push({ id: 'legacy', email: 'l@g.co', username: 'l', role: 'USER', dob: null });
-  const tooYoung = await srv.call('POST', '/auth/google/complete', { body: { stepToken: sign({ purpose: 'google-dob', id: 'legacy' }), dob: years(12) } });
+  const tooYoung = await srv.call('POST', '/auth/google/complete', { body: { stepToken: sign({ purpose: 'complete-dob', id: 'legacy' }), dob: years(12) } });
   assert.equal(tooYoung.status, 400);
   assert.equal(tooYoung.body.token, undefined);
   assert.equal(users.rows[0].dob, null);
-  const ok = await srv.call('POST', '/auth/google/complete', { body: { stepToken: sign({ purpose: 'google-dob', id: 'legacy' }), dob: years(40) } });
+  const ok = await srv.call('POST', '/auth/google/complete', { body: { stepToken: sign({ purpose: 'complete-dob', id: 'legacy' }), dob: years(40) } });
   assert.equal(ok.status, 200);
   assert.ok(ok.body.token);
   assert.ok(users.rows[0].dob);

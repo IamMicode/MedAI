@@ -4,6 +4,7 @@ const prisma = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const validate = require('../middleware/validate');
 
+const { isPremiumActive } = require('../utils/premium');
 const router = express.Router();
 
 const triageSchema = z.object({
@@ -22,7 +23,7 @@ router.post('/', validate(triageSchema), async (req, res, next) => {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
-    if (user?.plan === 'Free') {
+    if (!isPremiumActive(user)) {
       const count = await prisma.triageRecord.count({
         where: {
           userId: req.user.id,

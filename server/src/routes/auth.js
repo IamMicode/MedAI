@@ -61,6 +61,30 @@ router.post('/register', authLimiter, validate(registerSchema), async (req, res,
   }
 });
 
+// ───────────────────────── authentication stages ─────────────────────────
+// A user goes through up to three stages before holding a real session:
+//   1. primary proof   (password, or Google OAuth)
+//   2. second factor   (only if twoFactorEnabled)            → pendingToken
+//   3. date of birth   (only patients with none on file)     → stepToken
+// Tokens issued mid-flow are typed (pending2FA / purpose) and requireAuth
+// rejects them everywhere, so none of them can call a protected API. A real
+// session token is produced ONLY by sessionResponse() below, which every
+// login path (password, 2FA, Google) funnels through.
+function pendingTwoFactorToken(user) {
+  return jwt.sign({ id: user.id, pending2FA: true }, process.env.JWT_SECRET, { expiresIn: '5m' });
+}
+
+const needsDob = (user) => user.role === 'USER' && !user.dob;
+
+// `mfaVerified` records that the second factor has ALREADY been checked in this
+// login, so the DOB step can't be used to skip it (see /complete-dob).
+function sessionResponse(user, { mfaVerified = false } = {}) {
+  if (needsDob(user)) {
+    return { requiresDob: true, stepToken: signGoogleStepToken({ purpose: 'complete-dob', id: user.id, mfa: mfaVerified }) };
+  }
+  return { token: createToken(user), user: sanitizeUser(user) };
+}
+
 router.post('/login', authLimiter, validate(loginSchema), async (req, res, next) => {
   try {
     const usernameOrEmail = req.body.usernameOrEmail.toLowerCase();
@@ -85,20 +109,12 @@ router.post('/login', authLimiter, validate(loginSchema), async (req, res, next)
     if (user.twoFactorEnabled) {
       // Password is correct, but don't issue a real session token yet — require
       // the 6-digit authenticator code (or a backup code) first. This pre-auth
-      // token is short-lived and only proves "password already verified", it
-      // carries no role/plan trust and can't be used to call any real API route.
-      const pendingToken = jwt.sign(
-        { id: user.id, pending2FA: true },
-        process.env.JWT_SECRET,
-        { expiresIn: '5m' }
-      );
-      return res.json({ requires2FA: true, pendingToken });
+      // token is short-lived and only proves "password already verified"; it is
+      // rejected by requireAuth, so it can't call any real API route.
+      return res.json({ requires2FA: true, pendingToken: pendingTwoFactorToken(user) });
     }
 
-    return res.json({
-      token: createToken(user),
-      user: sanitizeUser(user)
-    });
+    return res.json(sessionResponse(user));
   } catch (error) {
     return next(error);
   }
@@ -136,7 +152,7 @@ router.post('/2fa/verify-login', authLimiter, async (req, res, next) => {
     });
 
     if (isTotpValid) {
-      return res.json({ token: createToken(user), user: sanitizeUser(user) });
+      return res.json(sessionResponse(user, { mfaVerified: true }));
     }
 
     // Not a valid TOTP code — check if it matches (and consumes) a backup code instead.
@@ -149,7 +165,7 @@ router.post('/2fa/verify-login', authLimiter, async (req, res, next) => {
           where: { id: user.id },
           data: { twoFactorBackupCodes: remaining }
         });
-        return res.json({ token: createToken(user), user: sanitizeUser(user) });
+        return res.json(sessionResponse(user, { mfaVerified: true }));
       }
     }
 
@@ -196,11 +212,19 @@ router.get('/google/callback', authLimiter, (req, res, next) => {
       return res.redirect(`${frontend}/Login_page.html?oauth_error=${message}`);
     }
 
+    // Google proves who the person is — it does NOT replace this account's own
+    // second factor. If the account has 2FA enabled, no session is issued here;
+    // the user must complete the same authenticator-code step as a password
+    // login (POST /api/auth/2fa/verify-login) first.
+    if (user.twoFactorEnabled) {
+      return res.redirect(`${frontend}/Login_page.html#google_2fa=${encodeURIComponent(pendingTwoFactorToken(user))}`);
+    }
+
     // Existing patient account with no date of birth on file (e.g. created via
     // Google before this check existed): same DOB step before any session.
     // Doctors and admins are not patients and are not gated here.
-    if (user.role === 'USER' && !user.dob) {
-      const stepToken = signGoogleStepToken({ purpose: 'google-dob', id: user.id });
+    if (needsDob(user)) {
+      const stepToken = signGoogleStepToken({ purpose: 'complete-dob', id: user.id, mfa: false });
       return res.redirect(`${frontend}/Login_page.html#google_dob=${encodeURIComponent(stepToken)}`);
     }
 
@@ -214,7 +238,7 @@ router.get('/google/callback', authLimiter, (req, res, next) => {
 
 // POST /api/auth/google/complete — finishes a Google sign-up/sign-in that is
 // waiting on a date of birth. The age rule is enforced HERE, server-side.
-router.post('/google/complete', authLimiter, async (req, res, next) => {
+router.post(['/google/complete', '/complete-dob'], authLimiter, async (req, res, next) => {
   try {
     const { stepToken, dob } = req.body || {};
     if (typeof stepToken !== 'string' || typeof dob !== 'string') {
@@ -231,10 +255,16 @@ router.post('/google/complete', authLimiter, async (req, res, next) => {
     const dobError = checkDob(dob.trim());
     if (dobError) return res.status(400).json({ message: dobError });
 
-    if (step.purpose === 'google-dob') {
+    if (step.purpose === 'complete-dob') {
       const existing = await prisma.user.findUnique({ where: { id: step.id } });
       if (!existing || existing.role !== 'USER') {
         return res.status(400).json({ message: 'This sign-in step is no longer valid. Please sign in again.' });
+      }
+      // Defence in depth: if the account has 2FA, this step may only continue a
+      // login whose second factor was already verified. A step token minted
+      // before that (or by any future code path) can never become a session.
+      if (existing.twoFactorEnabled && !step.mfa) {
+        return res.status(403).json({ message: 'Two-factor verification is required. Please sign in again.' });
       }
       const user = existing.dob
         ? existing

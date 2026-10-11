@@ -1,4 +1,5 @@
 const express = require('express');
+const { isPremiumActive, effectivePlan } = require('../utils/premium');
 const router = express.Router();
 const crypto = require('crypto');
 const { requireAuth } = require('../middleware/auth');
@@ -138,7 +139,7 @@ router.get('/status/:txRef', requireAuth, paymentStatusLimiter, async (req, res,
       return res.status(404).json({ message: 'Payment not found.' });
     }
     const user = await prisma.user.findUnique({ where: { id: req.user.id }, select: { plan: true, premiumExpiresAt: true } });
-    return res.json({ status: payment.status, plan: user.plan, premiumExpiresAt: user.premiumExpiresAt });
+    return res.json({ status: payment.status, plan: effectivePlan(user), premiumExpiresAt: user.premiumExpiresAt });
   } catch (error) {
     return next(error);
   }
@@ -259,6 +260,14 @@ router.post('/webhook', async (req, res, next) => {
     const now = new Date();
     const durationMs = payment.planType === 'yearly' ? 365 * 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000;
 
+    // Renewal while still active stacks on the remaining time instead of
+    // throwing it away; an expired/missing expiry starts from now.
+    const current = await prisma.user.findUnique({
+      where: { id: payment.userId },
+      select: { plan: true, premiumExpiresAt: true }
+    });
+    const base = isPremiumActive(current, now) ? new Date(current.premiumExpiresAt) : now;
+
     await prisma.$transaction([
       prisma.payment.update({
         where: { id: payment.id },
@@ -269,7 +278,7 @@ router.post('/webhook', async (req, res, next) => {
         data: {
           plan: 'Premium',
           premiumActivatedAt: now,
-          premiumExpiresAt: new Date(now.getTime() + durationMs)
+          premiumExpiresAt: new Date(base.getTime() + durationMs)
         }
       })
     ]);

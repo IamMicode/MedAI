@@ -126,6 +126,22 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
       return res.status(401).json({ message: 'Incorrect password.' });
     }
 
+    const status = user.doctorProfile.verificationStatus;
+    const doctorSummary = {
+      fullName: user.doctorProfile.fullName,
+      specialty: user.doctorProfile.specialty,
+      verificationStatus: status,
+      rejectionReason: user.doctorProfile.rejectionReason
+    };
+
+    // A doctor account with 2FA enabled must NOT get a session from the
+    // password alone. Same stage as patient login: hand back the short-lived,
+    // non-session pendingToken and finish at POST /api/auth/2fa/verify-login.
+    if (user.twoFactorEnabled) {
+      const pendingToken = jwt.sign({ id: user.id, pending2FA: true }, process.env.JWT_SECRET, { expiresIn: '5m' });
+      return res.json({ requires2FA: true, pendingToken, status, doctor: doctorSummary });
+    }
+
     const token = createDoctorToken(user, user.doctorProfile);
 
     return res.json({

@@ -1,4 +1,5 @@
 const express = require('express');
+const { isPremiumActive } = require('../utils/premium');
 const router = express.Router();
 const { requireAuth } = require('../middleware/auth');
 const prisma = require('../db');
@@ -162,7 +163,7 @@ router.get('/', async (req, res, next) => {
       groundingComplete,
       accountAgeDays,
       profileComplete,
-      isPremium: user.plan !== 'Free',
+      isPremium: isPremiumActive(user),
       totalAIUsage,
       // individual AI type counts — approximate from total since we track combined daily
       // these will improve once we track per-type usage

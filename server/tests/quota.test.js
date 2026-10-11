@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { stub, serve, tokenFor, SRC } = require('./helpers');
 
-const users = { free: { id: 'free', plan: 'Free' }, prem: { id: 'prem', plan: 'Premium' }, legacy: { id: 'legacy', plan: 'FREE' } };
+const users = { free: { id: 'free', plan: 'Free' }, prem: { id: 'prem', plan: 'Premium', premiumExpiresAt: new Date(Date.now() + 864e5) }, legacy: { id: 'legacy', plan: 'FREE' } };
 let usage = {};
 const key = (w) => `${w.userId_date.userId}|${w.userId_date.date}`;
 stub('db', {
